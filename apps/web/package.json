@@ -1,0 +1,25 @@
+{
+  "name": "@ai-novel/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "next build",
+    "dev": "next dev"
+  },
+  "dependencies": {
+    "@ai-novel/db": "workspace:*",
+    "@ai-novel/shared": "workspace:*",
+    "next": "16.2.4",
+    "react": "19.2.5",
+    "react-dom": "19.2.5"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "6.0.3",
+    "vitest": "4.1.5"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.local
+.pnpm-store/
+dist/
+build/
+.next/
+coverage/
+*.log
+*.tsbuildinfo
+packages/db/src/generated/
+.worktrees/

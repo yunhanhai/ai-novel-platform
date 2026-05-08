@@ -1,0 +1,32 @@
+{
+  "name": "@ai-novel/db",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tenant": "./src/tenant.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:validate": "prisma validate --schema prisma/schema.prisma",
+    "db:format": "prisma format --schema prisma/schema.prisma",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:diff": "prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script",
+    "db:migration:initial": "prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script --output prisma/migrations/202604290001_initial_core/migration.sql",
+    "db:migrate": "prisma migrate dev --schema prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/pg": "^8.20.0",
+    "dotenv": "^17.4.2",
+    "prisma": "^7.8.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}

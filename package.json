@@ -1,0 +1,19 @@
+{
+  "name": "ai-novel-platform",
+  "private": true,
+  "packageManager": "pnpm@10.10.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @ai-novel/web dev",
+    "build": "pnpm -r build",
+    "dev:services": "docker compose up -d postgres redis",
+    "dev:services:down": "docker compose down",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "db:validate": "pnpm --filter @ai-novel/db db:validate",
+    "db:format": "pnpm --filter @ai-novel/db db:format",
+    "db:generate": "pnpm --filter @ai-novel/db db:generate",
+    "db:diff": "pnpm --filter @ai-novel/db db:diff",
+    "db:migration:initial": "pnpm --filter @ai-novel/db db:migration:initial",
+    "db:migrate": "pnpm --filter @ai-novel/db db:migrate"
+  }
+}

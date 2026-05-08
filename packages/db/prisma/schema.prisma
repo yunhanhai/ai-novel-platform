@@ -1,0 +1,890 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE   @map("active")
+  DISABLED @map("disabled")
+  DELETED  @map("deleted")
+
+  @@map("user_status")
+}
+
+enum OrganizationStatus {
+  ACTIVE    @map("active")
+  SUSPENDED @map("suspended")
+  DELETED   @map("deleted")
+
+  @@map("organization_status")
+}
+
+enum BillingMode {
+  BYOK     @map("byok")
+  PLATFORM @map("platform")
+  HYBRID   @map("hybrid")
+
+  @@map("billing_mode")
+}
+
+enum OrganizationRole {
+  OWNER  @map("owner")
+  ADMIN  @map("admin")
+  MEMBER @map("member")
+  VIEWER @map("viewer")
+
+  @@map("organization_role")
+}
+
+enum MemberStatus {
+  ACTIVE  @map("active")
+  INVITED @map("invited")
+  REMOVED @map("removed")
+
+  @@map("member_status")
+}
+
+enum ProjectType {
+  LONG_NOVEL  @map("long_novel")
+  SHORT_STORY @map("short_story")
+
+  @@map("project_type")
+}
+
+enum ProjectStatus {
+  DRAFT    @map("draft")
+  ACTIVE   @map("active")
+  PAUSED   @map("paused")
+  ARCHIVED @map("archived")
+
+  @@map("project_status")
+}
+
+enum ProjectRole {
+  PROJECT_OWNER @map("project_owner")
+  EDITOR        @map("editor")
+  COMMENTER     @map("commenter")
+  VIEWER        @map("viewer")
+
+  @@map("project_role")
+}
+
+enum OutlineLevel {
+  BOOK    @map("book")
+  VOLUME  @map("volume")
+  CHAPTER @map("chapter")
+  BEAT    @map("beat")
+
+  @@map("outline_level")
+}
+
+enum OutlineStatus {
+  PLANNED  @map("planned")
+  DRAFTING @map("drafting")
+  DONE     @map("done")
+
+  @@map("outline_status")
+}
+
+enum VolumeStatus {
+  PLANNED  @map("planned")
+  DRAFTING @map("drafting")
+  FINISHED @map("finished")
+
+  @@map("volume_status")
+}
+
+enum ChapterStatus {
+  PLANNED   @map("planned")
+  DRAFT     @map("draft")
+  REVIEWING @map("reviewing")
+  FINAL     @map("final")
+
+  @@map("chapter_status")
+}
+
+enum ContentFormat {
+  MARKDOWN @map("markdown")
+  PLAIN    @map("plain")
+
+  @@map("content_format")
+}
+
+enum ContentEntityType {
+  CHAPTER    @map("chapter")
+  OUTLINE    @map("outline")
+  CHARACTER  @map("character")
+  WORLD_ITEM @map("world_item")
+
+  @@map("content_entity_type")
+}
+
+enum ContentVersionSource {
+  MANUAL @map("manual")
+  AI     @map("ai")
+  IMPORT @map("import")
+
+  @@map("content_version_source")
+}
+
+enum ProviderType {
+  OPENAI_COMPATIBLE @map("openai_compatible")
+  ANTHROPIC         @map("anthropic")
+  GEMINI            @map("gemini")
+  DEEPSEEK          @map("deepseek")
+  CUSTOM            @map("custom")
+
+  @@map("provider_type")
+}
+
+enum AuthMode {
+  USER_KEY     @map("user_key")
+  PLATFORM_KEY @map("platform_key")
+
+  @@map("auth_mode")
+}
+
+enum ModelProtocol {
+  CHAT_COMPLETIONS @map("chat_completions")
+  RESPONSES        @map("responses")
+  MESSAGES         @map("messages")
+  AUTO             @map("auto")
+
+  @@map("model_protocol")
+}
+
+enum ProviderStatus {
+  ACTIVE   @map("active")
+  DISABLED @map("disabled")
+  ERROR    @map("error")
+
+  @@map("provider_status")
+}
+
+enum GenerationJobType {
+  GENERATE_OUTLINE @map("generate_outline")
+  GENERATE_CHAPTER @map("generate_chapter")
+  CONTINUE_CHAPTER @map("continue_chapter")
+  REWRITE          @map("rewrite")
+  POLISH           @map("polish")
+  DESLOP           @map("deslop")
+  REVIEW           @map("review")
+  EXTRACT_MEMORY   @map("extract_memory")
+
+  @@map("generation_job_type")
+}
+
+enum GenerationTargetEntityType {
+  PROJECT @map("project")
+  OUTLINE @map("outline")
+  CHAPTER @map("chapter")
+
+  @@map("generation_target_entity_type")
+}
+
+enum GenerationJobStatus {
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  SUCCEEDED @map("succeeded")
+  FAILED    @map("failed")
+  CANCELLED @map("cancelled")
+
+  @@map("generation_job_status")
+}
+
+enum GenerationStepStatus {
+  PENDING   @map("pending")
+  RUNNING   @map("running")
+  SUCCEEDED @map("succeeded")
+  FAILED    @map("failed")
+  SKIPPED   @map("skipped")
+
+  @@map("generation_step_status")
+}
+
+enum BillingSource {
+  USER_KEY @map("user_key")
+  PLATFORM @map("platform")
+
+  @@map("billing_source")
+}
+
+model User {
+  id                      String               @id @default(uuid()) @db.Uuid
+  email                   String               @unique @db.VarChar(320)
+  displayName             String               @map("display_name") @db.VarChar(80)
+  avatarUrl               String?              @map("avatar_url") @db.Text
+  passwordHash            String?              @map("password_hash") @db.Text
+  status                  UserStatus           @default(ACTIVE)
+  locale                  String               @default("zh-CN") @db.VarChar(20)
+  timezone                String               @default("Asia/Shanghai") @db.VarChar(50)
+  createdAt               DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  identities              UserIdentity[]
+  organizationMemberships OrganizationMember[]
+  ownedOrganizations      Organization[]       @relation("OrganizationOwner")
+  createdInvitations      Invitation[]         @relation("InvitationCreatedBy")
+  createdProjects         Project[]            @relation("ProjectCreatedBy")
+  projectMemberships      ProjectMember[]
+  createdOutlines         Outline[]            @relation("OutlineCreatedBy")
+  createdChapters         Chapter[]            @relation("ChapterCreatedBy")
+  updatedChapters         Chapter[]            @relation("ChapterUpdatedBy")
+  createdContentVersions  ContentVersion[]     @relation("ContentVersionCreatedBy")
+  ownedModelProviders     ModelProvider[]      @relation("ModelProviderOwner")
+  createdPromptTemplates  PromptTemplate[]     @relation("PromptTemplateCreatedBy")
+  generationJobs          GenerationJob[]
+  usageEvents             UsageEvent[]
+  auditLogs               AuditLog[]           @relation("AuditActor")
+  createdCharacters       Character[]          @relation("CharacterCreatedBy")
+  createdWorldItems       WorldItem[]          @relation("WorldItemCreatedBy")
+  createdPlotThreads      PlotThread[]         @relation("PlotThreadCreatedBy")
+
+  @@index([status], map: "idx_users_status")
+  @@map("users")
+}
+
+model UserIdentity {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  provider       String   @db.VarChar(40)
+  providerUserId String   @map("provider_user_id") @db.VarChar(160)
+  providerEmail  String?  @map("provider_email") @db.VarChar(320)
+  rawProfile     Json?    @map("raw_profile")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId], map: "user_identities_provider_provider_user_id_key")
+  @@index([userId], map: "idx_user_identities_user")
+  @@map("user_identities")
+}
+
+model Organization {
+  id              String               @id @default(uuid()) @db.Uuid
+  name            String               @db.VarChar(120)
+  slug            String               @unique @db.VarChar(80)
+  planCode        String               @default("free") @map("plan_code") @db.VarChar(40)
+  billingMode     BillingMode          @default(HYBRID) @map("billing_mode")
+  ownerUserId     String               @map("owner_user_id") @db.Uuid
+  status          OrganizationStatus   @default(ACTIVE)
+  settings        Json?
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  owner           User                 @relation("OrganizationOwner", fields: [ownerUserId], references: [id])
+  members         OrganizationMember[]
+  invitations     Invitation[]
+  projects        Project[]
+  modelProviders  ModelProvider[]
+  modelProfiles   ModelProfile[]
+  promptTemplates PromptTemplate[]
+  generationJobs  GenerationJob[]
+  generationSteps       GenerationStep[]
+  usageEvents           UsageEvent[]
+  auditLogs             AuditLog[]
+  characters            Character[]
+  characterRelationships CharacterRelationship[]
+  worldItems            WorldItem[]
+  plotThreads           PlotThread[]
+  projectMemories       ProjectMemory[]
+  deslopRules           DeslopRule[]
+  styleProfiles         StyleProfile[]
+  writingMethodologies  WritingMethodology[]
+
+  @@index([ownerUserId], map: "idx_organizations_owner")
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  role           OrganizationRole
+  status         MemberStatus     @default(ACTIVE)
+  joinedAt       DateTime?        @map("joined_at") @db.Timestamptz(6)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId], map: "organization_members_organization_id_user_id_key")
+  @@index([userId], map: "idx_org_members_user")
+  @@index([organizationId, role], map: "idx_org_members_org_role")
+  @@map("organization_members")
+}
+
+model Invitation {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  email          String           @db.VarChar(320)
+  role           OrganizationRole
+  tokenHash      String           @map("token_hash") @db.Text
+  expiresAt      DateTime         @map("expires_at") @db.Timestamptz(6)
+  acceptedAt     DateTime?        @map("accepted_at") @db.Timestamptz(6)
+  createdById    String           @map("created_by") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User             @relation("InvitationCreatedBy", fields: [createdById], references: [id])
+
+  @@index([organizationId, email], map: "idx_invitations_org_email")
+  @@map("invitations")
+}
+
+model Project {
+  id                    String           @id @default(uuid()) @db.Uuid
+  organizationId        String           @map("organization_id") @db.Uuid
+  title                 String           @db.VarChar(160)
+  slug                  String           @db.VarChar(120)
+  type                  ProjectType      @default(LONG_NOVEL)
+  genre                 String?          @db.VarChar(80)
+  targetAudience        String?          @map("target_audience") @db.VarChar(120)
+  platformTarget        String?          @map("platform_target") @db.VarChar(80)
+  styleBrief            String?          @map("style_brief") @db.Text
+  premise               String?          @db.Text
+  sellingPoints         Json?            @map("selling_points")
+  targetWordCount       Int?             @map("target_word_count")
+  updateCadence         String?          @map("update_cadence") @db.VarChar(40)
+  status                ProjectStatus    @default(DRAFT)
+  defaultModelProfileId String?          @map("default_model_profile_id") @db.Uuid
+  settings              Json?
+  createdById           String           @map("created_by") @db.Uuid
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt             DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  organization          Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy             User             @relation("ProjectCreatedBy", fields: [createdById], references: [id])
+  members               ProjectMember[]
+  volumes               Volume[]
+  chapters              Chapter[]
+  outlines              Outline[]
+  contentVersions       ContentVersion[]
+  modelProfiles         ModelProfile[]
+  promptTemplates       PromptTemplate[]
+  generationJobs        GenerationJob[]
+  usageEvents           UsageEvent[]
+  characters            Character[]
+  characterRelationships CharacterRelationship[]
+  worldItems            WorldItem[]
+  plotThreads           PlotThread[]
+  projectMemories       ProjectMemory[]
+  deslopRules           DeslopRule[]
+  styleProfiles         StyleProfile[]
+  writingMethodologies  WritingMethodology[]
+
+  @@unique([organizationId, slug], map: "projects_organization_id_slug_key")
+  @@index([organizationId, status], map: "idx_projects_org_status")
+  @@index([organizationId, updatedAt], map: "idx_projects_updated")
+  @@map("projects")
+}
+
+model ProjectMember {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  projectId      String      @map("project_id") @db.Uuid
+  userId         String      @map("user_id") @db.Uuid
+  role           ProjectRole
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  project        Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId], map: "project_members_project_id_user_id_key")
+  @@index([organizationId, projectId], map: "idx_project_members_org_project")
+  @@index([userId], map: "idx_project_members_user")
+  @@map("project_members")
+}
+
+model Outline {
+  id              String        @id @default(uuid()) @db.Uuid
+  organizationId  String        @map("organization_id") @db.Uuid
+  projectId       String        @map("project_id") @db.Uuid
+  parentId        String?       @map("parent_id") @db.Uuid
+  level           OutlineLevel
+  title           String        @db.VarChar(200)
+  summary         String?       @db.Text
+  orderIndex      Int           @map("order_index")
+  targetChapterId String?       @map("target_chapter_id") @db.Uuid
+  status          OutlineStatus @default(PLANNED)
+  metadata        Json?
+  createdById     String        @map("created_by") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent          Outline?      @relation("OutlineTree", fields: [parentId], references: [id])
+  children        Outline[]     @relation("OutlineTree")
+  targetChapter   Chapter?      @relation("OutlineTargetChapter", fields: [targetChapterId], references: [id])
+  createdBy       User          @relation("OutlineCreatedBy", fields: [createdById], references: [id])
+
+  @@index([organizationId, projectId], map: "idx_outlines_org_project")
+  @@index([projectId, parentId, orderIndex], map: "idx_outlines_project_parent")
+  @@index([targetChapterId], map: "idx_outlines_target_chapter")
+  @@map("outlines")
+}
+
+model Volume {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  projectId       String       @map("project_id") @db.Uuid
+  title           String       @db.VarChar(160)
+  summary         String?      @db.Text
+  orderIndex      Int          @map("order_index")
+  targetWordCount Int?         @map("target_word_count")
+  status          VolumeStatus @default(PLANNED)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  chapters        Chapter[]
+
+  @@unique([projectId, orderIndex], map: "volumes_project_id_order_index_key")
+  @@index([organizationId, projectId], map: "idx_volumes_org_project")
+  @@map("volumes")
+}
+
+model Chapter {
+  id                 String        @id @default(uuid()) @db.Uuid
+  organizationId     String        @map("organization_id") @db.Uuid
+  projectId          String        @map("project_id") @db.Uuid
+  volumeId           String?       @map("volume_id") @db.Uuid
+  chapterNo          Int           @map("chapter_no")
+  volumeChapterNo    Int?          @map("volume_chapter_no")
+  title              String        @db.VarChar(200)
+  outlineSummary     String?       @map("outline_summary") @db.Text
+  content            String        @default("") @db.Text
+  contentFormat      ContentFormat @default(MARKDOWN) @map("content_format")
+  wordCount          Int           @default(0) @map("word_count")
+  status             ChapterStatus @default(PLANNED)
+  lastGeneratedJobId String?       @map("last_generated_job_id") @db.Uuid
+  lockedByJobId      String?       @map("locked_by_job_id") @db.Uuid
+  createdById        String        @map("created_by") @db.Uuid
+  updatedById        String?       @map("updated_by") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime?     @map("deleted_at") @db.Timestamptz(6)
+  project            Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  volume             Volume?       @relation(fields: [volumeId], references: [id])
+  createdBy          User          @relation("ChapterCreatedBy", fields: [createdById], references: [id])
+  updatedBy          User?         @relation("ChapterUpdatedBy", fields: [updatedById], references: [id])
+  targetOutlines         Outline[]              @relation("OutlineTargetChapter")
+  relationshipChanges    CharacterRelationship[] @relation("RelationshipChapter")
+  plantedThreads         PlotThread[]           @relation("PlantedChapter")
+  expectedPayoffThreads  PlotThread[]           @relation("ExpectedPayoffChapter")
+  resolvedThreads        PlotThread[]           @relation("ResolvedChapter")
+  memoryReferences       ProjectMemory[]        @relation("MemoryChapter")
+
+  @@unique([projectId, chapterNo], map: "chapters_project_id_chapter_no_key")
+  @@index([organizationId, projectId], map: "idx_chapters_org_project")
+  @@index([projectId, volumeId, chapterNo], map: "idx_chapters_project_volume")
+  @@index([projectId, status], map: "idx_chapters_status")
+  @@map("chapters")
+}
+
+model ContentVersion {
+  id              String               @id @default(uuid()) @db.Uuid
+  organizationId  String               @map("organization_id") @db.Uuid
+  projectId       String               @map("project_id") @db.Uuid
+  entityType      ContentEntityType    @map("entity_type")
+  entityId        String               @map("entity_id") @db.Uuid
+  versionNo       Int                  @map("version_no")
+  title           String?              @db.VarChar(200)
+  content         String               @db.Text
+  diff            Json?
+  source          ContentVersionSource
+  generationJobId String?              @map("generation_job_id") @db.Uuid
+  createdById     String               @map("created_by") @db.Uuid
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy       User                 @relation("ContentVersionCreatedBy", fields: [createdById], references: [id])
+  generationJob   GenerationJob?       @relation(fields: [generationJobId], references: [id])
+
+  @@unique([entityType, entityId, versionNo], map: "content_versions_entity_type_entity_id_version_no_key")
+  @@index([organizationId, projectId], map: "idx_content_versions_org_project")
+  @@index([entityType, entityId, createdAt], map: "idx_content_versions_entity")
+  @@map("content_versions")
+}
+
+model ModelProvider {
+  id              String         @id @default(uuid()) @db.Uuid
+  organizationId  String         @map("organization_id") @db.Uuid
+  ownerUserId     String?        @map("owner_user_id") @db.Uuid
+  name            String         @db.VarChar(100)
+  providerType    ProviderType   @map("provider_type")
+  baseUrl         String?        @map("base_url") @db.Text
+  encryptedApiKey String?        @map("encrypted_api_key") @db.Text
+  authMode        AuthMode       @map("auth_mode")
+  protocol        ModelProtocol  @default(AUTO)
+  isDefault       Boolean        @default(false) @map("is_default")
+  status          ProviderStatus @default(ACTIVE)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ownerUser       User?          @relation("ModelProviderOwner", fields: [ownerUserId], references: [id])
+  profiles        ModelProfile[]
+  usageEvents     UsageEvent[]
+
+  @@index([organizationId, status], map: "idx_model_providers_org")
+  @@map("model_providers")
+}
+
+model ModelProfile {
+  id              String           @id @default(uuid()) @db.Uuid
+  organizationId  String           @map("organization_id") @db.Uuid
+  projectId       String?          @map("project_id") @db.Uuid
+  providerId      String           @map("provider_id") @db.Uuid
+  name            String           @db.VarChar(100)
+  modelName       String           @map("model_name") @db.VarChar(160)
+  taskType        String           @map("task_type") @db.VarChar(60)
+  temperature     Decimal?         @db.Decimal(3, 2)
+  topP            Decimal?         @map("top_p") @db.Decimal(3, 2)
+  maxOutputTokens Int?             @map("max_output_tokens")
+  settings        Json?
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project         Project?         @relation(fields: [projectId], references: [id])
+  provider        ModelProvider    @relation(fields: [providerId], references: [id])
+  generationJobs  GenerationJob[]
+  generationSteps GenerationStep[]
+
+  @@index([organizationId, projectId, taskType], map: "idx_model_profiles_task")
+  @@map("model_profiles")
+}
+
+model PromptTemplate {
+  id              String        @id @default(uuid()) @db.Uuid
+  organizationId  String?       @map("organization_id") @db.Uuid
+  projectId       String?       @map("project_id") @db.Uuid
+  name            String        @db.VarChar(120)
+  taskType        String        @map("task_type") @db.VarChar(60)
+  template        String        @db.Text
+  variablesSchema Json?         @map("variables_schema")
+  versionNo       Int           @default(1) @map("version_no")
+  isActive        Boolean       @default(true) @map("is_active")
+  createdById     String?       @map("created_by") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project         Project?      @relation(fields: [projectId], references: [id])
+  createdBy       User?         @relation("PromptTemplateCreatedBy", fields: [createdById], references: [id])
+
+  @@index([organizationId, projectId, taskType, isActive], map: "idx_prompt_templates_lookup")
+  @@map("prompt_templates")
+}
+
+model GenerationJob {
+  id               String                      @id @default(uuid()) @db.Uuid
+  organizationId   String                      @map("organization_id") @db.Uuid
+  projectId        String                      @map("project_id") @db.Uuid
+  userId           String                      @map("user_id") @db.Uuid
+  modelProfileId   String?                     @map("model_profile_id") @db.Uuid
+  jobType          GenerationJobType           @map("job_type")
+  targetEntityType GenerationTargetEntityType? @map("target_entity_type")
+  targetEntityId   String?                     @map("target_entity_id") @db.Uuid
+  status           GenerationJobStatus         @default(QUEUED)
+  input            Json
+  output           Json?
+  errorCode        String?                     @map("error_code") @db.VarChar(80)
+  errorMessage     String?                     @map("error_message") @db.Text
+  progress         Decimal                     @default(0) @db.Decimal(5, 2)
+  lockKey          String?                     @map("lock_key") @db.VarChar(160)
+  leaseExpiresAt   DateTime?                   @map("lease_expires_at") @db.Timestamptz(6)
+  startedAt        DateTime?                   @map("started_at") @db.Timestamptz(6)
+  finishedAt       DateTime?                   @map("finished_at") @db.Timestamptz(6)
+  createdAt        DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization     Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project          Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user             User                        @relation(fields: [userId], references: [id])
+  modelProfile     ModelProfile?               @relation(fields: [modelProfileId], references: [id])
+  steps            GenerationStep[]
+  contentVersions  ContentVersion[]
+  usageEvents      UsageEvent[]
+  projectMemories  ProjectMemory[]       @relation("MemoryJob")
+
+  @@index([projectId, status, createdAt], map: "idx_generation_jobs_project_status")
+  @@index([organizationId, createdAt], map: "idx_generation_jobs_org_created")
+  @@index([lockKey, leaseExpiresAt], map: "idx_generation_jobs_lock")
+  @@map("generation_jobs")
+}
+
+model GenerationStep {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  jobId          String               @map("job_id") @db.Uuid
+  stepKey        String               @map("step_key") @db.VarChar(80)
+  status         GenerationStepStatus @default(PENDING)
+  modelProfileId String?              @map("model_profile_id") @db.Uuid
+  promptSnapshot String?              @map("prompt_snapshot") @db.Text
+  inputTokens    Int?                 @map("input_tokens")
+  outputTokens   Int?                 @map("output_tokens")
+  latencyMs      Int?                 @map("latency_ms")
+  outputPreview  String?              @map("output_preview") @db.Text
+  errorMessage   String?              @map("error_message") @db.Text
+  startedAt      DateTime?            @map("started_at") @db.Timestamptz(6)
+  finishedAt     DateTime?            @map("finished_at") @db.Timestamptz(6)
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job            GenerationJob        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  modelProfile   ModelProfile?        @relation(fields: [modelProfileId], references: [id])
+
+  @@index([jobId], map: "idx_generation_steps_job")
+  @@index([organizationId, jobId], map: "idx_generation_steps_org_job")
+  @@map("generation_steps")
+}
+
+model UsageEvent {
+  id                 String         @id @default(uuid()) @db.Uuid
+  organizationId     String         @map("organization_id") @db.Uuid
+  userId             String?        @map("user_id") @db.Uuid
+  projectId          String?        @map("project_id") @db.Uuid
+  generationJobId    String?        @map("generation_job_id") @db.Uuid
+  providerId         String?        @map("provider_id") @db.Uuid
+  modelName          String         @map("model_name") @db.VarChar(160)
+  billingSource      BillingSource  @map("billing_source")
+  inputTokens        Int            @default(0) @map("input_tokens")
+  outputTokens       Int            @default(0) @map("output_tokens")
+  estimatedCostCents Int?           @map("estimated_cost_cents")
+  latencyMs          Int?           @map("latency_ms")
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user               User?          @relation(fields: [userId], references: [id])
+  project            Project?       @relation(fields: [projectId], references: [id])
+  generationJob      GenerationJob? @relation(fields: [generationJobId], references: [id])
+  provider           ModelProvider? @relation(fields: [providerId], references: [id])
+
+  @@index([organizationId, createdAt], map: "idx_usage_org_time")
+  @@index([projectId, createdAt], map: "idx_usage_project_time")
+  @@map("usage_events")
+}
+
+model AuditLog {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  actorUserId    String?      @map("actor_user_id") @db.Uuid
+  action         String       @db.VarChar(120)
+  entityType     String       @map("entity_type") @db.VarChar(60)
+  entityId       String?      @map("entity_id") @db.Uuid
+  ipAddress      String?      @map("ip_address") @db.Inet
+  userAgent      String?      @map("user_agent") @db.Text
+  metadata       Json?
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor          User?        @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([organizationId, createdAt], map: "idx_audit_org_time")
+  @@map("audit_logs")
+}
+
+// ========== Phase B: 写作资产真源 ==========
+
+model Character {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @map("organization_id") @db.Uuid
+  projectId        String           @map("project_id") @db.Uuid
+  name             String           @db.VarChar(120)
+  aliases          Json?            // string[]
+  roleType         String           @map("role_type") @db.VarChar(40) // protagonist | antagonist | supporting | minor
+  appearance       String?          @db.Text
+  personality      String?          @db.Text
+  motivation       String?          @db.Text
+  speechPattern    String?          @map("speech_pattern") @db.Text
+  knowledgeBoundary Json?           @map("knowledge_boundary") // { knows: string[], unknown: string[] }
+  arc              String?          @db.Text
+  constraints      String?          @db.Text
+  status           String           @default("active") @map("status") @db.VarChar(20) // active | archived
+  metadata         Json?
+  createdById      String           @map("created_by") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy        User             @relation("CharacterCreatedBy", fields: [createdById], references: [id])
+  sourceRelations  CharacterRelationship[] @relation("SourceCharacter")
+  targetRelations  CharacterRelationship[] @relation("TargetCharacter")
+
+  @@unique([projectId, name], map: "characters_project_id_name_key")
+  @@index([organizationId, projectId, status], map: "idx_characters_org_project_status")
+  @@index([projectId, roleType], map: "idx_characters_project_role")
+  @@map("characters")
+}
+
+model CharacterRelationship {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  projectId           String    @map("project_id") @db.Uuid
+  sourceCharacterId   String    @map("source_character_id") @db.Uuid
+  targetCharacterId   String    @map("target_character_id") @db.Uuid
+  relationType        String    @map("relation_type") @db.VarChar(60)
+  strength            String?   @db.VarChar(20) // strong | moderate | weak
+  status              String    @default("active") @db.VarChar(20) // active | changed | dissolved
+  isHidden            Boolean   @default(false) @map("is_hidden")
+  evidence            Json?     // { text: string, chapter_id?: string }[]
+  changedAtChapterId  String?   @map("changed_at_chapter_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project             Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceCharacter     Character @relation("SourceCharacter", fields: [sourceCharacterId], references: [id], onDelete: Cascade)
+  targetCharacter     Character @relation("TargetCharacter", fields: [targetCharacterId], references: [id], onDelete: Cascade)
+  changedAtChapter    Chapter?  @relation("RelationshipChapter", fields: [changedAtChapterId], references: [id])
+
+  @@unique([projectId, sourceCharacterId, targetCharacterId, relationType], map: "character_relationships_unique")
+  @@index([organizationId, projectId, status], map: "idx_character_relationships_org_project")
+  @@index([sourceCharacterId], map: "idx_character_relationships_source")
+  @@index([targetCharacterId], map: "idx_character_relationships_target")
+  @@map("character_relationships")
+}
+
+model WorldItem {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  projectId          String    @map("project_id") @db.Uuid
+  itemType           String    @map("item_type") @db.VarChar(40) // location | faction | artifact | rule | power_system | timeline_event | creature | other
+  name               String    @db.VarChar(160)
+  aliases            Json?     // string[]
+  summary            String?   @db.Text
+  detail             String?   @db.Text
+  constraints        String?   @db.Text
+  activationKeywords Json?     @map("activation_keywords") // string[]
+  priority           Int       @default(0)
+  status             String    @default("active") @db.VarChar(20) // active | archived
+  metadata           Json?
+  createdById        String    @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz(6)
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy          User      @relation("WorldItemCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([projectId, itemType, name], map: "world_items_project_id_item_type_name_key")
+  @@index([organizationId, projectId, itemType], map: "idx_world_items_org_project_type")
+  @@index([projectId, priority], map: "idx_world_items_project_priority")
+  @@map("world_items")
+}
+
+model PlotThread {
+  id                    String    @id @default(uuid()) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  projectId             String    @map("project_id") @db.Uuid
+  threadType            String    @map("thread_type") @db.VarChar(40) // main | side | foreshadowing | mystery | conflict
+  title                 String    @db.VarChar(200)
+  description           String?   @db.Text
+  status                String    @default("planted") @db.VarChar(20) // planted | progressing | deferred | resolved | abandoned
+  plantedChapterId      String?   @map("planted_chapter_id") @db.Uuid
+  expectedPayoffChapterId String? @map("expected_payoff_chapter_id") @db.Uuid
+  resolvedChapterId     String?   @map("resolved_chapter_id") @db.Uuid
+  cooldownUntilChapterNo Int?     @map("cooldown_until_chapter_no")
+  priority              Int       @default(0)
+  dependencies          Json?     // { thread_id: string, note?: string }[]
+  evidence              Json?     // { text: string, chapter_id?: string }[]
+  createdById           String    @map("created_by") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt             DateTime? @map("deleted_at") @db.Timestamptz(6)
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project               Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  plantedChapter        Chapter?  @relation("PlantedChapter", fields: [plantedChapterId], references: [id])
+  expectedPayoffChapter Chapter?  @relation("ExpectedPayoffChapter", fields: [expectedPayoffChapterId], references: [id])
+  resolvedChapter       Chapter?  @relation("ResolvedChapter", fields: [resolvedChapterId], references: [id])
+  createdBy             User      @relation("PlotThreadCreatedBy", fields: [createdById], references: [id])
+
+  @@index([organizationId, projectId, status, priority], map: "idx_plot_threads_org_project_status")
+  @@index([projectId, expectedPayoffChapterId], map: "idx_plot_threads_expected_payoff")
+  @@index([projectId, status], map: "idx_plot_threads_project_status")
+  @@map("plot_threads")
+}
+
+model ProjectMemory {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  projectId       String    @map("project_id") @db.Uuid
+  memoryType      String    @map("memory_type") @db.VarChar(40) // chapter_summary | volume_summary | character_state | world_fact | hook_status | style_note | continuity_note
+  scopeType       String    @map("scope_type") @db.VarChar(40) // project | volume | chapter | character | world_item | plot_thread
+  scopeId         String?   @map("scope_id") @db.Uuid
+  content         String    @db.Text
+  contentJson     Json?     @map("content_json")
+  sourceChapterId String?   @map("source_chapter_id") @db.Uuid
+  sourceJobId     String?   @map("source_job_id") @db.Uuid
+  confidence      Int?      @default(100)
+  status          String    @default("proposed") @db.VarChar(20) // proposed | accepted | rejected | superseded
+  metadata        Json?
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceChapter   Chapter?  @relation("MemoryChapter", fields: [sourceChapterId], references: [id])
+  sourceJob       GenerationJob? @relation("MemoryJob", fields: [sourceJobId], references: [id])
+
+  @@index([organizationId, projectId, memoryType, scopeType, scopeId], map: "idx_project_memories_lookup")
+  @@index([projectId, status, createdAt], map: "idx_project_memories_project_status")
+  @@index([projectId, memoryType], map: "idx_project_memories_type")
+  @@map("project_memories")
+}
+
+// ========== Phase E: 去AI味引擎 ==========
+
+model DeslopRule {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  projectId      String    @map("project_id") @db.Uuid
+  ruleType       String    @map("rule_type") @db.VarChar(40) // exact_match | regex | frequency | sentence_pattern
+  pattern        String    @db.Text
+  category       String    @db.VarChar(60) // weak_adverb | summary_sentence | abstract_noun_triple | stock_phrase | repetition | similar_sentence
+  severity       String    @default("warning") @db.VarChar(20) // info | warning | error
+  suggestion     String?   @db.Text
+  genre          String?   @db.VarChar(60)
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, projectId, isActive], map: "idx_deslop_rules_lookup")
+  @@index([projectId, category], map: "idx_deslop_rules_category")
+  @@map("deslop_rules")
+}
+
+// ========== Phase F: 风格画像与写法模板 ==========
+
+model StyleProfile {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  projectId         String    @map("project_id") @db.Uuid
+  name              String    @db.VarChar(120)
+  referenceTexts    Json?     @map("reference_texts") // string[]
+  styleBrief        String?   @map("style_brief") @db.Text
+  sentenceLengthProfile Json? @map("sentence_length_profile") // { avg: number, min: number, max: number, distribution: {} }
+  dialogueRatio     Decimal?  @map("dialogue_ratio") @db.Decimal(5, 2)
+  descriptionDensity Decimal? @map("description_density") @db.Decimal(5, 2)
+  bannedWords       Json?     @map("banned_words") // string[]
+  preferredWords    Json?     @map("preferred_words") // string[]
+  rhythmNotes       String?   @map("rhythm_notes") @db.Text
+  isActive          Boolean   @default(true) @map("is_active")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name], map: "style_profiles_project_id_name_key")
+  @@index([organizationId, projectId, isActive], map: "idx_style_profiles_lookup")
+  @@map("style_profiles")
+}
+
+model WritingMethodology {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  projectId       String    @map("project_id") @db.Uuid
+  name            String    @db.VarChar(120)
+  methodType      String    @map("method_type") @db.VarChar(60) // snowflake | three_act | four_act | webnovel_speed | romance_rhythm | short_reversal | custom
+  description     String?   @db.Text
+  outlineMetadata Json?     @map("outline_metadata")
+  reviewCriteria  Json?     @map("review_criteria")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name], map: "writing_methodologies_project_id_name_key")
+  @@index([organizationId, projectId, isActive], map: "idx_writing_methodologies_lookup")
+  @@map("writing_methodologies")
+}

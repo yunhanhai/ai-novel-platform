@@ -1,0 +1,22 @@
+{
+  "name": "@ai-novel/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./auth/password": "./src/auth/password.ts",
+    "./crypto/encryption": "./src/crypto/encryption.ts",
+    "./deslop/scanner": "./src/deslop/scanner.ts",
+    "./env": "./src/env.ts",
+    "./generation/state": "./src/generation/state.ts",
+    "./methodology/templates": "./src/methodology/templates.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}
