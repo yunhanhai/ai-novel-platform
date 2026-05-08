@@ -7,7 +7,7 @@
 
 `base_win` 是 Windows 本地可运行副本，当前已验证 `pnpm install`、`pnpm db:validate`、`pnpm db:generate`、`pnpm test`、`pnpm typecheck` 和 `pnpm dev:web`。本轮目标来自 `docs/current-progress.md`：实现 MVP 第一层应用/API，从项目库 service/API 开始，并继续使用 PostgreSQL-backed jobs。
 
-现有代码已经包含项目、章节、素材、style/methodology、generation-jobs API、工作台 UI 和 worker skeleton。因此本轮不是从零实现，而是收敛一条可验证闭环。
+现有代码已经包含项目、章节、素材、style/methodology、generation-jobs API、工作台 UI、worker poller 和 fake chapter pipeline。当前缺口不是生成逻辑本身，而是：worker 尚未注册业务 handler；poller 的 no-handler 分支不会失败落库；pipeline 与真实 DB 写回链路尚未在 worker 入口接通；手动验收尚未覆盖 job、chapter、content version、steps 的一致性。
 
 ## 目标
 
@@ -18,9 +18,10 @@
 3. 点击生成章节，HTTP API 创建 generation job。
 4. job 写入 PostgreSQL 队列表，状态为 `QUEUED`。
 5. worker claim job，状态进入 `RUNNING`。
-6. fake chapter pipeline 生成内容，写回 chapter 和 content version。
-7. generation steps 与 job 状态更新为 `SUCCEEDED`。
-8. 工作台轮询 job 后刷新章节内容。
+6. worker 的 `GENERATE_CHAPTER` handler 调用现有 fake pipeline。
+7. handler 把 pipeline 结果写回 chapter、content version、generation steps。
+8. job 状态更新为 `SUCCEEDED`，output 返回可定位结果。
+9. 工作台轮询 job 后刷新章节内容。
 
 ## 非目标
 
@@ -30,6 +31,7 @@
 - 不做 auth/session。
 - 不做大规模 UI 重构。
 - 不新增独立 API 包。
+- 不在本轮强制改造 `packages/db/src/generation-jobs.ts` 的完整状态机校验；如实现中触及该文件，只做 MVP 闭环必需修补。
 
 ## 架构边界
 
@@ -49,10 +51,51 @@
 
 4. worker pipeline：`apps/worker/src/`
    - 消费 PostgreSQL jobs。
-   - 注册 `GENERATE_CHAPTER` handler。
+   - 在 `apps/worker/src/index.ts` 注册 `GENERATE_CHAPTER` handler。
+   - 优先复用 `apps/worker/src/pipeline/chapter-pipeline.ts`；若其返回值不能表达真实持久化结果，则在 handler 适配层用真实 DB 写回结果覆盖 job output。
    - 直接通过 `packages/db` 写入数据库，不反向调用 Web API。
 
-## 组件设计
+## 必改文件
+
+### `apps/worker/src/poll.ts`
+
+当前 no-handler 分支只返回 `no_handler`。本轮应把已 claim 的 job 标记为 `FAILED`，`errorCode` 为 `NO_HANDLER`，`errorMessage` 说明未注册 handler，避免 job 长期停留在 `RUNNING`。
+
+### `apps/worker/src/poll.test.ts`
+
+把“ignores jobs with no registered handler”调整为“marks no-handler jobs failed”。断言：
+
+- `tick()` 返回 `no_handler`。
+- `updateJobStatus` 被调用。
+- 参数包含 `jobId`、`status: "FAILED"`、`errorCode: "NO_HANDLER"`。
+
+### `apps/worker/src/index.ts`
+
+注册 `GENERATE_CHAPTER` handler。handler 需要用真实 `prisma` 和 `@ai-novel/db` 的 job/step helpers 接入 pipeline。
+
+### Worker handler 适配层
+
+必须存在 handler 适配层，并满足以下约束：
+
+1. 从 job target 或 input 解析 `chapterId`。
+2. 查询 chapter，确认属于 `job.organizationId`。
+3. 调用 fake pipeline。
+4. 写回 chapter content 与 wordCount。
+5. 创建 content version，source 为 `AI`，generationJobId 为当前 job。
+6. 写入 generation steps。
+7. 调用 `updateJobStatus`，状态为 `SUCCEEDED`，output 至少包含 `chapterId`、`versionId`、`versionNo`、`wordCount`。
+
+若复用 `runChapterPipeline`，不得依赖其当前固定的 `versionId: "v-final"` 作为验收结果；真实 job output 必须来自实际持久化返回值或 handler 适配层计算结果。
+
+### 测试文件
+
+新增或修改现有 worker 测试，覆盖：
+
+- `GENERATE_CHAPTER` handler 成功时写回 chapter/content version/job output。
+- handler 找不到 chapter 时 job 失败。
+- no-handler job 失败落库。
+
+## 复用文件
 
 ### 项目与章节 API
 
@@ -65,7 +108,7 @@
 - `apps/web/src/app/api/projects/[projectId]/chapters/route.ts`
 - `apps/web/src/app/api/chapters/[chapterId]/route.ts`
 
-只做必要修补：输入校验、租户过滤、错误状态码、章节内容刷新所需字段。
+只在发现闭环必需缺陷时修补。
 
 ### Generation Jobs API
 
@@ -74,7 +117,7 @@
 - `apps/web/src/app/api/generation-jobs/route.ts`
 - `apps/web/src/app/api/generation-jobs/[id]/route.ts`
 
-创建 job 时继续要求 `chapterId` 或 `projectId`。当传入 `chapterId` 时，API 需要验证章节属于当前 organization，并把 target 设置为 `CHAPTER`。
+创建 job 时继续要求 `chapterId` 或 `projectId`。当传入 `chapterId` 时，API 已验证章节属于当前 organization，并把 target 设置为 `CHAPTER`。
 
 ### Job Repository
 
@@ -86,31 +129,7 @@
 - `createStep`
 - `updateStep`
 
-如需修改，限制在：
-
-- 防止非法状态转换。
-- 失败时写入 `errorCode` / `errorMessage`。
-- 无 handler 时避免 job 长期停留在 `RUNNING`。
-
-### Worker
-
-当前 `apps/worker/src/index.ts` 已创建 poller，但 handlers 为空。本轮要注册 `GENERATE_CHAPTER` handler。
-
-handler 负责：
-
-1. 读取 job input、projectId、target chapterId。
-2. 创建 generation step。
-3. 调用 fake chapter generation pipeline。
-4. 更新 chapter 内容与 word count。
-5. 保存 content version。
-6. 更新 step 为 `SUCCEEDED`。
-7. 更新 job 为 `SUCCEEDED`。
-
-失败时：
-
-- 更新 step 为 `FAILED`（如果 step 已创建）。
-- 更新 job 为 `FAILED`。
-- 写入可读错误信息。
+本轮不把完整状态机校验作为交付前提；该项可在后续队列健壮性任务中处理。
 
 ## 数据流
 
@@ -121,10 +140,10 @@ Workspace UI
   -> generation_jobs QUEUED
   -> worker claimNextJob
   -> generation_jobs RUNNING
-  -> GENERATE_CHAPTER handler
-  -> fake pipeline
-  -> update chapter + content_versions + generation_steps
-  -> generation_jobs SUCCEEDED
+  -> registered GENERATE_CHAPTER handler
+  -> existing fake chapter pipeline
+  -> handler persists chapter + content_versions + generation_steps
+  -> generation_jobs SUCCEEDED with real output
   -> Workspace polling GET /api/generation-jobs/[id]
   -> refresh chapter content
 ```
@@ -148,8 +167,21 @@ API 边界返回统一结构：
 worker 约定：
 
 - handler 抛错时 job 必须落库为 `FAILED`。
-- 无 handler 不允许让 job 永久卡在 `RUNNING`。
+- 无 handler 时 job 必须落库为 `FAILED`，`errorCode` 为 `NO_HANDLER`。
+- 找不到 chapter 时 job 必须落库为 `FAILED`，`errorCode` 为 `CHAPTER_NOT_FOUND` 或同等语义。
 - 不静默吞掉错误。
+- 不释放到无限重试，除非后续单独设计重试策略。
+
+## 成功判定
+
+一次 fake 章节生成成功必须同时满足：
+
+- job status 为 `SUCCEEDED`。
+- job output 包含真实 `chapterId`、`versionId`、`versionNo`、`wordCount`。
+- chapter content 非空，且 `wordCount > 0`。
+- 至少存在一个 `content_versions` 记录，source 为 `AI`，generationJobId 指向该 job。
+- 至少存在一条 `generation_steps` 记录，且该记录的 `jobId` 指向当前 job、`status` 为 `SUCCEEDED` 或等价成功状态。
+- 工作台刷新后显示的章节内容与数据库 chapter content 一致。
 
 ## 验收标准
 
@@ -176,14 +208,27 @@ pnpm db:generate
 5. 新建或选择章节。
 6. 点击生成章节。
 7. 任务状态从 `QUEUED` / `RUNNING` 到 `SUCCEEDED`。
-8. 编辑区刷新后出现 fake 生成内容。
+8. 编辑区刷新后出现非空章节内容。
+9. 通过 job detail API 确认 output 和 steps 可见。
+10. 用固定字段确认落库一致性：
+    - job detail API：`data.id` 等于本次 job id，`data.output.chapterId` 等于章节 id，`data.output.versionId` 非空，`data.output.versionNo` 等于版本号，`data.output.wordCount > 0`。
+    - chapter API 或数据库：chapter `id` 等于 output chapterId，`content` 非空，`wordCount` 等于 output wordCount。
+    - content version：`entityId` 等于 chapter id，`generationJobId` 等于 job id，`versionNo` 等于 output versionNo。
+    - generation steps：至少一条 step 的 `jobId` 等于 job id，`status` 为成功状态。
+
+no-handler 验收：
+
+- poller 单元测试构造一个无注册 handler 的 claimed job。
+- `tick()` 返回 `no_handler`。
+- 对应 job 不停留在 `RUNNING`，而是落库为 `FAILED`，`errorCode` 为 `NO_HANDLER`。
 
 ## 风险与约束
 
-- 当前目录刚初始化为本地 Git 仓库，后续提交需显式确认。
-- 如使用临时分支，必须在使用完后及时合并，并在进展记录中写明分支目的与合并结果。
 - `DEFAULT_ORGANIZATION_ID` / `DEFAULT_USER_ID` 仍是本地 MVP 上下文替代方案，不代表正式 auth 设计。
 - PostgreSQL 是唯一必需队列依赖，Redis 仍不参与 MVP 闭环。
+- 当前 fake pipeline 已存在多步实现，实施时应优先接线和验证，不重复建设生成逻辑。
+- `runChapterPipeline` 当前返回固定 final version 占位值，handler 必须以实际持久化结果作为 job output。
+- no-handler 卡单是当前 worker poller 的主要队列风险，本轮必须处理。
 
 ## 完成后记录
 
