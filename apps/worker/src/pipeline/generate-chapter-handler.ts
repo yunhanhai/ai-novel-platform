@@ -10,7 +10,8 @@ type FakeModel = ReturnType<typeof createFakeModel>;
 export const ERROR_CODES = {
   CHAPTER_NOT_FOUND: "CHAPTER_NOT_FOUND",
   HANDLER_ERROR: "HANDLER_ERROR",
-  FINALIZE_FAILED: "FINALIZE_FAILED"
+  FINALIZE_FAILED: "FINALIZE_FAILED",
+  NO_MODEL_PROFILE: "NO_MODEL_PROFILE"
 } as const;
 
 type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -27,6 +28,7 @@ interface HandlerDeps {
   prisma: PrismaClient;
   updateJobStatus: UpdateStatusFn;
   model?: FakeModel;
+  resolveModel?: (job: GenerationJob) => Promise<FakeModel | null>;
 }
 
 interface ChapterRef {
@@ -37,7 +39,8 @@ interface ChapterRef {
 
 export function createGenerateChapterHandler(deps: HandlerDeps) {
   const { prisma, updateJobStatus } = deps;
-  const model = deps.model ?? createFakeModel();
+  const builtinModel = deps.model ?? createFakeModel();
+  const resolveModel = deps.resolveModel;
   const fail = (jobId: string, code: ErrorCode, message: string) =>
     updateJobStatus({ jobId, status: "FAILED", errorCode: code, errorMessage: message });
 
@@ -52,6 +55,19 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
     if (!chapter) {
       await fail(job.id, ERROR_CODES.CHAPTER_NOT_FOUND, `章节 ${chapterId} 不存在或与 job projectId 不一致`);
       return;
+    }
+
+    // 模型解析：优先 resolveModel，其次 injected model，最后失败
+    let model = builtinModel;
+    if (resolveModel) {
+      const resolved = await resolveModel(job);
+      if (resolved) {
+        model = resolved;
+      } else if (!deps.model) {
+        // resolveModel 返回 null 且没有注入 fallback model → 无可用模型
+        await fail(job.id, ERROR_CODES.NO_MODEL_PROFILE, "无法解析 ModelProfile 且未启用兜底模型");
+        return;
+      }
     }
 
     let finalContent: string;

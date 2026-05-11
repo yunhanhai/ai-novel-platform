@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGenerateChapterHandler,
   commitFinalize
@@ -226,6 +226,99 @@ describe("createGenerateChapterHandler", () => {
     expect(prisma.chapter.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: "chapter-1" })
+      })
+    );
+  });
+});
+
+describe("model resolution", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function createPrismaForResolution() {
+    const tx = createTxStub();
+    return {
+      prisma: {
+        chapter: { findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", projectId: "proj-1", organizationId: "org-1" }) },
+        generationStep: {
+          create: vi.fn().mockResolvedValue({ id: "step-x" }),
+          update: vi.fn().mockResolvedValue({})
+        },
+        $transaction: vi.fn(async (cb: (tx: TxStub) => Promise<unknown>) => cb(tx))
+      },
+      tx
+    };
+  }
+
+  it("uses resolved model when resolveModel returns an adapter", async () => {
+    const { prisma, tx } = createPrismaForResolution();
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const resolvedModel = {
+      generate: vi.fn().mockResolvedValue({ text: "real output", inputTokens: 50, outputTokens: 30 })
+    };
+    const resolveModel = vi.fn(async () => resolvedModel);
+
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never,
+      resolveModel: resolveModel as never
+    });
+
+    await handler(baseJob);
+
+    expect(resolveModel).toHaveBeenCalledWith(baseJob);
+    // resolved model was used (stubModel.generate should NOT have been called)
+    expect(resolvedModel.generate).toHaveBeenCalled();
+    expect(stubModel.generate).not.toHaveBeenCalled();
+    expect(tx.generationJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "SUCCEEDED" })
+      })
+    );
+  });
+
+  it("falls back to fake model when resolveModel returns null and useFakeModel is true", async () => {
+    const { prisma, tx } = createPrismaForResolution();
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const resolveModel = vi.fn(async () => null);
+
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never,
+      resolveModel: resolveModel as never
+    });
+
+    await handler(baseJob);
+
+    // Falls through to the injected model (stubModel)
+    expect(resolveModel).toHaveBeenCalled();
+    expect(stubModel.generate).toHaveBeenCalled();
+    expect(tx.generationJob.update).toHaveBeenCalled();
+  });
+
+  it("marks job FAILED with NO_MODEL_PROFILE when resolveModel returns null and no fallback model", async () => {
+    const { prisma } = createPrismaForResolution();
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const resolveModel = vi.fn(async () => null);
+
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      // no model injected, and resolveModel returns null → no model at all
+      resolveModel: resolveModel as never
+    });
+
+    await handler(baseJob);
+
+    expect(resolveModel).toHaveBeenCalled();
+    expect(updateJobStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: "job-1",
+        status: "FAILED",
+        errorCode: "NO_MODEL_PROFILE"
       })
     );
   });
