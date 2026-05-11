@@ -85,8 +85,14 @@
   https://github.com/langchain-ai/story-writing
 - NousResearch autonovel：从 seed 到 foundation、drafting、revision、export 的成书管线，包含独立 judge、阈值、评估日志、导出资产，适合作为远期出版资产 pipeline 参考。  
   https://github.com/NousResearch/autonovel
+- YuanShiJiLoong/author：面向小说作者和编剧的 AI 写作工作台，包含富文本编辑器、AI 续写/重写/润色/扩写、Ghost Text 流式预览、世界观树形管理、全局 AI Memory、快照、导入导出、多模型与自定义 endpoint 配置，适合作为作者交互和工作台体验参考。  
+  https://github.com/YuanShiJiLoong/author
+- mleafish/author：基于 YuanShiJiLoong/author 改造的本地版，移除登录和云同步，强调本地数据、API 配置体验、设定集同步修复和快照增强；适合作为本地优先、隐私优先和轻量桌面体验参考。  
+  https://github.com/mleafish/author
 
-许可证硬约束：所有外部仓库在未逐一核验 LICENSE 前，只能借鉴产品/架构模式，不复制代码、prompt、schema、配置或文档文本；AGPL/GPL 项目尤其不得混入本仓库实现。
+许可证硬约束：所有外部仓库在未逐一核验 LICENSE 前，只能借鉴产品/架构模式，不复制代码、prompt、schema、配置或文档文本；AGPL/GPL 项目尤其不得混入本仓库实现。当前已确认 `YuanShiJiLoong/author` 与 `mleafish/author` 为 AGPL-3.0，因此只进入产品机制参考，不进入代码复用候选。
+
+Author 系列的吸收边界：当前阶段只吸收作者工作流和交互机制，包括 Ghost Text 接受/拒绝、续写/重写/润色/扩写动作原语、世界观树形管理、快照回滚、多模型配置、本地优先和诊断日志；富文本分页编辑器、DOCX 批注导出、Electron 桌面端、IndexedDB 存储、多语言 UI、完整导入格式解析和 RAG 配置界面列入后续扩展，不纳入当前 MVP 主路径。
 
 ---
 

@@ -1,12 +1,18 @@
 import { prisma, claimNextJob, updateJobStatus } from "@ai-novel/db";
-import { createPoller } from "./poll";
+import { createPoller, type JobHandler, type UpdateStatusFn } from "./poll";
+import { createGenerateChapterHandler } from "./pipeline/generate-chapter-handler";
 
 const ORGANIZATION_ID = process.env.DEFAULT_ORGANIZATION_ID ?? "default";
 const POLL_INTERVAL_MS = Number(process.env.WORKER_POLL_INTERVAL_MS ?? "1000");
 const LEASE_DURATION_MS = Number(process.env.WORKER_LEASE_DURATION_MS ?? "120000");
 const LOCK_KEY = `worker-${process.pid}-${Date.now()}`;
 
-const handlers = new Map();
+const updateJobStatusFn: UpdateStatusFn = (params) =>
+  updateJobStatus({ ...params, prisma } as Parameters<typeof updateJobStatus>[0]);
+
+const handlers = new Map<string, JobHandler>([
+  ["GENERATE_CHAPTER", createGenerateChapterHandler({ prisma, updateJobStatus: updateJobStatusFn })]
+]);
 
 const poller = createPoller({
   claimNext: () =>
@@ -16,11 +22,7 @@ const poller = createPoller({
       leaseDurationMs: LEASE_DURATION_MS,
       prisma
     }) as ReturnType<typeof claimNextJob>,
-  updateJobStatus: (params) =>
-    updateJobStatus({
-      ...params,
-      prisma
-    } as Parameters<typeof updateJobStatus>[0]),
+  updateJobStatus: updateJobStatusFn,
   pollIntervalMs: POLL_INTERVAL_MS,
   handlers
 });

@@ -1,6 +1,4 @@
-import type { PrismaClient } from "@ai-novel/db";
-
-interface GenerationJob {
+export interface GenerationJob {
   id: string;
   organizationId: string;
   projectId: string;
@@ -8,18 +6,19 @@ interface GenerationJob {
   jobType: string;
   status: string;
   input: unknown;
+  targetEntityType?: "PROJECT" | "OUTLINE" | "CHAPTER" | null;
+  targetEntityId?: string | null;
 }
 
-type JobHandler = (job: GenerationJob) => Promise<void>;
+export type JobHandler = (job: GenerationJob) => Promise<void>;
 
 type ClaimFn = () => Promise<GenerationJob | null>;
-type UpdateStatusFn = (params: {
+export type UpdateStatusFn = (params: {
   jobId: string;
   status: "SUCCEEDED" | "FAILED";
   output?: Record<string, unknown>;
   errorCode?: string;
   errorMessage?: string;
-  prisma: PrismaClient;
 }) => Promise<unknown>;
 
 interface PollerDeps {
@@ -42,7 +41,15 @@ export function createPoller(deps: PollerDeps): Poller {
     if (!job) return "no_job";
 
     const handler = handlers.get(job.jobType);
-    if (!handler) return "no_handler";
+    if (!handler) {
+      await updateJobStatus({
+        jobId: job.id,
+        status: "FAILED",
+        errorCode: "NO_HANDLER",
+        errorMessage: `未注册 jobType=${job.jobType} 的 handler`
+      });
+      return "no_handler";
+    }
 
     try {
       await handler(job);
@@ -53,8 +60,7 @@ export function createPoller(deps: PollerDeps): Poller {
         jobId: job.id,
         status: "FAILED",
         errorCode: "HANDLER_ERROR",
-        errorMessage: message,
-        prisma: {} as PrismaClient // 测试中由 mock 提供
+        errorMessage: message
       });
       return "error";
     }

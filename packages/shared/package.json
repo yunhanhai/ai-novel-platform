@@ -8,6 +8,7 @@
     "./deslop/scanner": "./src/deslop/scanner.ts",
     "./env": "./src/env.ts",
     "./generation/state": "./src/generation/state.ts",
+    "./generation/word-count": "./src/generation/word-count.ts",
     "./methodology/templates": "./src/methodology/templates.ts"
   },
   "scripts": {

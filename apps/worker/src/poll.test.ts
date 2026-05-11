@@ -67,10 +67,11 @@ describe("poller", () => {
     );
   });
 
-  it("ignores jobs with no registered handler", async () => {
+  it("marks no-handler jobs failed", async () => {
+    const updateJobStatus = vi.fn().mockResolvedValue({});
     const poller = createPoller({
       claimNext: () => Promise.resolve(baseJob),
-      updateJobStatus: mockUpdateFn(),
+      updateJobStatus,
       pollIntervalMs: 10,
       handlers: new Map()
     });
@@ -78,5 +79,12 @@ describe("poller", () => {
     const result = await poller.tick();
 
     expect(result).toBe("no_handler");
+    expect(updateJobStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: "j1",
+        status: "FAILED",
+        errorCode: "NO_HANDLER"
+      })
+    );
   });
 });

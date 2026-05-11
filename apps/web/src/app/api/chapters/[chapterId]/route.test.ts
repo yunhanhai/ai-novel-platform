@@ -52,7 +52,7 @@ describe("/api/chapters/[chapterId]", () => {
     expect(res.status).toBe(404);
   });
 
-  it("PATCH content uses Chinese-aware word count", async () => {
+  it("PATCH content uses shared computeWordCount (code points after stripping whitespace)", async () => {
     mocks.findChapter.mockResolvedValue({ id: "c1" });
     mocks.updateChapterContent.mockResolvedValue({});
     mocks.findUniqueChapter.mockResolvedValue({ id: "c1", content: "你好 world" });
@@ -67,7 +67,7 @@ describe("/api/chapters/[chapterId]", () => {
     );
 
     expect(mocks.updateChapterContent).toHaveBeenCalledWith(
-      expect.objectContaining({ chapterId: "c1", wordCount: 3 })   // 你 好 + world = 3
+      expect.objectContaining({ chapterId: "c1", wordCount: 7 })
     );
   });
 });

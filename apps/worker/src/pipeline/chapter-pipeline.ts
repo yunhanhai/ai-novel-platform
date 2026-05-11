@@ -76,8 +76,6 @@ export interface PipelineDeps {
 }
 
 interface PipelineResult {
-  versionId: string;
-  versionNo: number;
   steps: StepRecord[];
   extracted: ExtractOutput;
   activationReport: ActivationReport;
@@ -272,10 +270,7 @@ ${context.prompt}
     summary: "", chapterSummary: "待抽取"
   });
 
-  const finalVersion = { id: "v-final", versionNo: 1 };
   return {
-    versionId: finalVersion.id,
-    versionNo: finalVersion.versionNo,
     steps,
     extracted,
     activationReport: context.activationReport

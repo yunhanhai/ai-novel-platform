@@ -5,7 +5,7 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx --env-file=../../.env src/index.ts"
   },
   "dependencies": {
     "@ai-novel/db": "workspace:*",

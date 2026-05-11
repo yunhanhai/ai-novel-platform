@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
+import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { updateChapterContent } from "../../../../server/chapters";
 import { getOrganizationId, getUserId } from "../../../../server/context";
 
@@ -58,7 +59,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     if (body.content !== undefined) {
-      const wordCount = countWords(body.content);
+      const wordCount = computeWordCount(body.content);
       await updateChapterContent({
         organizationId,
         chapterId,
@@ -84,15 +85,6 @@ export async function PATCH(request: Request, context: RouteContext) {
   } catch (error: unknown) {
     return errorResponse(error);
   }
-}
-
-// 中文/英文混合字数统计：CJK 字符按字数；其余按空白分词
-function countWords(text: string): number {
-  if (!text) return 0;
-  const cjk = text.match(/[一-鿿㐀-䶿]/g)?.length ?? 0;
-  const nonCjk = text.replace(/[一-鿿㐀-䶿]/g, " ");
-  const words = nonCjk.split(/\s+/).filter(Boolean).length;
-  return cjk + words;
 }
 
 function errorResponse(error: unknown): NextResponse {
