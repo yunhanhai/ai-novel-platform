@@ -1248,3 +1248,31 @@ select {
   padding-top: 12px;
   border-top: 1px dashed var(--border);
 }
+
+/* Outline panel */
+.outline-level-group {
+  margin-bottom: 12px;
+}
+
+.outline-level-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+/* Small button variant */
+.btn-small {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+/* Deslop issue apply button */
+.deslop-issues li .btn-ghost.btn-small {
+  margin-left: auto;
+  flex-shrink: 0;
+}

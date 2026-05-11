@@ -40,12 +40,21 @@ interface DeslopRule {
   isActive: boolean;
 }
 
+function applyReplacement(originalText: string, issue: DeslopIssue): string {
+  const { start, end } = issue.position;
+  // suggestion 非空 → 替换；为空 → 删除
+  const replacement = issue.suggestion || "";
+  return originalText.slice(0, start) + replacement + originalText.slice(end);
+}
+
 interface Props {
   projectId: string | null;
   currentText: string;
+  chapterId?: string | null;
+  onApplied?: () => void;
 }
 
-export function DeslopPanel({ projectId, currentText }: Props) {
+export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Props) {
   const [report, setReport] = useState<ScanReport | null>(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +68,8 @@ export function DeslopPanel({ projectId, currentText }: Props) {
   const [severity, setSeverity] = useState<"info" | "warning" | "error">("warning");
   const [suggestion, setSuggestion] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const reloadRules = useCallback(async () => {
     if (!projectId) return;
@@ -130,6 +141,33 @@ export function DeslopPanel({ projectId, currentText }: Props) {
     }
   }
 
+  async function handleApply(idx: number, issue: DeslopIssue) {
+    if (!chapterId || !currentText) return;
+    setApplyingIdx(idx);
+    setApplyError(null);
+    try {
+      const newText = applyReplacement(currentText, issue);
+      // 1. 先快照当前正文为 content version
+      await fetch("/api/content-versions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chapterId, content: currentText, source: "MANUAL" })
+      });
+      // 2. 更新章节正文
+      const res = await fetch(`/api/chapters/${chapterId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newText })
+      });
+      if (!res.ok) throw new Error("更新失败");
+      onApplied?.();
+    } catch (err: unknown) {
+      setApplyError(err instanceof Error ? err.message : "应用失败");
+    } finally {
+      setApplyingIdx(null);
+    }
+  }
+
   async function handleToggleRule(rule: DeslopRule) {
     await fetch(`/api/deslop-rules/${rule.id}`, {
       method: "PATCH",
@@ -170,6 +208,7 @@ export function DeslopPanel({ projectId, currentText }: Props) {
       </div>
 
       {error && <p className="form-error">{error}</p>}
+      {applyError && <p className="form-error">{applyError}</p>}
       {!currentText.trim() && <p className="muted">编辑器内尚无正文</p>}
 
       {report && (
@@ -193,6 +232,16 @@ export function DeslopPanel({ projectId, currentText }: Props) {
                           <code>{issue.matched}</code>
                           <span className="muted deslop-issue-suggestion">{issue.suggestion}</span>
                           <span className="muted">@ {issue.position.start}</span>
+                          {chapterId && (
+                            <button
+                              type="button"
+                              className="btn-ghost btn-small"
+                              disabled={applyingIdx !== null}
+                              onClick={() => void handleApply(idx, issue)}
+                            >
+                              {applyingIdx === idx ? "应用..." : "应用"}
+                            </button>
+                          )}
                         </li>
                       ))}
                     </ul>

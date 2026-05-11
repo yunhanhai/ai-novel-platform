@@ -10,14 +10,16 @@ import { PlotThreadsPanel } from "./plot-threads-panel";
 import { MemoriesPanel } from "./memories-panel";
 import { VersionsPanel } from "./versions-panel";
 import { DeslopPanel } from "./deslop-panel";
+import { OutlinePanel } from "./outline-panel";
 import type { JobSummary } from "./use-workspace-data";
 
 type TabKey =
   | "ai" | "characters" | "world" | "threads" | "memories"
-  | "style" | "methodology" | "versions" | "deslop";
+  | "style" | "methodology" | "versions" | "deslop" | "outline";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "ai", label: "AI" },
+  { key: "outline", label: "大纲" },
   { key: "versions", label: "版本" },
   { key: "deslop", label: "去 AI 味" },
   { key: "characters", label: "角色" },
@@ -82,7 +84,15 @@ export function WorkspaceSideTabs({
         {active === "versions" && (
           <VersionsPanel chapterId={chapterId} onRestored={onChapterContentRefreshed} />
         )}
-        {active === "deslop" && <DeslopPanel projectId={projectId} currentText={currentChapterText} />}
+        {active === "outline" && <OutlinePanel projectId={projectId} />}
+        {active === "deslop" && (
+          <DeslopPanel
+            projectId={projectId}
+            currentText={currentChapterText}
+            chapterId={chapterId}
+            onApplied={onChapterContentRefreshed}
+          />
+        )}
         {active === "characters" && <CharactersPanel projectId={projectId} />}
         {active === "world" && <WorldItemsPanel projectId={projectId} />}
         {active === "threads" && <PlotThreadsPanel projectId={projectId} />}
