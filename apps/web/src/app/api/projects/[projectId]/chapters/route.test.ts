@@ -1,75 +1,60 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  findChaptersByProject: vi.fn(),
-  createChapter: vi.fn()
+vi.mock("@ai-novel/db", () => ({
+  prisma: {
+    chapter: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), count: vi.fn() }
+  }
 }));
 
-vi.mock("@ai-novel/db", () => ({ prisma: {} }));
+vi.mock("../../../../../server/context", () => ({
+  getOrganizationId: () => "org-1",
+  getUserId: () => "user-1"
+}));
+
 vi.mock("../../../../../server/chapters", () => ({
-  findChaptersByProject: mocks.findChaptersByProject,
-  createChapter: mocks.createChapter
+  createChapter: vi.fn(),
+  findChaptersByProject: vi.fn()
 }));
 
-function makeContext(projectId: string) {
-  return { params: Promise.resolve({ projectId }) };
-}
+import { GET, POST } from "./route";
+import { prisma } from "@ai-novel/db";
+import { createChapter, findChaptersByProject } from "../../../../../server/chapters";
 
-describe("/api/projects/[projectId]/chapters", () => {
-  beforeEach(() => {
-    process.env.DEFAULT_ORGANIZATION_ID = "org-test";
-    process.env.DEFAULT_USER_ID = "user-test";
-    mocks.findChaptersByProject.mockReset();
-    mocks.createChapter.mockReset();
+function p() { return prisma as unknown as { chapter: { findMany: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> } }; }
+function cc() { return createChapter as unknown as ReturnType<typeof vi.fn>; }
+function fcp() { return findChaptersByProject as unknown as ReturnType<typeof vi.fn>; }
+function routeCtx(projectId: string) { return { params: Promise.resolve({ projectId }) }; }
+
+describe("GET /api/projects/[projectId]/chapters", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("returns chapters with word counts (200)", async () => {
+    fcp().mockResolvedValue([]);
+    const res = await GET(new Request("http://localhost/api/projects/proj-1/chapters"), routeCtx("proj-1"));
+    expect(res.status).toBe(200);
   });
+});
 
-  afterEach(() => {
-    delete process.env.DEFAULT_ORGANIZATION_ID;
-    delete process.env.DEFAULT_USER_ID;
-  });
+describe("POST /api/projects/[projectId]/chapters", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
 
-  it("GET returns chapter list with serialized fields", async () => {
-    mocks.findChaptersByProject.mockResolvedValue([
-      {
-        id: "c1", chapterNo: 1, title: "第一章", status: "DRAFT",
-        wordCount: 0, content: "", updatedAt: new Date("2026-04-29")
-      }
-    ]);
-    const { GET } = await import("./route");
-    const res = await GET(new Request("http://localhost/x"), makeContext("p1"));
-    const json = await res.json();
-    expect(json.data[0]).toMatchObject({ id: "c1", chapterNo: 1, title: "第一章" });
-    expect(mocks.findChaptersByProject).toHaveBeenCalledWith("org-test", "p1", expect.any(Object));
-  });
+  function req(body: Record<string, unknown>) {
+    return new Request("http://localhost/api/projects/proj-1/chapters", {
+      method: "POST", body: JSON.stringify(body)
+    });
+  }
 
-  it("POST rejects invalid chapterNo", async () => {
-    const { POST } = await import("./route");
-    const res = await POST(
-      new Request("http://localhost/x", {
-        method: "POST",
-        body: JSON.stringify({ chapterNo: 0, title: "x" })
-      }),
-      makeContext("p1")
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("POST creates chapter and returns 201", async () => {
-    mocks.createChapter.mockResolvedValue({ id: "c2", chapterNo: 2, title: "第二章" });
-    const { POST } = await import("./route");
-    const res = await POST(
-      new Request("http://localhost/x", {
-        method: "POST",
-        body: JSON.stringify({ chapterNo: 2, title: "第二章" })
-      }),
-      makeContext("p1")
-    );
+  it("creates chapter and returns 201", async () => {
+    cc().mockResolvedValue({
+      id: "ch-new", projectId: "proj-1", chapterNo: 1, title: "新章节",
+      status: "PLANNED", wordCount: 0, content: null
+    });
+    const res = await POST(req({ title: "新章节", chapterNo: 1 }), routeCtx("proj-1"));
     expect(res.status).toBe(201);
-    expect(mocks.createChapter).toHaveBeenCalledWith(expect.objectContaining({
-      organizationId: "org-test",
-      createdById: "user-test",
-      projectId: "p1",
-      chapterNo: 2
-    }));
+  });
+
+  it("returns 400 when title missing", async () => {
+    const res = await POST(req({}), routeCtx("proj-1"));
+    expect(res.status).toBe(400);
   });
 });

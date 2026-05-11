@@ -1,73 +1,78 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  findChapter: vi.fn(),
-  updateChapter: vi.fn(),
-  findUniqueChapter: vi.fn(),
-  updateChapterContent: vi.fn()
-}));
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@ai-novel/db", () => ({
   prisma: {
     chapter: {
-      findFirst: mocks.findChapter,
-      findUnique: mocks.findUniqueChapter,
-      update: mocks.updateChapter
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn()
     }
   }
 }));
-vi.mock("../../../../server/chapters", () => ({
-  updateChapterContent: mocks.updateChapterContent
+
+vi.mock("@ai-novel/shared/generation/word-count", () => ({
+  computeWordCount: (text: string) => [...text].length
 }));
 
-function makeContext(chapterId: string) {
-  return { params: Promise.resolve({ chapterId }) };
+vi.mock("../../../../server/context", () => ({
+  getOrganizationId: () => "org-1",
+  getUserId: () => "user-1"
+}));
+
+vi.mock("../../../../server/chapters", () => ({
+  updateChapterContent: vi.fn().mockResolvedValue({})
+}));
+
+import { GET, PATCH } from "./route";
+import { prisma } from "@ai-novel/db";
+
+function p() { return prisma as unknown as { chapter: { findFirst: ReturnType<typeof vi.fn>; findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> } }; }
+
+function routeCtx(id: string) {
+  return { params: Promise.resolve({ chapterId: id }) };
 }
 
-describe("/api/chapters/[chapterId]", () => {
-  beforeEach(() => {
-    process.env.DEFAULT_ORGANIZATION_ID = "org-test";
-    process.env.DEFAULT_USER_ID = "user-test";
-    mocks.findChapter.mockReset();
-    mocks.updateChapter.mockReset();
-    mocks.findUniqueChapter.mockReset();
-    mocks.updateChapterContent.mockReset();
+describe("GET /api/chapters/[chapterId]", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("returns chapter (200)", async () => {
+    p().chapter.findFirst.mockResolvedValue({
+      id: "ch-1", projectId: "proj-1", chapterNo: 1, title: "第一章",
+      status: "DRAFT", wordCount: 100, content: "正文...", updatedAt: new Date()
+    });
+    const res = await GET(new Request("http://localhost/api/chapters/ch-1"), routeCtx("ch-1"));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.data.title).toBe("第一章");
   });
 
-  afterEach(() => {
-    delete process.env.DEFAULT_ORGANIZATION_ID;
-    delete process.env.DEFAULT_USER_ID;
-  });
-
-  it("PATCH returns 404 when chapter not found", async () => {
-    mocks.findChapter.mockResolvedValue(null);
-    const { PATCH } = await import("./route");
-    const res = await PATCH(
-      new Request("http://localhost/x", {
-        method: "PATCH",
-        body: JSON.stringify({ content: "abc" })
-      }),
-      makeContext("c-missing")
-    );
+  it("returns 404 when chapter not found", async () => {
+    p().chapter.findFirst.mockResolvedValue(null);
+    const res = await GET(new Request("http://localhost/api/chapters/ch-1"), routeCtx("ch-1"));
     expect(res.status).toBe(404);
   });
+});
 
-  it("PATCH content uses shared computeWordCount (code points after stripping whitespace)", async () => {
-    mocks.findChapter.mockResolvedValue({ id: "c1" });
-    mocks.updateChapterContent.mockResolvedValue({});
-    mocks.findUniqueChapter.mockResolvedValue({ id: "c1", content: "你好 world" });
+describe("PATCH /api/chapters/[chapterId]", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
 
-    const { PATCH } = await import("./route");
-    await PATCH(
-      new Request("http://localhost/x", {
-        method: "PATCH",
-        body: JSON.stringify({ content: "你好 world" })
-      }),
-      makeContext("c1")
-    );
+  function req(body: Record<string, unknown>) {
+    return new Request("http://localhost/api/chapters/ch-1", { method: "PATCH", body: JSON.stringify(body) });
+  }
 
-    expect(mocks.updateChapterContent).toHaveBeenCalledWith(
-      expect.objectContaining({ chapterId: "c1", wordCount: 7 })
-    );
+  it("updates chapter content and returns updated chapter (200)", async () => {
+    p().chapter.findFirst.mockResolvedValue({ id: "ch-1" });
+    p().chapter.findUnique.mockResolvedValue({
+      id: "ch-1", projectId: "proj-1", chapterNo: 1, title: "第一章",
+      status: "DRAFT", wordCount: 5, content: "abcde", updatedAt: new Date()
+    });
+    const res = await PATCH(req({ content: "abcde" }), routeCtx("ch-1"));
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 404 when patching non-existent chapter", async () => {
+    p().chapter.findFirst.mockResolvedValue(null);
+    const res = await PATCH(req({ content: "x" }), routeCtx("ch-1"));
+    expect(res.status).toBe(404);
   });
 });

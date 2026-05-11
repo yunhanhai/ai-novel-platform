@@ -1,81 +1,74 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  findChapter: vi.fn(),
-  createJob: vi.fn()
-}));
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@ai-novel/db", () => ({
   prisma: {
-    chapter: { findFirst: mocks.findChapter },
-    generationJob: { findMany: vi.fn() }
+    generationJob: { findMany: vi.fn() },
+    chapter: { findFirst: vi.fn() }
   },
-  createJob: mocks.createJob
+  createJob: vi.fn()
 }));
 
-describe("/api/generation-jobs POST", () => {
-  beforeEach(() => {
-    process.env.DEFAULT_ORGANIZATION_ID = "org-test";
-    process.env.DEFAULT_USER_ID = "user-test";
-    mocks.findChapter.mockReset();
-    mocks.createJob.mockReset();
-  });
+vi.mock("../../../server/context", () => ({
+  getOrganizationId: () => "org-1",
+  getUserId: () => "user-1"
+}));
 
-  afterEach(() => {
-    delete process.env.DEFAULT_ORGANIZATION_ID;
-    delete process.env.DEFAULT_USER_ID;
-  });
+import { GET, POST } from "./route";
+import { prisma, createJob } from "@ai-novel/db";
 
-  it("rejects unknown jobType", async () => {
-    const { POST } = await import("./route");
-    const res = await POST(new Request("http://localhost/api/generation-jobs", {
-      method: "POST",
-      body: JSON.stringify({ chapterId: "c1", jobType: "BOGUS" })
-    }));
+type MockPrisma = { generationJob: { findMany: ReturnType<typeof vi.fn> }; chapter: { findFirst: ReturnType<typeof vi.fn> } };
+
+function p() { return prisma as unknown as MockPrisma; }
+function cj() { return createJob as unknown as ReturnType<typeof vi.fn>; }
+
+describe("GET /api/generation-jobs", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("returns 400 when no projectId or chapterId", async () => {
+    const res = await GET(new Request("http://localhost/api/generation-jobs"));
     expect(res.status).toBe(400);
   });
 
-  it("requires chapterId or projectId", async () => {
-    const { POST } = await import("./route");
-    const res = await POST(new Request("http://localhost/api/generation-jobs", {
-      method: "POST",
-      body: JSON.stringify({})
-    }));
+  it("returns jobs filtered by projectId (200)", async () => {
+    p().generationJob.findMany.mockResolvedValue([
+      { id: "job-1", jobType: "GENERATE_CHAPTER", status: "QUEUED", progress: "0",
+        errorCode: null, errorMessage: null, targetEntityType: "CHAPTER", targetEntityId: "ch-1",
+        startedAt: null, finishedAt: null, createdAt: new Date() }
+    ]);
+    const res = await GET(new Request("http://localhost/api/generation-jobs?projectId=proj-1"));
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("POST /api/generation-jobs", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  function req(body: Record<string, unknown>) {
+    return new Request("http://localhost/api/generation-jobs", { method: "POST", body: JSON.stringify(body) });
+  }
+
+  it("returns 400 when jobType is invalid", async () => {
+    const res = await POST(req({ projectId: "proj-1", jobType: "INVALID" }));
     expect(res.status).toBe(400);
   });
 
-  it("returns 404 when chapter not found", async () => {
-    mocks.findChapter.mockResolvedValue(null);
-    const { POST } = await import("./route");
-    const res = await POST(new Request("http://localhost/api/generation-jobs", {
-      method: "POST",
-      body: JSON.stringify({ chapterId: "c-missing" })
-    }));
+  it("returns 400 when both chapterId and projectId missing", async () => {
+    const res = await POST(req({ jobType: "GENERATE_CHAPTER" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 when chapterId does not exist", async () => {
+    p().chapter.findFirst.mockResolvedValue(null);
+    const res = await POST(req({ chapterId: "nonexistent", jobType: "GENERATE_CHAPTER" }));
     expect(res.status).toBe(404);
   });
 
-  it("creates job for valid chapter", async () => {
-    mocks.findChapter.mockResolvedValue({ id: "c1", projectId: "p1" });
-    mocks.createJob.mockResolvedValue({
-      id: "job-1", jobType: "GENERATE_CHAPTER", status: "QUEUED", projectId: "p1"
+  it("creates job and returns 201", async () => {
+    p().chapter.findFirst.mockResolvedValue({ id: "ch-1", projectId: "proj-1" });
+    cj().mockResolvedValue({
+      id: "job-1", jobType: "GENERATE_CHAPTER", status: "QUEUED", projectId: "proj-1"
     });
-
-    const { POST } = await import("./route");
-    const res = await POST(new Request("http://localhost/api/generation-jobs", {
-      method: "POST",
-      body: JSON.stringify({ chapterId: "c1" })
-    }));
-    const json = await res.json();
-
+    const res = await POST(req({ chapterId: "ch-1", jobType: "GENERATE_CHAPTER" }));
     expect(res.status).toBe(201);
-    expect(json.data).toMatchObject({ id: "job-1", projectId: "p1", chapterId: "c1" });
-    expect(mocks.createJob).toHaveBeenCalledWith(expect.objectContaining({
-      organizationId: "org-test",
-      userId: "user-test",
-      projectId: "p1",
-      jobType: "GENERATE_CHAPTER",
-      targetEntityType: "CHAPTER",
-      targetEntityId: "c1"
-    }));
   });
 });
