@@ -231,6 +231,89 @@ describe("createGenerateChapterHandler", () => {
   });
 });
 
+describe("methodology loading", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("loads active methodology and passes to pipeline buildContext", async () => {
+    const tx = createTxStub();
+    const mockWmFindFirst = vi.fn().mockResolvedValue({
+      name: "雪花写作法",
+      methodType: "snowflake",
+      reviewCriteria: null,
+      outlineMetadata: null
+    });
+
+    const prisma = {
+      chapter: {
+        findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", projectId: "proj-1", organizationId: "org-1" })
+      },
+      generationStep: {
+        create: vi.fn().mockResolvedValue({ id: "step-x" }),
+        update: vi.fn().mockResolvedValue({})
+      },
+      writingMethodology: { findFirst: mockWmFindFirst },
+      $transaction: vi.fn(async (cb: (tx: TxStub) => Promise<unknown>) => cb(tx))
+    };
+
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never
+    });
+
+    await handler(baseJob);
+
+    // 方法论查询被调用
+    expect(mockWmFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ projectId: "proj-1", isActive: true })
+      })
+    );
+    // handler 成功完成
+    expect(tx.generationJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "SUCCEEDED" })
+      })
+    );
+  });
+
+  it("completes successfully when no active methodology exists", async () => {
+    const tx = createTxStub();
+    // 有 writingMethodology 但查询返回 null
+    const mockWmFindFirst = vi.fn().mockResolvedValue(null);
+
+    const prisma = {
+      chapter: {
+        findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", projectId: "proj-1", organizationId: "org-1" })
+      },
+      generationStep: {
+        create: vi.fn().mockResolvedValue({ id: "step-x" }),
+        update: vi.fn().mockResolvedValue({})
+      },
+      writingMethodology: { findFirst: mockWmFindFirst },
+      $transaction: vi.fn(async (cb: (tx: TxStub) => Promise<unknown>) => cb(tx))
+    };
+
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never
+    });
+
+    await handler(baseJob);
+
+    expect(tx.generationJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "SUCCEEDED" })
+      })
+    );
+  });
+});
+
 describe("model resolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();

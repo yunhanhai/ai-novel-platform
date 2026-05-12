@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
+import { getMethodologyTemplate, type MethodType, type MethodologyTemplate } from "@ai-novel/shared/methodology/templates";
 import { createFakeModel } from "./fake-model";
 import { runChapterPipeline } from "./chapter-pipeline";
 import type { GenerationJob } from "../poll";
@@ -114,18 +115,72 @@ interface PipelineRunParams {
   chapterId: string;
 }
 
+interface MethodologyGuide {
+  name: string;
+  methodType: string;
+  guideText: string;
+  reviewCriteria?: string[];
+}
+
+async function loadActiveMethodology(
+  prisma: PrismaClient,
+  projectId: string
+): Promise<MethodologyGuide | undefined> {
+  const wm = (prisma as unknown as {
+    writingMethodology?: {
+      findFirst(args: unknown): Promise<{ name: string; methodType: string; reviewCriteria: unknown; outlineMetadata: unknown } | null>;
+    };
+  }).writingMethodology;
+  if (!wm) return undefined;
+  const record = await wm.findFirst({
+    where: { projectId, isActive: true },
+    select: { name: true, methodType: true, reviewCriteria: true, outlineMetadata: true }
+  });
+  if (!record) return undefined;
+
+  if (!record) return undefined;
+
+  let template: MethodologyTemplate | undefined;
+  try {
+    template = getMethodologyTemplate(record.methodType as MethodType);
+  } catch {
+    // custom 类型没有模板，使用 DB 记录自身的 reviewCriteria
+  }
+
+  const nodes = template?.outlineMetadata?.nodes ?? [];
+  const guideText = nodes.length > 0
+    ? nodes.map((n) => `[${n.level}] ${n.title}: ${n.summary}`).join("\n")
+    : "";
+
+  const reviewCriteria: string[] = template?.reviewCriteria
+    ? [...template.reviewCriteria.structureChecks, ...template.reviewCriteria.pacingChecks, ...template.reviewCriteria.forbiddenMoves]
+    : (Array.isArray(record.reviewCriteria) ? record.reviewCriteria as string[] : []);
+
+  return {
+    name: record.name,
+    methodType: record.methodType,
+    guideText,
+    ...(reviewCriteria.length > 0 ? { reviewCriteria } : {})
+  };
+}
+
 // runChapterPipeline 当前会调用 persistVersion 写入 ContentVersion，但本 handler 要求最终
 // 正文与 version 必须在最终事务内提交。因此把 persistVersion 退化为只回传内容的 passthrough，
 // 由 commitFinalize 在事务内创建真正的 ContentVersion。pipeline 返回的 v-final 占位一律忽略。
 async function runPipelineForContent(params: PipelineRunParams): Promise<string> {
   const { prisma, job, model, chapterId } = params;
+
+  // 提前查询方法论，以便同步注入 buildContext
+  const methodologyGuide = await loadActiveMethodology(prisma, job.projectId);
+
   let finalContent = "";
   await runChapterPipeline({
     job,
     model,
     buildContext: () => ({
       prompt: `章节生成上下文（chapterId=${chapterId}）`,
-      activationReport: { activated: [], totalSourcesChecked: 0, triggeredBy: "" }
+      activationReport: { activated: [], totalSourcesChecked: 0, triggeredBy: "" },
+      ...(methodologyGuide ? { methodologyGuide } : {})
     }),
     persistVersion: async ({ content }) => {
       finalContent = content;
