@@ -35,6 +35,8 @@ interface Props {
   chapterId: string | null;
   currentChapterText: string;
   onGenerate: () => void;
+  onDeslop: () => void;
+  onExtractMemory: () => void;
   isStarting: boolean;
   job: JobSummary | null;
   jobError: string | null;
@@ -47,6 +49,8 @@ export function WorkspaceSideTabs({
   chapterId,
   currentChapterText,
   onGenerate,
+  onDeslop,
+  onExtractMemory,
   isStarting,
   job,
   jobError,
@@ -75,6 +79,8 @@ export function WorkspaceSideTabs({
         {active === "ai" && (
           <AiPanel
             onGenerate={onGenerate}
+            onDeslop={onDeslop}
+            onExtractMemory={onExtractMemory}
             isStarting={isStarting}
             job={job}
             error={jobError}

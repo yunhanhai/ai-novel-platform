@@ -1,6 +1,8 @@
 import { prisma, claimNextJob, updateJobStatus } from "@ai-novel/db";
 import { createPoller, type JobHandler, type UpdateStatusFn } from "./poll";
 import { createGenerateChapterHandler } from "./pipeline/generate-chapter-handler";
+import { createDeslopHandler } from "./pipeline/deslop-handler";
+import { createExtractMemoryHandler } from "./pipeline/extract-memory-handler";
 import { resolveModelProfile } from "./models/model-resolver";
 import { createAdapter } from "./models/adapter-factory";
 import type { GenerationJob } from "./poll";
@@ -60,7 +62,9 @@ const handlers = new Map<string, JobHandler>([
     prisma,
     updateJobStatus: updateJobStatusFn,
     resolveModel
-  })]
+  })],
+  ["DESLOP", createDeslopHandler({ prisma, updateJobStatus: updateJobStatusFn })],
+  ["EXTRACT_MEMORY", createExtractMemoryHandler({ prisma, updateJobStatus: updateJobStatusFn })]
 ]);
 
 const poller = createPoller({

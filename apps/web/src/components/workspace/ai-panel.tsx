@@ -3,19 +3,23 @@ import { PipelineTimeline } from "./pipeline-timeline";
 
 interface AiPanelProps {
   onGenerate: () => void;
+  onDeslop: () => void;
+  onExtractMemory: () => void;
   isStarting: boolean;
   job: JobSummary | null;
   error: string | null;
   canGenerate: boolean;
 }
 
-export function AiPanel({ onGenerate, isStarting, job, error, canGenerate }: AiPanelProps) {
+export function AiPanel({ onGenerate, onDeslop, onExtractMemory, isStarting, job, error, canGenerate }: AiPanelProps) {
   const isRunning = job ? ["QUEUED", "RUNNING"].includes(job.status) : false;
-  const buttonLabel = isStarting
+  const generateLabel = isStarting && job?.jobType === "GENERATE_CHAPTER"
     ? "提交中..."
-    : isRunning
+    : isRunning && job?.jobType === "GENERATE_CHAPTER"
     ? "生成中..."
     : "生成章节";
+  const deslopLabel = isStarting && job?.jobType === "DESLOP" ? "提交中..." : "去 AI 味";
+  const extractLabel = isStarting && job?.jobType === "EXTRACT_MEMORY" ? "提交中..." : "抽取记忆";
 
   return (
     <div className="ai-panel-content" aria-label="AI 面板">
@@ -26,7 +30,21 @@ export function AiPanel({ onGenerate, isStarting, job, error, canGenerate }: AiP
           onClick={onGenerate}
           disabled={isStarting || isRunning || !canGenerate}
         >
-          {buttonLabel}
+          {generateLabel}
+        </button>
+        <button
+          className="btn-ghost"
+          onClick={onDeslop}
+          disabled={isStarting || isRunning || !canGenerate}
+        >
+          {deslopLabel}
+        </button>
+        <button
+          className="btn-ghost"
+          onClick={onExtractMemory}
+          disabled={isStarting || isRunning || !canGenerate}
+        >
+          {extractLabel}
         </button>
       </div>
 

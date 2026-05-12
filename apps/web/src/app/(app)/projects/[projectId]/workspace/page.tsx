@@ -48,6 +48,18 @@ export default function WorkspacePage() {
     await startJob(activeChapterId, "GENERATE_CHAPTER");
   }
 
+  async function handleDeslop() {
+    if (!activeChapterId) return;
+    await flush();
+    await startJob(activeChapterId, "DESLOP");
+  }
+
+  async function handleExtractMemory() {
+    if (!activeChapterId) return;
+    await flush();
+    await startJob(activeChapterId, "EXTRACT_MEMORY");
+  }
+
   return (
     <div className="workspace">
       <AssetSidebar
@@ -73,6 +85,8 @@ export default function WorkspacePage() {
         chapterId={activeChapterId}
         currentChapterText={content}
         onGenerate={handleGenerate}
+        onDeslop={handleDeslop}
+        onExtractMemory={handleExtractMemory}
         isStarting={isStarting}
         job={job}
         jobError={jobError}
