@@ -143,13 +143,15 @@ ${chapter.content.slice(0, 8000)}
           });
         }
 
+        const now = new Date();
         await tx.generationStep.create({
           data: {
             organizationId: job.organizationId,
             jobId: job.id,
             stepKey: "extract_memory",
             status: "SUCCEEDED",
-            finishedAt: new Date(),
+            startedAt: now,
+            finishedAt: now,
             outputPreview: extracted.summary,
             inputTokens: result.inputTokens,
             outputTokens: result.outputTokens

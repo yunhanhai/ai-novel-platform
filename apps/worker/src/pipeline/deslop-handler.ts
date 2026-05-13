@@ -70,13 +70,15 @@ ${chapter.content.slice(0, 8000)}
       });
 
       await prisma.$transaction(async (tx: Tx) => {
+        const now = new Date();
         await tx.generationStep.create({
           data: {
             organizationId: job.organizationId,
             jobId: job.id,
             stepKey: "deslop_analyze",
             status: "SUCCEEDED",
-            finishedAt: new Date(),
+            startedAt: now,
+            finishedAt: now,
             outputPreview: report.summary,
             inputTokens: result.inputTokens,
             outputTokens: result.outputTokens

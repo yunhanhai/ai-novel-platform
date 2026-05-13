@@ -126,6 +126,7 @@ export async function createStep({ organizationId, jobId, stepKey, modelProfileI
   return prisma.generationStep.create({
     data: {
       organizationId, jobId, stepKey, status: "PENDING",
+      startedAt: new Date(),
       ...(modelProfileId ? { modelProfileId } : {})
     }
   });

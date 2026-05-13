@@ -118,8 +118,9 @@ describe("generation-jobs", () => {
   });
 
   describe("createStep", () => {
-    it("creates a generation step", async () => {
-      const prisma = mockPrisma({ generationStep: { create: vi.fn().mockResolvedValue(step) } });
+    it("creates a generation step with startedAt set", async () => {
+      const createMock = vi.fn().mockResolvedValue(step);
+      const prisma = mockPrisma({ generationStep: { create: createMock } });
 
       const result = await createStep({
         organizationId: "org1", jobId: "j1", stepKey: "draft", prisma
@@ -127,6 +128,14 @@ describe("generation-jobs", () => {
 
       expect(result.stepKey).toBe("draft");
       expect(result.status).toBe("PENDING");
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            stepKey: "draft",
+            startedAt: expect.any(Date)
+          })
+        })
+      );
     });
   });
 

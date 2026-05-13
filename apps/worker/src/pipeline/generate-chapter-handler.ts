@@ -273,6 +273,7 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
         jobId: job.id,
         stepKey: "finalize",
         status: "SUCCEEDED",
+        startedAt: finishedAt,
         finishedAt
       }
     });
