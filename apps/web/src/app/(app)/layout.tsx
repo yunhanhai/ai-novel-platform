@@ -1,24 +1,34 @@
 import Link from "next/link";
 import { safeGetOrganizationId } from "../../server/context";
 import { OrganizationProvider } from "../../components/organization-context";
+import { LogoutButton } from "../../components/logout-button";
+import { getSession } from "../../server/auth";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  // Server Component: 从环境变量读取，MVP 阶段唯一组织上下文
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const organizationId = safeGetOrganizationId();
+  const session = await getSession();
 
   return (
     <OrganizationProvider organizationId={organizationId}>
       <div className="app-shell">
         <header className="top-bar">
-          <Link href="/app/projects" className="brand">
+          <Link href="/projects" className="brand">
             <span className="brand-mark">AI</span>
             <span>AI Novel Platform</span>
           </Link>
-          {organizationId ? (
-            <span className="org-tag" title="当前组织上下文">org · {organizationId.slice(0, 8)}</span>
-          ) : (
-            <span className="org-tag warn" title="DEFAULT_ORGANIZATION_ID 未配置">无组织上下文</span>
-          )}
+          <div className="top-bar-right">
+            {session?.displayName ? (
+              <span className="user-tag">{session.displayName}</span>
+            ) : (
+              <a href="/login" className="btn-ghost btn-small">登录</a>
+            )}
+            {organizationId ? (
+              <span className="org-tag" title="当前组织上下文">org · {organizationId.slice(0, 8)}</span>
+            ) : (
+              <span className="org-tag warn">无组织上下文</span>
+            )}
+            {session && <LogoutButton />}
+          </div>
         </header>
         <main className="app-main">{children}</main>
       </div>

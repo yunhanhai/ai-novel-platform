@@ -1,4 +1,4 @@
-// 上下文：MVP 阶段没有 auth，先用环境变量；接入 auth 后只改这里
+// 上下文：MVP 阶段从环境变量读取；接入 session 后调用 getSessionContext() 覆盖
 // 服务端唯一真相源 —— API 路由 + (app) layout 都通过它读取
 
 const ORG_KEY = "DEFAULT_ORGANIZATION_ID";
