@@ -3,6 +3,7 @@ import { createPoller, type JobHandler, type UpdateStatusFn } from "./poll";
 import { createGenerateChapterHandler } from "./pipeline/generate-chapter-handler";
 import { createDeslopHandler } from "./pipeline/deslop-handler";
 import { createExtractMemoryHandler } from "./pipeline/extract-memory-handler";
+import { createFakeModel } from "./pipeline/fake-model";
 import { resolveModelProfile } from "./models/model-resolver";
 import { createAdapter } from "./models/adapter-factory";
 import type { GenerationJob } from "./poll";
@@ -61,10 +62,21 @@ const handlers = new Map<string, JobHandler>([
   ["GENERATE_CHAPTER", createGenerateChapterHandler({
     prisma,
     updateJobStatus: updateJobStatusFn,
-    resolveModel
+    resolveModel,
+    ...(USE_FAKE_MODEL ? { model: createFakeModel() } : {})
   })],
-  ["DESLOP", createDeslopHandler({ prisma, updateJobStatus: updateJobStatusFn, resolveModel })],
-  ["EXTRACT_MEMORY", createExtractMemoryHandler({ prisma, updateJobStatus: updateJobStatusFn, resolveModel })]
+  ["DESLOP", createDeslopHandler({
+    prisma,
+    updateJobStatus: updateJobStatusFn,
+    resolveModel,
+    ...(USE_FAKE_MODEL ? { model: createFakeModel() } : {})
+  })],
+  ["EXTRACT_MEMORY", createExtractMemoryHandler({
+    prisma,
+    updateJobStatus: updateJobStatusFn,
+    resolveModel,
+    ...(USE_FAKE_MODEL ? { model: createFakeModel() } : {})
+  })]
 ]);
 
 const poller = createPoller({
