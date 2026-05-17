@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-05-11
+> Last updated: 2026-05-17
 
 ## Completed
 
@@ -141,6 +141,42 @@ Manual closure (web + worker live):
   Second run on same chapter: versionNo 3 -> 4 (pickNextVersionNo monotonic)
 ```
 
+2026-05-12..16 期间合入的上游变更（来自 source repo，已 commit 进 base_win）：
+
+- `feat(worker): add real LLM adapter — OpenAI, Anthropic, model routing (TDD)` (1959df6)
+- `test(web): add API route tests for all 19 API endpoints` (e7ffd82)
+- `feat(web): add outline editor panel and deslop apply-suggestion button` (7fcd1e3)
+- `feat(worker): wire active methodology into pipeline plan/review steps` (2d1cfb9)
+- `feat(worker+web): add DESLOP and EXTRACT_MEMORY standalone job handlers` (af709c9)
+- `feat(web): add session-based auth — login, register, logout` (64ef4b9)
+- `fix(db+worker): set startedAt on all generation step creates` (94eca34)
+
+2026-05-17 本会话工作：
+
+- 健康检查发现 64ef4b9 引入的 session middleware 在 Edge Runtime 下崩溃：`apps/web/src/middleware.ts` 经由 `verifySession` 引入 `node:crypto`，所有 matcher 路径返回 HTTP 500。
+- 修复方案 A（统一 Web Crypto）：
+  - 重写 `apps/web/src/server/auth.ts`：用 `crypto.subtle.importKey/sign/verify` 实现 HS256；`signSession` / `verifySession` 改为 async；token 格式（`header.body.sig`、base64url、HS256）完全不变，已签发的 cookie 仍可验过。
+  - byte helper 统一返回 `Uint8Array<ArrayBuffer>` 以满足 TS 5.7+ 严格 `BufferSource` 类型。
+  - `apps/web/src/middleware.ts` 改为 `async function middleware` 并 `await verifySession(token)`。
+  - `apps/web/src/server/auth.test.ts` 4 处 `await`；去掉原 "rejects expired token" 用例里逻辑自相矛盾的注释/构造，改为纯 sanity check（freshly-signed token 必须验过）。
+  - `apps/web/.env.local` 补 `SESSION_SECRET`（本地开发值，.gitignore 已排除）。
+- worker 同步改动（基于"既然修就一起完整化"的判断）：
+  - `apps/worker/src/pipeline/deslop-handler.ts` / `extract-memory-handler.ts`：接入 `resolveModel(job) → ModelProfile`，对齐 `generate-chapter-handler` 的模型解析路径；保留旧的 `model` 注入作为测试 hook（兜底）；新增错误码 `NO_MODEL_PROFILE`；用本地 `fail()` helper 统一 FAILED 落库。
+  - `apps/worker/src/index.ts`：注册 handler 时把 `resolveModel` 也传给 DESLOP / EXTRACT_MEMORY。
+
+验证证据：
+
+```text
+pnpm typecheck: 4 packages passed
+pnpm test: shared 22 + db 12 + worker 131 + web 166 = 331 tests passed
+pnpm dev:web: ready in <2s
+端到端登录闭环（live curl）:
+  POST /api/auth/login          -> 200 + Set-Cookie: session=<HS256 JWT>
+  GET  /projects (with cookie)  -> 200，HTML 包含 "WC Test" 用户名（middleware 注入 x-mvp-display-name，layout 通过 getSession() 读出）
+  dev server 日志全部 2xx/4xx，无 Edge Runtime error
+PostgreSQL 16.13 已在本地 127.0.0.1:5432 启动；ai_novel_platform 现有 1 user / 1 project / 1 chapter / 4 succeeded jobs。
+```
+
 ## Current Runtime Notes
 
 PostgreSQL is running locally on:
@@ -174,9 +210,9 @@ It contains the local development password `postgres`. Deleting it requires expl
 
 ## Next Recommended Step
 
-MVP 第一层应用/API 闭环已贯通并经手动验收。建议下一步任选其一：
+MVP 第一层应用/API 闭环已贯通；session 鉴权已在 Edge Runtime + Node Runtime 双跑通；DESLOP / EXTRACT_MEMORY 已接入 resolveModel。建议下一步任选其一：
 
-1. 接入真实 LLM provider（替换 `apps/worker/src/pipeline/fake-model.ts`），保留现有 handler 适配层与事务边界不变。
-2. 队列健壮性：扩展 `packages/db` helpers 接受 transaction client、补 `claimNextJob` 状态机校验、补 `releaseJobLease` 续期/回收路径。
-3. 工作台 UI 体验完善：`useJobPolling` 加退避重试；`persist_version` step 的 `outputPreview` 从 "version 0" 改为更可读的占位（或改用真实 versionNo）。
-4. 把现有 `runChapterPipeline` 的 step 落库语义统一（`startedAt` 当前始终 null，影响 `steps.orderBy: startedAt` 的稳定排序）。
+1. 队列健壮性：扩展 `packages/db` helpers 接受 transaction client、补 `claimNextJob` 状态机校验、补 `releaseJobLease` 续期/回收路径。
+2. 工作台 UI 体验完善：`useJobPolling` 加退避重试；`persist_version` step 的 `outputPreview` 改用真实 versionNo。
+3. 真实 LLM provider 集成验证：1959df6 已加入 OpenAI/Anthropic adapter 与 model routing；下一步在本机配置 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 并跑一次端到端非 fake 路径，把 DESLOP / EXTRACT_MEMORY 也接入。
+4. Session 安全加固：将本地 `SESSION_SECRET` 占位值替换为随机生成的强值；增加 `/api/auth/me` 端点供前端获取当前会话；为 `/api` 路由加 401 边界。
