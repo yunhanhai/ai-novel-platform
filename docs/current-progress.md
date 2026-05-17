@@ -177,6 +177,44 @@ pnpm dev:web: ready in <2s
 PostgreSQL 16.13 已在本地 127.0.0.1:5432 启动；ai_novel_platform 现有 1 user / 1 project / 1 chapter / 4 succeeded jobs。
 ```
 
+2026-05-17 本会话后续工作（端到端可用性收尾）：
+
+发现并修复一个 fake-model fallback 回归：worker 注册 handler 时未注入 `deps.model`，
+而 1959df6 引入的"resolveModel 返回 null + !deps.model = NO_MODEL_PROFILE"分支导致
+任何 job 在 ModelProfile 缺失时立即 FAILED，`USE_FAKE_MODEL=true` 兜底意图无法生效。
+
+变更：
+
+- `apps/worker/src/index.ts`：根据 `USE_FAKE_MODEL` 条件向 3 个 handler 注入
+  `model: createFakeModel()`，保持 USE_FAKE_MODEL=false 时的严格行为不变。
+- `packages/db/scripts/seed.ts` + `db:seed` 命令（根 + 子包）：
+  幂等 seed 最小可用集合 — 1 ModelProvider (OpenAI Compatible) + 1 ModelProfile
+  (org-level, taskType=default) + 1 WritingMethodology (三幕剧) + 1 StyleProfile
+  (通俗易读)；ENCRYPTION_KEY/OPENAI_API_KEY 缺失时 key 留空，配合 USE_FAKE_MODEL
+  仍可跑通流程。
+- `.env`：补 `USE_FAKE_MODEL="true"` 开发兜底。
+
+端到端验证（worker + web live，2026-05-17 21:46-21:48 本机时间）：
+
+```text
+pnpm db:seed (二次执行幂等):
+  ✓ ModelProvider 已存在: 20d889ad-... (key=空)
+  ✓ ModelProfile   已存在: 4bd74a65-... (taskType=default)
+  ✓ WritingMethodology 已存在: 9dc7fde1-... (三幕剧)
+  ✓ StyleProfile   已存在: 558db3e7-... (通俗易读)
+完整三类 job 闭环（chapter 00000000-...-0004）:
+  POST /api/generation-jobs (GENERATE_CHAPTER) → SUCCEEDED in ~1s
+    output: { versionId, versionNo: 5, wordCount: 125 }
+  POST /api/generation-jobs (DESLOP)          → SUCCEEDED in ~1s
+    output: { issueCount: 0, overallScore: 100 }
+  POST /api/generation-jobs (EXTRACT_MEMORY)  → SUCCEEDED in ~1s
+    output: { worldFacts: 0, characterChanges: 0 }  (fake-model 占位文本无可抽取项，按设计)
+DB 终态: generate_chapter 5 succeeded / 1 failed(老回归), deslop 1 succeeded, extract_memory 1 succeeded
+pnpm typecheck / pnpm test 全过
+```
+
+至此，**用户可在本地完成 [创建项目 → 写大纲 → 生成第一章 → DESLOP → 抽取记忆] 的核心写作闭环**（fake-model 模式，无 LLM API key）。要走真实 LLM，把 ENCRYPTION_KEY / OPENAI_API_KEY 填入 `.env`，再把 `USE_FAKE_MODEL` 改 `false`。
+
 ## Current Runtime Notes
 
 PostgreSQL is running locally on:
