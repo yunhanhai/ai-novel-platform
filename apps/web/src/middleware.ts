@@ -4,12 +4,12 @@ import { verifySession } from "./server/auth";
 
 const COOKIE_NAME = "session";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const token = request.cookies.get(COOKIE_NAME)?.value;
   const requestHeaders = new Headers(request.headers);
 
   if (token) {
-    const session = verifySession(token);
+    const session = await verifySession(token);
     if (session) {
       requestHeaders.set("x-mvp-user-id", session.userId);
       requestHeaders.set("x-mvp-organization-id", session.organizationId);

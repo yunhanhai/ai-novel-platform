@@ -1,4 +1,3 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
 const COOKIE_NAME = "session";
@@ -12,23 +11,54 @@ interface SessionPayload {
   exp: number;
 }
 
-function getSecret(): Buffer {
+function getSecretBytes(): Uint8Array<ArrayBuffer> {
   const key = process.env.SESSION_SECRET || process.env.ENCRYPTION_KEY;
   if (!key || key.length < 32) {
     throw new Error("SESSION_SECRET or ENCRYPTION_KEY must be at least 32 chars");
   }
-  return Buffer.from(key.slice(0, 64), "utf-8");
+  return utf8(key.slice(0, 64));
 }
 
-function base64UrlEncode(buf: Buffer): string {
-  return buf.toString("base64url");
+async function getSigningKey(): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    "raw",
+    getSecretBytes(),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
 }
 
-function base64UrlDecode(str: string): Buffer {
-  return Buffer.from(str, "base64url");
+function utf8(s: string): Uint8Array<ArrayBuffer> {
+  const src = new TextEncoder().encode(s);
+  const dst = new Uint8Array(new ArrayBuffer(src.byteLength));
+  dst.set(src);
+  return dst;
 }
 
-export function signSession(payload: Omit<SessionPayload, "iat" | "exp">): string {
+function base64UrlEncode(bytes: Uint8Array<ArrayBuffer>): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64UrlDecode(str: string): Uint8Array<ArrayBuffer> {
+  const padded = str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function encodeJsonB64(value: unknown): string {
+  return base64UrlEncode(utf8(JSON.stringify(value)));
+}
+
+function decodeJsonB64<T>(b64: string): T {
+  return JSON.parse(new TextDecoder().decode(base64UrlDecode(b64))) as T;
+}
+
+export async function signSession(payload: Omit<SessionPayload, "iat" | "exp">): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const full: SessionPayload = {
     ...payload,
@@ -36,29 +66,32 @@ export function signSession(payload: Omit<SessionPayload, "iat" | "exp">): strin
     exp: now + SESSION_MAX_AGE_SEC
   };
 
-  const header = base64UrlEncode(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })));
-  const body = base64UrlEncode(Buffer.from(JSON.stringify(full)));
+  const header = encodeJsonB64({ alg: "HS256", typ: "JWT" });
+  const body = encodeJsonB64(full);
   const unsigned = `${header}.${body}`;
-  const sig = createHmac("sha256", getSecret()).update(unsigned).digest();
+  const key = await getSigningKey();
+  const sig = await crypto.subtle.sign("HMAC", key, utf8(unsigned));
 
-  return `${unsigned}.${base64UrlEncode(sig)}`;
+  return `${unsigned}.${base64UrlEncode(new Uint8Array(sig))}`;
 }
 
-export function verifySession(token: string): SessionPayload | null {
+export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
 
     const [headerB64, bodyB64, sigB64] = parts as [string, string, string];
     const unsigned = `${headerB64}.${bodyB64}`;
-    const expectedSig = createHmac("sha256", getSecret()).update(unsigned).digest();
-    const actualSig = base64UrlDecode(sigB64);
+    const key = await getSigningKey();
+    const ok = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      base64UrlDecode(sigB64),
+      utf8(unsigned)
+    );
+    if (!ok) return null;
 
-    if (expectedSig.length !== actualSig.length || !timingSafeEqual(expectedSig, actualSig)) {
-      return null;
-    }
-
-    const payload = JSON.parse(base64UrlDecode(bodyB64).toString("utf-8")) as SessionPayload;
+    const payload = decodeJsonB64<SessionPayload>(bodyB64);
 
     if (payload.exp < Math.floor(Date.now() / 1000)) return null;
     if (!payload.userId || !payload.organizationId) return null;
@@ -77,7 +110,7 @@ export async function getSession(): Promise<SessionPayload | null> {
 }
 
 export async function setSessionCookie(payload: Omit<SessionPayload, "iat" | "exp">): Promise<void> {
-  const token = signSession(payload);
+  const token = await signSession(payload);
   const jar = await cookies();
   jar.set(COOKIE_NAME, token, {
     httpOnly: true,
