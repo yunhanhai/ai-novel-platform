@@ -63,8 +63,8 @@ const handlers = new Map<string, JobHandler>([
     updateJobStatus: updateJobStatusFn,
     resolveModel
   })],
-  ["DESLOP", createDeslopHandler({ prisma, updateJobStatus: updateJobStatusFn })],
-  ["EXTRACT_MEMORY", createExtractMemoryHandler({ prisma, updateJobStatus: updateJobStatusFn })]
+  ["DESLOP", createDeslopHandler({ prisma, updateJobStatus: updateJobStatusFn, resolveModel })],
+  ["EXTRACT_MEMORY", createExtractMemoryHandler({ prisma, updateJobStatus: updateJobStatusFn, resolveModel })]
 ]);
 
 const poller = createPoller({

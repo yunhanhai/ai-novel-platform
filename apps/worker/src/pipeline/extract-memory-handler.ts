@@ -18,7 +18,16 @@ interface HandlerDeps {
   prisma: PrismaClient;
   updateJobStatus: UpdateStatusFn;
   model?: FakeModel;
+  resolveModel?: (job: GenerationJob) => Promise<FakeModel | null>;
 }
+
+const ERROR_CODES = {
+  CHAPTER_NOT_FOUND: "CHAPTER_NOT_FOUND",
+  HANDLER_ERROR: "HANDLER_ERROR",
+  NO_MODEL_PROFILE: "NO_MODEL_PROFILE"
+} as const;
+
+type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 
 interface ExtractOutput {
   characterChanges: { characterName: string; change: string }[];
@@ -30,13 +39,28 @@ interface ExtractOutput {
 
 export function createExtractMemoryHandler(deps: HandlerDeps) {
   const { prisma, updateJobStatus } = deps;
-  const model = deps.model ?? createFakeModel();
+  const builtinModel = deps.model ?? createFakeModel();
+  const resolveModel = deps.resolveModel;
+  const fail = (jobId: string, code: ErrorCode, message: string) =>
+    updateJobStatus({ jobId, status: "FAILED", errorCode: code, errorMessage: message });
 
   return async function handle(job: GenerationJob): Promise<void> {
     const chapterId = resolveChapterId(job);
     if (!chapterId) {
-      await updateJobStatus({ jobId: job.id, status: "FAILED", errorCode: "CHAPTER_NOT_FOUND", errorMessage: "无法解析 chapterId" });
+      await fail(job.id, ERROR_CODES.CHAPTER_NOT_FOUND, "无法解析 chapterId");
       return;
+    }
+
+    // 模型解析：优先 resolveModel，其次 injected model，最后失败
+    let model = builtinModel;
+    if (resolveModel) {
+      const resolved = await resolveModel(job);
+      if (resolved) {
+        model = resolved;
+      } else if (!deps.model) {
+        await fail(job.id, ERROR_CODES.NO_MODEL_PROFILE, "无法解析 ModelProfile 且未启用兜底模型");
+        return;
+      }
     }
 
     const chapter = await prisma.chapter.findFirst({
@@ -176,7 +200,7 @@ ${chapter.content.slice(0, 8000)}
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "extract memory failed";
-      await updateJobStatus({ jobId: job.id, status: "FAILED", errorCode: "HANDLER_ERROR", errorMessage: message });
+      await fail(job.id, ERROR_CODES.HANDLER_ERROR, message);
     }
   };
 }
