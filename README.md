@@ -106,6 +106,16 @@ cd apps/worker && pnpm dev
 
 Job execution is logged in `generation_jobs` / `generation_steps` and visible in the pipeline timeline panel.
 
+## End-to-End Tests
+
+```bash
+pnpm test:e2e
+```
+
+Spawns Next.js + the worker, runs a Playwright spec that covers the full closed loop (register → create project → workspace → generate chapter → DESLOP → extract memory). The worker is started/stopped automatically by `globalSetup` / `globalTeardown` — no second terminal required.
+
+Reports land in `apps/web/playwright-report/`, traces / videos / screenshots in `apps/web/test-results/`.
+
 ## Switching to Real LLMs
 
 Move from fake-model to real OpenAI/Anthropic output:
@@ -142,6 +152,7 @@ pnpm db:migrate         # apply migrations
 pnpm db:seed            # idempotent minimum dataset
 pnpm typecheck          # all 4 packages
 pnpm test               # all 4 packages (331 tests)
+pnpm test:e2e           # Playwright smoke (auto-starts web + worker)
 pnpm dev:web            # Next.js
 ```
 

@@ -27,10 +27,11 @@ pnpm db:migrate
 pnpm db:validate
 pnpm db:generate
 pnpm db:seed       # idempotent — creates 1 ModelProvider + 1 ModelProfile (org-level, taskType=default) + 1 WritingMethodology + 1 StyleProfile
-pnpm test
+pnpm test          # vitest, 4 packages
+pnpm test:e2e      # Playwright smoke (auto-starts web + worker via globalSetup)
 pnpm typecheck
 pnpm dev:web                       # terminal 1
-cd apps/worker && pnpm dev         # terminal 2 (separate process, polls generation_jobs)
+cd apps/worker && pnpm dev         # terminal 2 (only needed for manual dev — test:e2e starts its own worker)
 ```
 
 Start PostgreSQL manually after reboot if needed:
