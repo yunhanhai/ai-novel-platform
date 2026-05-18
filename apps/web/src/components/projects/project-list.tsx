@@ -24,7 +24,7 @@ export function ProjectList({ projects }: { projects: ProjectItem[] }) {
     <ul className="project-cards">
       {projects.map((p) => (
         <li key={p.id}>
-          <Link href={`/app/projects/${p.id}/workspace`} className="project-card">
+          <Link href={`/projects/${p.id}/workspace`} className="project-card">
             <div className="project-card-header">
               <h3>{p.title}</h3>
               <span className={`status-pill status-${p.status.toLowerCase()}`}>{p.status}</span>

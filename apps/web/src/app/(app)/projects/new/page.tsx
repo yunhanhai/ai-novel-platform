@@ -37,7 +37,7 @@ export default function NewProjectPage() {
       if (!res.ok || !json.success || !json.data) {
         throw new Error(json.error ?? `创建失败 (${res.status})`);
       }
-      router.push(`/app/projects/${json.data.id}/workspace`);
+      router.push(`/projects/${json.data.id}/workspace`);
       router.refresh();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "创建失败");

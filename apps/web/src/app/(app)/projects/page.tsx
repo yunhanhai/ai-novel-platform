@@ -17,7 +17,7 @@ export default async function ProjectsPage() {
           <h1>我的作品</h1>
           <p className="muted">管理你的小说项目</p>
         </div>
-        <Link href="/app/projects/new" className="btn-primary">新建作品</Link>
+        <Link href="/projects/new" className="btn-primary">新建作品</Link>
       </div>
       {!organizationId && (
         <p className="form-error">DEFAULT_ORGANIZATION_ID 未配置，无法读取项目列表。</p>
