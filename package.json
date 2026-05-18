@@ -15,6 +15,7 @@
     "db:diff": "pnpm --filter @ai-novel/db db:diff",
     "db:migration:initial": "pnpm --filter @ai-novel/db db:migration:initial",
     "db:migrate": "pnpm --filter @ai-novel/db db:migrate",
-    "db:seed": "pnpm --filter @ai-novel/db db:seed"
+    "db:seed": "pnpm --filter @ai-novel/db db:seed",
+    "test:e2e": "pnpm --filter @ai-novel/web test:e2e"
   }
 }
