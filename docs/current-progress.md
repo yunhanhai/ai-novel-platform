@@ -297,3 +297,63 @@ MVP 第一层应用/API 闭环已贯通；session 鉴权已在 Edge Runtime + No
 - 模型切换 UI、Provider/Profile CRUD、fake-model 横幅在 Phase C 进行。
 - 决策点 A（抽 `packages/model-adapters`）在 Phase B/C 触及模型适配器复用时再落实，本轮无需提前。
 - 已记录的回滚成本：单文件复原 `apps/web/src/app/(app)/projects/new/page.tsx` 即可退回到旧单页表单（旧 schema 与 API 兼容路径保留）。
+
+## 2026-05-19 Phase B + Phase C 并行交付
+
+延续 `docs/plans/2026-05-18-onboarding-ux-revamp.md`，本轮并行启动两个隔离 worktree agent，分别交付向导后两步 + 模型管理 UI，最后 cherry-pick 进 master。
+
+### Phase B（commit `34b82cb`）— 决策点 A1 落地 + 向导 Step 3/4 + 同步 AI 起草
+
+- **抽 `packages/model-adapters`**：把 `apps/worker/src/models/` 全套（adapter-factory / openai-adapter / anthropic-adapter / model-resolver / types）作为 100% git rename 提到独立 workspace；apps/web 与 apps/worker 都加 `@ai-novel/model-adapters: workspace:*` 依赖。
+- **同步起草端点**：`apps/web/src/server/wizard-drafts.ts` 实现 `draftPremise / draftOutline`，fake 模式拼接占位文本，真实模式走 `resolveModelProfile` + `createAdapter` + 25s `AbortController` 超时；任何失败路径降级返回 fake + `degraded: true` 标志。
+- **新 API**：`POST /api/wizard/draft-premise` / `POST /api/wizard/draft-outline`。
+- **向导 Step 3 + Step 4**：`step-premise.tsx`（一句话核心 + 关键元素 → AI 写梗概 → 采纳/重抽/清空）、`step-outline.tsx`（方法论骨架自动预填，可编辑/删除每条，AI 扩写 summary）；`projects/new/page.tsx` 扩到 4 步，premise + outlineNodes 写入 `/api/projects` 提交体。
+- **测试**：packages/model-adapters 36/36（迁移自 worker，0 改动）、wizard-drafts.test 10 case、两条 route.test。
+
+### Phase C（commit `f7a2c69`）— 模型 Provider/Profile 可视化管理
+
+- **server 层**：新建 `model-profiles.ts`（5 个导出）；给 `model-providers.ts` 补 `findProviderById / softDeleteProvider / rotateApiKey`。
+- **API**：
+  - `/api/model-providers` GET / POST，`/api/model-providers/[id]` PATCH / DELETE，`/api/model-providers/[id]/test` POST
+  - `/api/model-profiles` GET（支持 `projectId` / `taskType` 过滤） / POST，`/api/model-profiles/[id]` PATCH / DELETE
+  - `/api/settings/runtime` GET 返回 `useFakeModel` + `encryptionKeyConfigured`
+- **页面**：`(app)/settings/models/page.tsx` 服务端注入 runtime flags，FakeModelBanner + Providers / Profiles 两栏。layout.tsx top-bar 加"设置"入口。
+- **安全断言全过**：GET 列表 / GET 单个返回的 `encryptedApiKey` 一律覆写为 `***`；POST 在 `ENCRYPTION_KEY` 未配时返回 400；PATCH 拒绝改 apiKey（必须走单独 rotate 路径）；测试用 response 文本 `includes("sk-")` 做明文泄露断言。
+- **测试**：本轮新增 51 个 vitest 用例。
+- **TODO**：`/api/model-providers/[id]/test` 真实模式当前只校验 `ENCRYPTION_KEY` 存在性返回 `mode: "real-stub"`，没真发 1-token ping —— Phase B 已把 adapter 抽出，下一步可以接上。
+
+### 合并过程与冲突解决
+
+两 agent 并行在隔离 worktree 工作。Cherry-pick 时 `apps/web/src/app/globals.css` 末尾追加块发生冲突（两方都按约定追加到末尾，但 git 三方合并误对齐了 flex 块）。手工解决方法：
+
+1. 重置 globals.css 到 Phase B 后的状态（1614 行）。
+2. 提取 Phase C 原 commit 中 globals.css 第 1539–1712 行（纯追加部分），append 到当前文件。
+3. 最终 1788 行 = Phase A 后 1538 行 + Phase B 增 76 行 + Phase C 增 174 行，行数精确匹配预期。
+
+E2E smoke spec 因向导步数从 2 增到 4 而失败（"创建"按钮只在 Step 4 出现）。已修复（commit `ad951c3`），在 Step 2 之后多点两次"下一步"，梗概与大纲都留默认值/自动预填，再点"创建"。
+
+### Phase B/C 合并后完整验证
+
+- `pnpm typecheck`：5 个 workspace 全绿（含新 `packages/model-adapters`）。
+- `pnpm test`：5 workspaces / **433 tests 全绿**：
+  - packages/db 12 · packages/shared 22 · packages/model-adapters 36
+  - apps/worker 95（去掉迁出的 4 测后）· apps/web **268**
+- `pnpm test:e2e`：通过 7.4s（注册 → 4 步向导 → 三幕式 → 章节 → GENERATE_CHAPTER / DESLOP / EXTRACT_MEMORY 全 SUCCEEDED）。
+
+### Git 历史
+
+```
+ad951c3 test(web): smoke spec walks through wizard 4 steps after Phase B
+f7a2c69 feat(web): model switcher UI + provider/profile CRUD (Phase C)
+34b82cb feat(web): wizard AI drafting steps + model-adapters extraction (Phase B)
+557150e feat(web): new-project wizard with methodology persistence (Phase A + A.5)
+0bcbcab docs(plans): add 2026-05-18 onboarding UX revamp plan
+```
+
+两个临时 worktree 与分支已删除（注册元数据被 git 清掉；磁盘上 `.claude/worktrees/agent-*` 残留 node_modules 句柄未释放，不影响 git 状态，可后续 `rm -rf` 一次清掉）。
+
+### 风险与下一步
+
+- 工作台内部各资产面板（角色 / 世界 / 大纲 / 伏笔 / 记忆 / 风格 / 去 AI 味规则）仍然是"空表单 + 手写"，下一轮重构入口。
+- `/api/model-providers/[id]/test` 真实模式 1-token ping 未实现，建议下一个小修补单独 commit。
+- Settings 页面没接入 Playwright e2e；Phase C 共 51 单测覆盖 API + server 逻辑，UI 交互留给后续 smoke 扩展。
