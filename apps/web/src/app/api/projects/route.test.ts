@@ -1,16 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@ai-novel/db", () => ({
-  prisma: {
-    project: {
-      findMany: vi.fn(),
-      create: vi.fn()
+vi.mock("@ai-novel/db", () => {
+  const txClient = {
+    project: { create: vi.fn() },
+    writingMethodology: { create: vi.fn() },
+    outline: { createMany: vi.fn() }
+  };
+  return {
+    prisma: {
+      project: {
+        findMany: vi.fn(),
+        create: txClient.project.create
+      },
+      writingMethodology: txClient.writingMethodology,
+      outline: txClient.outline,
+      chapter: {
+        count: vi.fn()
+      },
+      $transaction: vi.fn(
+        async (fn: (tx: typeof txClient) => Promise<unknown>) => fn(txClient)
+      )
     },
-    chapter: {
-      count: vi.fn()
-    }
-  }
-}));
+    Prisma: { JsonNull: Symbol("JsonNull") }
+  };
+});
 
 vi.mock("../../../server/context", () => ({
   getOrganizationId: () => "org-1",

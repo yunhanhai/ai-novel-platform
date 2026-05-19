@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-05-17
+> Last updated: 2026-05-19
 
 ## Completed
 
@@ -254,3 +254,46 @@ MVP 第一层应用/API 闭环已贯通；session 鉴权已在 Edge Runtime + No
 2. 工作台 UI 体验完善：`useJobPolling` 加退避重试；`persist_version` step 的 `outputPreview` 改用真实 versionNo。
 3. 真实 LLM provider 集成验证：1959df6 已加入 OpenAI/Anthropic adapter 与 model routing；下一步在本机配置 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 并跑一次端到端非 fake 路径，把 DESLOP / EXTRACT_MEMORY 也接入。
 4. Session 安全加固：将本地 `SESSION_SECRET` 占位值替换为随机生成的强值；增加 `/api/auth/me` 端点供前端获取当前会话；为 `/api` 路由加 401 边界。
+
+## 2026-05-19 新人友好向导 Phase A + A.5 完成
+
+按照 `docs/plans/2026-05-18-onboarding-ux-revamp.md` 的设计推进，本轮交付向导前半段（基础信息 + 题材风格方法论），并把后端事务一次性落到位。
+
+### 完成项
+
+- **A1 选项常量层**：新增 `apps/web/src/lib/wizard-options.ts`，导出 `GENRE_OPTIONS`（14 项题材）、`STYLE_OPTIONS`（9 项风格）、`PROJECT_TYPE_OPTIONS`、`getMethodologyOptions()`（基于 `@ai-novel/shared/methodology/templates`，并补 custom 选项 + 暂不选择哨兵）、`joinTags/splitTags` 多选拼接工具。Vitest 17/17 全绿。
+- **A2 切换函数 + 卡片组件**：`apps/web/src/lib/option-toggle.ts` 提供纯函数 `toggleSingle / toggleMulti`（不可变、保持插入顺序），Vitest 8/8。`apps/web/src/components/wizard/option-cards.tsx` 提供单选/多选两态可视化卡片，含 ARIA 角色（radiogroup / group）与 aria-checked。
+- **A3 向导壳**：`apps/web/src/app/(app)/projects/new/page.tsx` 重写为 useReducer + WizardStepper（顶部进度条）+ StepBasics（Step 1：作品名 / slug + 自动生成按钮 / 类型卡片）+ StepGenreStyle（Step 2：题材 chips 多选 / 风格 chips 多选 / 方法论卡片单选）。
+- **A4 兼容提交**：旧 `/api/projects` body 字段全部保留；wizard 新增字段只在选了方法论时附带 `wizard.methodType`。
+- **A5 e2e 回归**：`apps/web/e2e/smoke.spec.ts` 已切换到向导新交互（点击「下一步」→ 选「奇幻」/「热血燃」/「三幕式」→ 创建），Playwright smoke 7.8s 通过。
+- **A6 事务化 createProject**：`apps/web/src/server/projects.ts` 改为 `prisma.$transaction`，同步落库 `projects` + 可选 `writing_methodologies` 一行 + 可选 `outlines[]`。custom 方法论用 `Prisma.JsonNull` 占位；snowflake / three_act 等模板从 shared 包加载完整 `outlineMetadata + reviewCriteria`。
+- **A7 API 接受 wizard 字段**：`apps/web/src/app/api/projects/route.ts` 新增 `sanitizeWizard` 白名单校验（`VALID_METHODS` / `VALID_LEVELS`），仅认可枚举值通过。
+- **A8 单测全覆盖**：`apps/web/src/server/projects.test.ts` 扩到 11 测试 — 涵盖不传 wizard、methodType=none、methodType=three_act 落库、methodType=custom 占位、outlineNodes 批量入库；`apps/web/src/app/api/projects/route.test.ts` mock 同步加 `$transaction / writingMethodology / outline`。
+
+### 周边修改
+
+- `packages/db/src/index.ts` 新增 `export { Prisma }`，让 web 端可用 `Prisma.JsonNull / Prisma.InputJsonValue` 类型。
+- `apps/web/src/app/globals.css` 追加 `.option-cards / .wizard-page / .wizard-stepper / .wizard-step-*` 等约 130 行样式。
+
+### 验证证据
+
+- monorepo 测试：`pnpm test` 全绿（packages/shared 22/22 · apps/worker 131/131 · apps/web 196/196）。
+- 类型检查：`pnpm typecheck` 通过。
+- e2e：`pnpm test:e2e` 通过（注册 → 向导 Step1 → Step2 选三幕式 → 创建项目 → 章节 → GENERATE_CHAPTER / DESLOP / EXTRACT_MEMORY 全 SUCCEEDED）。
+- 数据库直查：
+
+  ```sql
+  select p.title, p.genre, p.style_brief, wm.name as methodology, wm.method_type
+    from projects p
+    left join writing_methodologies wm on wm.project_id = p.id
+    where p.title like 'E2E%' order by p.created_at desc limit 3;
+  ```
+
+  本轮（2026-05-19）跑出来的最新一行 `methodology=三幕式 / method_type=three_act`，对比 2026-05-18 同表行没有 methodology，确认事务落库链路真实通了。
+
+### 风险与下一步
+
+- 当前向导只交付前两步；Step 3（AI 起草梗概）/ Step 4（AI 起草大纲骨架）以及同步 `/api/wizard/draft-*` 端点在 Phase B 进行。
+- 模型切换 UI、Provider/Profile CRUD、fake-model 横幅在 Phase C 进行。
+- 决策点 A（抽 `packages/model-adapters`）在 Phase B/C 触及模型适配器复用时再落实，本轮无需提前。
+- 已记录的回滚成本：单文件复原 `apps/web/src/app/(app)/projects/new/page.tsx` 即可退回到旧单页表单（旧 schema 与 API 兼容路径保留）。

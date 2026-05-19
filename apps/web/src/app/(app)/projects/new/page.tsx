@@ -1,39 +1,103 @@
 "use client";
 
-import { useState } from "react";
+import { useReducer, useState } from "react";
 import { useRouter } from "next/navigation";
+import { WizardStepper } from "../../../../components/wizard/wizard-stepper";
+import { StepBasics } from "../../../../components/wizard/step-basics";
+import { StepGenreStyle } from "../../../../components/wizard/step-genre-style";
+import {
+  joinTags,
+  METHODOLOGY_NONE,
+  type ProjectType
+} from "../../../../lib/wizard-options";
+import type { MethodType } from "@ai-novel/shared/methodology/templates";
+
+type MethodologyValue = MethodType | typeof METHODOLOGY_NONE;
+
+interface WizardState {
+  step: 0 | 1;
+  title: string;
+  slug: string;
+  type: ProjectType;
+  genreTags: string[];
+  styleTags: string[];
+  methodology: MethodologyValue;
+}
+
+const STEPS = ["基础信息", "题材风格"] as const;
+
+const initialState: WizardState = {
+  step: 0,
+  title: "",
+  slug: "",
+  type: "LONG_NOVEL",
+  genreTags: [],
+  styleTags: [],
+  methodology: METHODOLOGY_NONE
+};
+
+type Action =
+  | { type: "patch"; patch: Partial<WizardState> }
+  | { type: "next" }
+  | { type: "prev" };
+
+function reducer(state: WizardState, action: Action): WizardState {
+  switch (action.type) {
+    case "patch":
+      return { ...state, ...action.patch };
+    case "next":
+      return state.step >= STEPS.length - 1
+        ? state
+        : { ...state, step: (state.step + 1) as WizardState["step"] };
+    case "prev":
+      return state.step <= 0
+        ? state
+        : { ...state, step: (state.step - 1) as WizardState["step"] };
+    default:
+      return state;
+  }
+}
+
+function canAdvance(state: WizardState): boolean {
+  if (state.step === 0) {
+    return state.title.trim().length > 0 && /^[a-z0-9-]+$/.test(state.slug);
+  }
+  return true;
+}
 
 export default function NewProjectPage() {
   const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [slug, setSlug] = useState("");
-  const [type, setType] = useState<"LONG_NOVEL" | "SHORT_STORY">("LONG_NOVEL");
-  const [genre, setGenre] = useState("");
-  const [styleBrief, setStyleBrief] = useState("");
-  const [premise, setPremise] = useState("");
+  const [state, dispatch] = useReducer(reducer, initialState);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!title.trim() || !slug.trim()) return;
-
+  async function handleSubmit() {
+    if (!canAdvance({ ...state, step: 0 })) return;
     setSubmitting(true);
     setError(null);
     try {
+      const body = {
+        title: state.title.trim(),
+        slug: state.slug.trim(),
+        type: state.type,
+        ...(state.genreTags.length > 0 ? { genre: joinTags(state.genreTags) } : {}),
+        ...(state.styleTags.length > 0
+          ? { styleBrief: joinTags(state.styleTags) }
+          : {}),
+        ...(state.methodology !== METHODOLOGY_NONE
+          ? { wizard: { methodType: state.methodology } }
+          : {})
+      };
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          slug: slug.trim(),
-          type,
-          genre: genre.trim() || undefined,
-          styleBrief: styleBrief.trim() || undefined,
-          premise: premise.trim() || undefined
-        })
+        body: JSON.stringify(body)
       });
-      const json = (await res.json()) as { success: boolean; data?: { id: string }; error?: string };
+      const json = (await res.json()) as {
+        success: boolean;
+        data?: { id: string };
+        error?: string;
+      };
       if (!res.ok || !json.success || !json.data) {
         throw new Error(json.error ?? `创建失败 (${res.status})`);
       }
@@ -45,75 +109,66 @@ export default function NewProjectPage() {
     }
   }
 
+  const isLastStep = state.step === STEPS.length - 1;
+
   return (
-    <div className="projects-page">
+    <div className="projects-page wizard-page">
       <div className="page-header">
         <h1>新建作品</h1>
       </div>
-      <form className="project-form" onSubmit={handleSubmit}>
-        <label>
-          <span>作品名称</span>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-            placeholder="输入作品名称"
-            maxLength={160}
+
+      <WizardStepper steps={STEPS} current={state.step} />
+
+      <div className="wizard-content">
+        {state.step === 0 && (
+          <StepBasics
+            title={state.title}
+            slug={state.slug}
+            type={state.type}
+            onChange={(patch) => dispatch({ type: "patch", patch })}
           />
-        </label>
-        <label>
-          <span>标识符</span>
-          <input
-            type="text"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            required
-            placeholder="my-novel"
-            pattern="[a-z0-9-]+"
-            maxLength={120}
+        )}
+        {state.step === 1 && (
+          <StepGenreStyle
+            genreTags={state.genreTags}
+            styleTags={state.styleTags}
+            methodology={state.methodology}
+            onChange={(patch) => dispatch({ type: "patch", patch })}
           />
-        </label>
-        <label>
-          <span>类型</span>
-          <select value={type} onChange={(e) => setType(e.target.value as typeof type)}>
-            <option value="LONG_NOVEL">长篇小说</option>
-            <option value="SHORT_STORY">短篇故事</option>
-          </select>
-        </label>
-        <label>
-          <span>题材</span>
-          <input
-            type="text"
-            value={genre}
-            onChange={(e) => setGenre(e.target.value)}
-            placeholder="如：奇幻、科幻、武侠"
-            maxLength={80}
-          />
-        </label>
-        <label>
-          <span>风格简述</span>
-          <input
-            type="text"
-            value={styleBrief}
-            onChange={(e) => setStyleBrief(e.target.value)}
-            placeholder="例如：冷峻克制、节奏紧凑"
-          />
-        </label>
-        <label>
-          <span>故事梗概（可选）</span>
-          <textarea
-            value={premise}
-            onChange={(e) => setPremise(e.target.value)}
-            placeholder="一句话或一段话概括"
-            rows={3}
-          />
-        </label>
-        {error && <p className="form-error">{error}</p>}
-        <button type="submit" className="btn-primary" disabled={submitting}>
-          {submitting ? "创建中..." : "创建"}
+        )}
+      </div>
+
+      {error && <p className="form-error">{error}</p>}
+
+      <div className="wizard-footer">
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => dispatch({ type: "prev" })}
+          disabled={state.step === 0 || submitting}
+        >
+          上一步
         </button>
-      </form>
+        {!isLastStep ? (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => dispatch({ type: "next" })}
+            disabled={!canAdvance(state)}
+          >
+            下一步
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void handleSubmit()}
+            disabled={submitting || !canAdvance({ ...state, step: 0 })}
+          >
+            {submitting ? "创建中..." : "创建"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

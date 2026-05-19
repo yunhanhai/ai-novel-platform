@@ -1,4 +1,5 @@
 export type { PrismaClient } from "./generated/client";
+export { Prisma } from "./generated/client";
 export { prisma } from "./client";
 export {
   createJob,

@@ -1,4 +1,24 @@
 import type { PrismaClient } from "@ai-novel/db";
+import { Prisma } from "@ai-novel/db";
+import {
+  getMethodologyTemplate,
+  type MethodType,
+  type MethodologyTemplate
+} from "@ai-novel/shared/methodology/templates";
+
+type MethodologyValue = MethodType | "none";
+
+export interface WizardOutlineNode {
+  level: "BOOK" | "VOLUME" | "CHAPTER" | "BEAT";
+  title: string;
+  summary?: string;
+  orderIndex: number;
+}
+
+export interface WizardExtras {
+  methodType?: MethodologyValue;
+  outlineNodes?: WizardOutlineNode[];
+}
 
 interface CreateProjectParams {
   organizationId: string;
@@ -9,6 +29,7 @@ interface CreateProjectParams {
   genre?: string;
   premise?: string;
   styleBrief?: string;
+  wizard?: WizardExtras;
   prisma: PrismaClient;
 }
 
@@ -20,17 +41,42 @@ interface UpdateProjectInput {
   status?: "DRAFT" | "ACTIVE" | "PAUSED" | "ARCHIVED";
 }
 
-export async function createProject({ organizationId, title, slug, createdById, type, genre, premise, styleBrief, prisma }: CreateProjectParams) {
+export async function createProject(params: CreateProjectParams) {
+  const { organizationId, title, slug, createdById, type, genre, premise, styleBrief, wizard, prisma } = params;
   try {
-    return await prisma.project.create({
-      data: {
-        organizationId, title, slug, createdById,
-        type: type ?? "LONG_NOVEL",
-        status: "DRAFT",
-        ...(genre ? { genre } : {}),
-        ...(premise ? { premise } : {}),
-        ...(styleBrief ? { styleBrief } : {})
+    return await prisma.$transaction(async (tx) => {
+      const project = await tx.project.create({
+        data: {
+          organizationId, title, slug, createdById,
+          type: type ?? "LONG_NOVEL",
+          status: "DRAFT",
+          ...(genre ? { genre } : {}),
+          ...(premise ? { premise } : {}),
+          ...(styleBrief ? { styleBrief } : {})
+        }
+      });
+
+      const methodologyData = buildMethodologyInsert(wizard?.methodType, organizationId, project.id);
+      if (methodologyData) {
+        await tx.writingMethodology.create({ data: methodologyData });
       }
+
+      const outlines = wizard?.outlineNodes ?? [];
+      if (outlines.length > 0) {
+        await tx.outline.createMany({
+          data: outlines.map((node) => ({
+            organizationId,
+            projectId: project.id,
+            level: node.level,
+            title: node.title,
+            summary: node.summary ?? null,
+            orderIndex: node.orderIndex,
+            createdById
+          }))
+        });
+      }
+
+      return project;
     });
   } catch (error: unknown) {
     if (isPrismaUniqueError(error)) {
@@ -38,6 +84,45 @@ export async function createProject({ organizationId, title, slug, createdById, 
     }
     throw error;
   }
+}
+
+function buildMethodologyInsert(
+  methodType: MethodologyValue | undefined,
+  organizationId: string,
+  projectId: string
+): Prisma.WritingMethodologyUncheckedCreateInput | null {
+  if (!methodType || methodType === "none") return null;
+
+  if (methodType === "custom") {
+    return {
+      organizationId,
+      projectId,
+      name: "自定义方法论",
+      methodType: "custom",
+      description: null,
+      outlineMetadata: Prisma.JsonNull,
+      reviewCriteria: Prisma.JsonNull,
+      isActive: true
+    };
+  }
+
+  let tmpl: MethodologyTemplate;
+  try {
+    tmpl = getMethodologyTemplate(methodType);
+  } catch {
+    return null;
+  }
+
+  return {
+    organizationId,
+    projectId,
+    name: tmpl.name,
+    methodType: tmpl.methodType,
+    description: tmpl.description,
+    outlineMetadata: tmpl.outlineMetadata as unknown as Prisma.InputJsonValue,
+    reviewCriteria: tmpl.reviewCriteria as unknown as Prisma.InputJsonValue,
+    isActive: true
+  };
 }
 
 export async function findProjectBySlug(organizationId: string, slug: string, prisma: PrismaClient) {

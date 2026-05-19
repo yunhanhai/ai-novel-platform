@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
-import { createProject, findProjectsByOrganization } from "../../../server/projects";
+import { createProject, findProjectsByOrganization, type WizardExtras, type WizardOutlineNode } from "../../../server/projects";
 import { getOrganizationId, getUserId } from "../../../server/context";
 
 interface CreateBody {
@@ -10,6 +10,15 @@ interface CreateBody {
   genre?: string;
   premise?: string;
   styleBrief?: string;
+  wizard?: {
+    methodType?: string;
+    outlineNodes?: Array<{
+      level?: string;
+      title?: string;
+      summary?: string;
+      orderIndex?: number;
+    }>;
+  };
 }
 
 export async function GET() {
@@ -43,6 +52,7 @@ export async function POST(request: Request) {
   try {
     const organizationId = getOrganizationId();
     const createdById = getUserId();
+    const wizard = sanitizeWizard(body.wizard);
     const project = await createProject({
       organizationId,
       createdById,
@@ -52,6 +62,7 @@ export async function POST(request: Request) {
       ...(body.genre ? { genre: body.genre } : {}),
       ...(body.premise ? { premise: body.premise } : {}),
       ...(body.styleBrief ? { styleBrief: body.styleBrief } : {}),
+      ...(wizard ? { wizard } : {}),
       prisma
     });
     return NextResponse.json(
@@ -61,6 +72,40 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     return errorResponse(error);
   }
+}
+
+const VALID_METHODS = new Set([
+  "none", "snowflake", "three_act", "four_act",
+  "webnovel_speed", "romance_rhythm", "short_reversal", "custom"
+]);
+const VALID_LEVELS = new Set(["BOOK", "VOLUME", "CHAPTER", "BEAT"]);
+
+function sanitizeWizard(input: CreateBody["wizard"]): WizardExtras | undefined {
+  if (!input) return undefined;
+  const wizard: WizardExtras = {};
+
+  if (input.methodType && VALID_METHODS.has(input.methodType)) {
+    wizard.methodType = input.methodType as WizardExtras["methodType"];
+  }
+
+  if (Array.isArray(input.outlineNodes) && input.outlineNodes.length > 0) {
+    const nodes: WizardOutlineNode[] = [];
+    for (const raw of input.outlineNodes) {
+      const level = raw.level;
+      const title = raw.title?.trim();
+      const orderIndex = typeof raw.orderIndex === "number" ? raw.orderIndex : null;
+      if (!level || !VALID_LEVELS.has(level) || !title || orderIndex === null) continue;
+      nodes.push({
+        level: level as WizardOutlineNode["level"],
+        title,
+        ...(raw.summary?.trim() ? { summary: raw.summary.trim() } : {}),
+        orderIndex
+      });
+    }
+    if (nodes.length > 0) wizard.outlineNodes = nodes;
+  }
+
+  return Object.keys(wizard).length > 0 ? wizard : undefined;
 }
 
 async function toProjectListItem(project: {

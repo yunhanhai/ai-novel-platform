@@ -35,15 +35,21 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   // 顶栏显示用户名（session middleware 注入 → layout 读取）
   await expect(page.locator(".user-tag", { hasText: DISPLAY_NAME })).toBeVisible();
 
-  // 3. 新建项目
+  // 3. 新建项目（向导：Step 1 基础信息 → Step 2 题材风格 → 创建）
   await page.getByRole("link", { name: "新建作品" }).click();
   await page.waitForURL("**/projects/new", { timeout: 10_000 });
   await expect(page.getByRole("heading", { name: "新建作品" })).toBeVisible();
+
+  // Step 1：作品名称 / 标识符 / 类型（类型默认 LONG_NOVEL，跳过点击）
   const inputs = page.locator('input[type="text"]');
-  await inputs.nth(0).fill(PROJECT_TITLE);   // 作品名称
-  await inputs.nth(1).fill(PROJECT_SLUG);    // 标识符
-  await inputs.nth(2).fill("奇幻");          // 题材
-  await inputs.nth(3).fill("节奏紧凑");      // 风格简述
+  await inputs.nth(0).fill(PROJECT_TITLE);
+  await inputs.nth(1).fill(PROJECT_SLUG);
+  await page.getByRole("button", { name: "下一步" }).click();
+
+  // Step 2：选一个题材 + 一个风格 + 方法论
+  await page.getByRole("checkbox", { name: "奇幻" }).click();
+  await page.getByRole("checkbox", { name: "热血燃" }).click();
+  await page.getByRole("radio", { name: "三幕式" }).click();
   await page.getByRole("button", { name: "创建" }).click();
 
   // 4. 跳转到 workspace（URL 应是 /projects/{id}/workspace，不是 /app/...）

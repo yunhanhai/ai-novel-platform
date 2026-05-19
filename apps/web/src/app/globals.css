@@ -1354,3 +1354,185 @@ select {
   color: var(--foreground);
   font-weight: 500;
 }
+
+/* Wizard option cards */
+.option-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0;
+}
+
+.option-card {
+  border: 1px solid var(--border, #d4d4d4);
+  background: var(--surface, #fff);
+  color: var(--foreground);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 96px;
+  text-align: left;
+  transition: border-color 120ms ease, background 120ms ease, transform 80ms ease;
+  font: inherit;
+}
+
+.option-card:hover {
+  border-color: var(--accent, #4f46e5);
+}
+
+.option-card:active {
+  transform: translateY(1px);
+}
+
+.option-card-selected {
+  border-color: var(--accent, #4f46e5);
+  background: color-mix(in oklab, var(--accent, #4f46e5) 10%, var(--surface, #fff));
+  box-shadow: 0 0 0 1px var(--accent, #4f46e5) inset;
+}
+
+.option-card:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.option-card-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.option-card-desc {
+  font-size: 12px;
+  color: var(--muted-foreground, #6b7280);
+  line-height: 1.4;
+  max-width: 240px;
+}
+
+/* Wizard page */
+.wizard-page {
+  max-width: 720px;
+}
+
+.wizard-stepper {
+  list-style: none;
+  margin: 16px 0 24px;
+  padding: 0;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.wizard-step:not(:last-child)::after {
+  content: "";
+  display: inline-block;
+  width: 24px;
+  height: 1px;
+  background: var(--border, #d4d4d4);
+  margin-left: 4px;
+}
+
+.wizard-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border, #d4d4d4);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface, #fff);
+}
+
+.wizard-step-current .wizard-step-index {
+  border-color: var(--accent, #4f46e5);
+  background: var(--accent, #4f46e5);
+  color: #fff;
+}
+
+.wizard-step-done .wizard-step-index {
+  border-color: var(--accent, #4f46e5);
+  color: var(--accent, #4f46e5);
+}
+
+.wizard-step-label {
+  color: var(--muted-foreground, #6b7280);
+}
+
+.wizard-step-current .wizard-step-label {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.wizard-content {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 16px;
+}
+
+.wizard-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wizard-step-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.wizard-step-hint {
+  margin: -8px 0 4px;
+  font-size: 13px;
+}
+
+.wizard-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wizard-field > span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wizard-field input,
+.wizard-field select,
+.wizard-field textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border, #d4d4d4);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--foreground);
+  font: inherit;
+}
+
+.wizard-inline-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.wizard-inline-row > input {
+  flex: 1;
+}
+
+.wizard-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
