@@ -17,6 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <span>AI Novel Platform</span>
           </Link>
           <div className="top-bar-right">
+            <Link href="/settings/models" className="btn-ghost btn-small">设置</Link>
             {session?.displayName ? (
               <span className="user-tag">{session.displayName}</span>
             ) : (

@@ -1,6 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { createProvider, findProvidersByOrganization, updateProvider } from "./model-providers";
+import {
+  createProvider,
+  findProvidersByOrganization,
+  updateProvider,
+  findProviderById,
+  softDeleteProvider,
+  rotateApiKey
+} from "./model-providers";
 
 const testEncryptionKey = randomBytes(32);
 
@@ -9,6 +16,7 @@ function mockPrisma(overrides: Record<string, unknown> = {}) {
     modelProvider: {
       create: vi.fn(),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       update: vi.fn()
     },
     ...overrides
@@ -62,6 +70,48 @@ describe("model-providers", () => {
       const result = await updateProvider("org1", "mp1", { name: "Renamed" }, prisma);
 
       expect(result.name).toBe("Renamed");
+    });
+  });
+
+  describe("findProviderById", () => {
+    it("returns provider with masked key", async () => {
+      const prisma = mockPrisma({
+        modelProvider: { findFirst: vi.fn().mockResolvedValue({ ...provider, encryptedApiKey: "raw-encrypted" }) }
+      });
+      const result = await findProviderById("org1", "mp1", prisma);
+      expect(result?.encryptedApiKey).toBe("***");
+    });
+
+    it("returns null when not found", async () => {
+      const prisma = mockPrisma({
+        modelProvider: { findFirst: vi.fn().mockResolvedValue(null) }
+      });
+      const result = await findProviderById("org1", "missing", prisma);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("softDeleteProvider", () => {
+    it("sets status to DISABLED", async () => {
+      const updateMock = vi.fn().mockResolvedValue({ ...provider, status: "DISABLED" });
+      const prisma = mockPrisma({ modelProvider: { update: updateMock } });
+      const result = await softDeleteProvider("org1", "mp1", prisma);
+      expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ data: { status: "DISABLED" } }));
+      expect(result.status).toBe("DISABLED");
+    });
+  });
+
+  describe("rotateApiKey", () => {
+    it("re-encrypts and updates the api key", async () => {
+      const updateMock = vi.fn().mockResolvedValue({ ...provider, encryptedApiKey: "new-encrypted" });
+      const prisma = mockPrisma({ modelProvider: { update: updateMock } });
+      const result = await rotateApiKey({
+        organizationId: "org1", providerId: "mp1", apiKey: "sk-fresh",
+        encryptionKey: testEncryptionKey, prisma
+      });
+      const call = updateMock.mock.calls[0]?.[0] as { data: { encryptedApiKey: string } };
+      expect(call.data.encryptedApiKey).not.toBe("sk-fresh");
+      expect(result.encryptedApiKey).toBe("***");
     });
   });
 });

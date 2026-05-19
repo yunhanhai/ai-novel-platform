@@ -62,3 +62,37 @@ export async function updateProvider(organizationId: string, providerId: string,
 
   return { ...provider, encryptedApiKey: "***" };
 }
+
+export async function findProviderById(organizationId: string, providerId: string, prisma: PrismaClient) {
+  const provider = await prisma.modelProvider.findFirst({
+    where: { id: providerId, organizationId }
+  });
+  if (!provider) return null;
+  return { ...provider, encryptedApiKey: "***" };
+}
+
+export async function softDeleteProvider(organizationId: string, providerId: string, prisma: PrismaClient) {
+  const provider = await prisma.modelProvider.update({
+    where: { id: providerId, organizationId },
+    data: { status: "DISABLED" }
+  });
+  return { ...provider, encryptedApiKey: "***" };
+}
+
+interface RotateApiKeyParams {
+  organizationId: string;
+  providerId: string;
+  apiKey: string;
+  encryptionKey?: Buffer;
+  prisma: PrismaClient;
+}
+
+export async function rotateApiKey(params: RotateApiKeyParams) {
+  const { organizationId, providerId, apiKey, encryptionKey, prisma } = params;
+  const encryptedApiKey = await encrypt(apiKey, getEncryptionKey(encryptionKey));
+  const provider = await prisma.modelProvider.update({
+    where: { id: providerId, organizationId },
+    data: { encryptedApiKey }
+  });
+  return { ...provider, encryptedApiKey: "***" };
+}
