@@ -50,6 +50,12 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await page.getByRole("checkbox", { name: "奇幻" }).click();
   await page.getByRole("checkbox", { name: "热血燃" }).click();
   await page.getByRole("radio", { name: "三幕式" }).click();
+  await page.getByRole("button", { name: "下一步" }).click();
+
+  // Step 3：故事梗概（跳过 AI 起草，留空进入下一步）
+  await page.getByRole("button", { name: "下一步" }).click();
+
+  // Step 4：大纲骨架（方法论自动预填，直接创建）
   await page.getByRole("button", { name: "创建" }).click();
 
   // 4. 跳转到 workspace（URL 应是 /projects/{id}/workspace，不是 /app/...）
