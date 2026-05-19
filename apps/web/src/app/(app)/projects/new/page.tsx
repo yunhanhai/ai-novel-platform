@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { WizardStepper } from "../../../../components/wizard/wizard-stepper";
 import { StepBasics } from "../../../../components/wizard/step-basics";
 import { StepGenreStyle } from "../../../../components/wizard/step-genre-style";
+import { StepPremise } from "../../../../components/wizard/step-premise";
+import {
+  StepOutline,
+  type OutlineNodeDraft
+} from "../../../../components/wizard/step-outline";
 import {
   joinTags,
   METHODOLOGY_NONE,
@@ -15,16 +20,20 @@ import type { MethodType } from "@ai-novel/shared/methodology/templates";
 type MethodologyValue = MethodType | typeof METHODOLOGY_NONE;
 
 interface WizardState {
-  step: 0 | 1;
+  step: 0 | 1 | 2 | 3;
   title: string;
   slug: string;
   type: ProjectType;
   genreTags: string[];
   styleTags: string[];
   methodology: MethodologyValue;
+  oneLiner: string;
+  keyElements: string;
+  premise: string;
+  outlineNodes: OutlineNodeDraft[];
 }
 
-const STEPS = ["基础信息", "题材风格"] as const;
+const STEPS = ["基础信息", "题材风格", "故事梗概", "大纲骨架"] as const;
 
 const initialState: WizardState = {
   step: 0,
@@ -33,7 +42,11 @@ const initialState: WizardState = {
   type: "LONG_NOVEL",
   genreTags: [],
   styleTags: [],
-  methodology: METHODOLOGY_NONE
+  methodology: METHODOLOGY_NONE,
+  oneLiner: "",
+  keyElements: "",
+  premise: "",
+  outlineNodes: []
 };
 
 type Action =
@@ -76,18 +89,29 @@ export default function NewProjectPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const body = {
+      const wizard: Record<string, unknown> = {};
+      if (state.methodology !== METHODOLOGY_NONE) wizard.methodType = state.methodology;
+      if (state.genreTags.length > 0) wizard.genreTags = state.genreTags;
+      if (state.styleTags.length > 0) wizard.styleTags = state.styleTags;
+      if (state.outlineNodes.length > 0) {
+        wizard.outlineNodes = state.outlineNodes.map((n, i) => ({
+          level: n.level,
+          title: n.title,
+          summary: n.summary,
+          orderIndex: typeof n.orderIndex === "number" ? n.orderIndex : i
+        }));
+      }
+
+      const body: Record<string, unknown> = {
         title: state.title.trim(),
         slug: state.slug.trim(),
-        type: state.type,
-        ...(state.genreTags.length > 0 ? { genre: joinTags(state.genreTags) } : {}),
-        ...(state.styleTags.length > 0
-          ? { styleBrief: joinTags(state.styleTags) }
-          : {}),
-        ...(state.methodology !== METHODOLOGY_NONE
-          ? { wizard: { methodType: state.methodology } }
-          : {})
+        type: state.type
       };
+      if (state.genreTags.length > 0) body.genre = joinTags(state.genreTags);
+      if (state.styleTags.length > 0) body.styleBrief = joinTags(state.styleTags);
+      if (state.premise.trim()) body.premise = state.premise.trim();
+      if (Object.keys(wizard).length > 0) body.wizard = wizard;
+
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -133,6 +157,28 @@ export default function NewProjectPage() {
             genreTags={state.genreTags}
             styleTags={state.styleTags}
             methodology={state.methodology}
+            onChange={(patch) => dispatch({ type: "patch", patch })}
+          />
+        )}
+        {state.step === 2 && (
+          <StepPremise
+            projectTitle={state.title}
+            genreTags={state.genreTags}
+            styleTags={state.styleTags}
+            methodology={state.methodology}
+            oneLiner={state.oneLiner}
+            keyElements={state.keyElements}
+            premise={state.premise}
+            onChange={(patch) => dispatch({ type: "patch", patch })}
+          />
+        )}
+        {state.step === 3 && (
+          <StepOutline
+            methodology={state.methodology}
+            genreTags={state.genreTags}
+            styleTags={state.styleTags}
+            premise={state.premise}
+            outlineNodes={state.outlineNodes}
             onChange={(patch) => dispatch({ type: "patch", patch })}
           />
         )}

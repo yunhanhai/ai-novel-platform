@@ -4,8 +4,7 @@ import { createGenerateChapterHandler } from "./pipeline/generate-chapter-handle
 import { createDeslopHandler } from "./pipeline/deslop-handler";
 import { createExtractMemoryHandler } from "./pipeline/extract-memory-handler";
 import { createFakeModel } from "./pipeline/fake-model";
-import { resolveModelProfile } from "./models/model-resolver";
-import { createAdapter } from "./models/adapter-factory";
+import { resolveModelProfile, createAdapter } from "@ai-novel/model-adapters";
 import type { GenerationJob } from "./poll";
 
 const ORGANIZATION_ID = process.env.DEFAULT_ORGANIZATION_ID ?? "default";

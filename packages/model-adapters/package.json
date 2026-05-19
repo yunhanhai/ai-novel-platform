@@ -1,0 +1,27 @@
+{
+  "name": "@ai-novel/model-adapters",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./adapter-factory": "./src/adapter-factory.ts",
+    "./openai-adapter": "./src/openai-adapter.ts",
+    "./anthropic-adapter": "./src/anthropic-adapter.ts",
+    "./model-resolver": "./src/model-resolver.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-novel/shared": "workspace:*",
+    "@anthropic-ai/sdk": "^0.30.1",
+    "openai": "^4.77.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}
