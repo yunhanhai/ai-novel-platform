@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AiDraftDialog, type FieldSpec } from "./ai-draft-dialog";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -34,6 +35,18 @@ const LEVEL_LABELS: Record<string, string> = {
 
 const LEVEL_OPTIONS = ["BOOK", "VOLUME", "CHAPTER", "BEAT"] as const;
 
+interface OutlineDraft extends Record<string, unknown> {
+  level: "BOOK" | "VOLUME" | "CHAPTER" | "BEAT";
+  title: string;
+  summary: string;
+  orderIndex: number;
+}
+
+const DRAFT_FIELDS: ReadonlyArray<FieldSpec<OutlineDraft>> = [
+  { key: "title", label: "标题", control: "input" },
+  { key: "summary", label: "摘要", control: "textarea", rows: 3 }
+];
+
 export function OutlinePanel({ projectId }: Props) {
   const [items, setItems] = useState<OutlineItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,6 +60,8 @@ export function OutlinePanel({ projectId }: Props) {
   const [formSummary, setFormSummary] = useState("");
   const [formParentId, setFormParentId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiLevel, setAiLevel] = useState<typeof LEVEL_OPTIONS[number]>("CHAPTER");
 
   const reload = useCallback(async () => {
     if (!projectId) return;
@@ -149,6 +164,9 @@ export function OutlinePanel({ projectId }: Props) {
       <div className="memories-filters">
         <h3>大纲</h3>
         <div className="memories-filter-buttons">
+          <button type="button" className="btn-ghost" onClick={() => setAiOpen(true)}>
+            ✨ AI 起草
+          </button>
           <button type="button" className="btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
             新建
           </button>
@@ -229,6 +247,52 @@ export function OutlinePanel({ projectId }: Props) {
           </div>
         );
       })}
+
+      <AiDraftDialog<OutlineDraft, {
+        projectId: string;
+        level: string;
+        existingTitles: string[];
+        startOrderIndex: number;
+      }>
+        open={aiOpen}
+        title="AI 起草大纲节点"
+        endpoint="/api/asset-drafts/outlines"
+        fields={DRAFT_FIELDS}
+        titleField="title"
+        extraInputs={
+          <label className="wizard-field">
+            <span>层级</span>
+            <select value={aiLevel} onChange={(e) => setAiLevel(e.target.value as typeof aiLevel)}>
+              {LEVEL_OPTIONS.map((l) => (
+                <option key={l} value={l}>{LEVEL_LABELS[l]}</option>
+              ))}
+            </select>
+          </label>
+        }
+        extraPayload={{
+          projectId,
+          level: aiLevel,
+          existingTitles: items.filter((i) => i.level === aiLevel).map((i) => i.title),
+          startOrderIndex: items.filter((i) => i.level === aiLevel).length
+        }}
+        onAdopt={async (draft) => {
+          const res = await fetch("/api/outlines", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId,
+              level: draft.level ?? aiLevel,
+              title: draft.title,
+              summary: draft.summary || undefined,
+              orderIndex: draft.orderIndex ?? items.filter((i) => i.level === aiLevel).length
+            })
+          });
+          const json = (await res.json()) as ApiEnvelope<unknown>;
+          if (!res.ok || !json.success) throw new Error(json.error ?? "创建失败");
+          await reload();
+        }}
+        onClose={() => setAiOpen(false)}
+      />
     </div>
   );
 }

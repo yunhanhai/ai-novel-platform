@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useWorkspaceResource } from "./use-workspace-resource";
+import { AiDraftDialog, type FieldSpec } from "./ai-draft-dialog";
 
 export interface WorldItem {
   id: string;
@@ -27,6 +28,25 @@ const ITEM_TYPE_OPTIONS = [
   { value: "other", label: "其他" }
 ];
 
+interface WorldItemDraft extends Record<string, unknown> {
+  name: string;
+  itemType: string;
+  aliases: string[];
+  summary: string;
+  detail: string;
+  activationKeywords: string[];
+  priority: number;
+}
+
+const DRAFT_FIELDS: ReadonlyArray<FieldSpec<WorldItemDraft>> = [
+  { key: "name", label: "名称", control: "input" },
+  { key: "itemType", label: "类型", control: "select", options: ITEM_TYPE_OPTIONS },
+  { key: "aliases", label: "别名", control: "tags" },
+  { key: "summary", label: "摘要", control: "textarea", rows: 2 },
+  { key: "detail", label: "详细说明", control: "textarea", rows: 3 },
+  { key: "activationKeywords", label: "激活关键词", control: "tags" }
+];
+
 export function WorldItemsPanel({ projectId }: { projectId: string | null }) {
   const { items, isLoading, error, create, patch, deactivate } = useWorkspaceResource<WorldItem>({
     endpoint: ENDPOINT,
@@ -40,6 +60,7 @@ export function WorldItemsPanel({ projectId }: { projectId: string | null }) {
   const [priority, setPriority] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
@@ -70,6 +91,12 @@ export function WorldItemsPanel({ projectId }: { projectId: string | null }) {
 
   return (
     <div className="resource-panel">
+      <div className="resource-panel-header">
+        <button type="button" className="btn-primary btn-small" onClick={() => setAiOpen(true)}>
+          ✨ AI 帮我设计世界
+        </button>
+      </div>
+
       <form className="resource-form" onSubmit={handleCreate}>
         <h3>新建世界条目</h3>
         <label>
@@ -123,6 +150,31 @@ export function WorldItemsPanel({ projectId }: { projectId: string | null }) {
           ))}
         </ul>
       </div>
+
+      <AiDraftDialog<WorldItemDraft, { projectId: string; existingNames: string[] }>
+        open={aiOpen}
+        title="AI 帮我设计世界观条目"
+        endpoint="/api/asset-drafts/world-items"
+        fields={DRAFT_FIELDS}
+        titleField="name"
+        extraPayload={{
+          projectId,
+          existingNames: items.map((i) => i.name)
+        }}
+        onAdopt={async (draft) => {
+          await create({
+            projectId,
+            name: draft.name,
+            itemType: draft.itemType,
+            aliases: draft.aliases ?? [],
+            summary: draft.summary || undefined,
+            detail: draft.detail || undefined,
+            activationKeywords: draft.activationKeywords ?? [],
+            priority: draft.priority ?? 0
+          });
+        }}
+        onClose={() => setAiOpen(false)}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useWorkspaceResource } from "./use-workspace-resource";
+import { AiDraftDialog, type FieldSpec } from "./ai-draft-dialog";
 
 export interface PlotThread {
   id: string;
@@ -31,6 +32,19 @@ const STATUS_FLOW: Array<{ from: string; to: string; label: string }> = [
   { from: "deferred", to: "abandoned", label: "放弃" }
 ];
 
+interface PlotThreadDraft extends Record<string, unknown> {
+  title: string;
+  threadType: string;
+  description: string;
+  priority: number;
+}
+
+const DRAFT_FIELDS: ReadonlyArray<FieldSpec<PlotThreadDraft>> = [
+  { key: "title", label: "标题", control: "input" },
+  { key: "threadType", label: "类型", control: "select", options: TYPE_OPTIONS },
+  { key: "description", label: "描述（埋设+回收预期）", control: "textarea", rows: 3 }
+];
+
 export function PlotThreadsPanel({ projectId }: { projectId: string | null }) {
   const { items, isLoading, error, create, patch, deactivate } = useWorkspaceResource<PlotThread>({
     endpoint: ENDPOINT,
@@ -43,6 +57,7 @@ export function PlotThreadsPanel({ projectId }: { projectId: string | null }) {
   const [priority, setPriority] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
@@ -71,6 +86,12 @@ export function PlotThreadsPanel({ projectId }: { projectId: string | null }) {
 
   return (
     <div className="resource-panel">
+      <div className="resource-panel-header">
+        <button type="button" className="btn-primary btn-small" onClick={() => setAiOpen(true)}>
+          ✨ AI 帮我设计伏笔
+        </button>
+      </div>
+
       <form className="resource-form" onSubmit={handleCreate}>
         <h3>新建伏笔/线索</h3>
         <label>
@@ -115,6 +136,28 @@ export function PlotThreadsPanel({ projectId }: { projectId: string | null }) {
           ))}
         </ul>
       </div>
+
+      <AiDraftDialog<PlotThreadDraft, { projectId: string; existingTitles: string[] }>
+        open={aiOpen}
+        title="AI 帮我设计伏笔 / 线索"
+        endpoint="/api/asset-drafts/plot-threads"
+        fields={DRAFT_FIELDS}
+        titleField="title"
+        extraPayload={{
+          projectId,
+          existingTitles: items.map((i) => i.title)
+        }}
+        onAdopt={async (draft) => {
+          await create({
+            projectId,
+            title: draft.title,
+            threadType: draft.threadType,
+            description: draft.description || undefined,
+            priority: draft.priority ?? 0
+          });
+        }}
+        onClose={() => setAiOpen(false)}
+      />
     </div>
   );
 }
