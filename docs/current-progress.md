@@ -357,3 +357,74 @@ f7a2c69 feat(web): model switcher UI + provider/profile CRUD (Phase C)
 - 工作台内部各资产面板（角色 / 世界 / 大纲 / 伏笔 / 记忆 / 风格 / 去 AI 味规则）仍然是"空表单 + 手写"，下一轮重构入口。
 - `/api/model-providers/[id]/test` 真实模式 1-token ping 未实现，建议下一个小修补单独 commit。
 - Settings 页面没接入 Playwright e2e；Phase C 共 51 单测覆盖 API + server 逻辑，UI 交互留给后续 smoke 扩展。
+
+---
+
+## 2026-05-20 — 三个遗留 TODO 全部完成
+
+承接 2026-05-19 备注的「下一步」三项,本轮一次性推进到底。
+
+### 7 个 Phase 概览
+
+| Phase | 内容 | Commit |
+|-------|------|--------|
+| 1 | TODO 1: `/api/model-providers/[id]/test` 真实 1-token ping | `243f00a` |
+| 2 | AI-1: 抽 `server/asset-drafts.ts` 通用骨架 + 16 单测 | `48f6cce` |
+| 3 | AI-2: 角色 AI 起草 + 通用 `<AiDraftDialog>` 组件 | `09777ea` |
+| 4 | AI-3/4/5: 世界 / 大纲 / 伏笔 AI 起草 | `ce1098d` |
+| 5 | AI-6: 风格 / 去 AI 味规则 AI 起草 | `0dfc148` |
+| 6 | TODO 3: Settings 页 Playwright e2e + Next.js env 修复 | `3171661` |
+| 7 | 全量验证 + 本进度文档更新 | (本 commit) |
+
+### 交付内容
+
+**TODO 1 — 真实 1-token ping**
+
+- `apps/web/src/server/model-providers-test.ts`:抽出 server 端 helper。fake 模式直接返回 OK;真实模式从同 provider 任一 Profile 取 `modelName` 作为 ping target,调 `adapter.generate("hi", {maxOutputTokens:1})`,15s 超时,9 类错误分类(认证/网络/超时/限流/Provider 不存在/不支持/未配 Key/无 Profile/未知)。
+- `route.ts` 改为 delegate,保持"任何异常都返回 HTTP 200 + body.ok=false"语义。
+- 单测:9 + 5 = 14 个覆盖所有分支。
+
+**TODO 2 — 工作台资产面板全量 AI 起草 + 编辑**
+
+- 设计决策(2026-05-19 与用户确认):全做 6 类 / 不进库 / 1-10 条用户控制 / 可选 prompt 补充说明框。
+- `server/asset-drafts.ts` 通用骨架 `generateAssetDrafts<TInput, TItem>`:复用 wizard-drafts fake-fallback 模式,统一 prompt builder / JSON 解析 / count clamp(1-10) / 解析失败 degraded 兜底。
+- 6 个 server helper:`character-drafts.ts` / `world-item-drafts.ts` / `outline-drafts.ts` / `plot-thread-drafts.ts` / `style-profile-drafts.ts` / `deslop-rule-drafts.ts`。每个独立 prompt + JSON schema + fake 占位。
+- 6 个 API 路由:`/api/asset-drafts/{characters,world-items,outlines,plot-threads,style-profiles,deslop-rules}`,统一输入清洗(trim/数组过滤/枚举校验)。
+- 通用 `<AiDraftDialog>` 组件:泛型 + `FieldSpec[]` 配置驱动,支持 input/textarea/select/tags 四种字段。Dialog 内可逐条编辑、单条采纳 / 一键全部采纳 / 重抽。
+- 6 个 panel 接入 `✨ AI 帮我...` 按钮:角色 / 世界 / 大纲 / 伏笔 / 风格 / 去 AI 味规则(后者在「管理规则」折叠区内)。
+- 共 19 个新单测(基础设施 16 + 业务 helper 3 类 fake 验证 5 + 路由转发 13)。
+- 加入 ~150 行 CSS(backdrop / dialog / cards / 字段控件)。
+
+**TODO 3 — Settings e2e**
+
+- `apps/web/e2e/settings.spec.ts`:覆盖 banner / seed Provider 测试连接 / Provider 改名 / Profile CRUD(创建/编辑/删除)。
+- 跳过"新建 Provider"分支(本地 `.env` 无 `ENCRYPTION_KEY`,UI 会 disable apiKey 输入)。
+- 自动接受所有 `window.confirm` 弹窗。
+
+**额外修复**
+
+- `apps/web/.env.local` 增补 `USE_FAKE_MODEL="true"` —— Next.js 只读 app 目录 env,不读 monorepo 根 .env,之前 banner 一直显示"真实模式"是个一直存在的小 bug。
+- 新增 `apps/web/.env.local.example` 文档化该陷阱。
+
+### 验证
+
+- `pnpm typecheck`:5 workspaces 全绿。
+- `pnpm test`:5 workspaces / **448 tests 全绿**(packages/db 12 + shared 22 + model-adapters 36 + worker 95 + web **283**)。
+- `pnpm test:e2e`:2 specs 全绿 14.7s(smoke 8.2s + settings 2.6s)。
+
+### Git 历史
+
+```
+3171661 test(web): e2e for Settings model management
+0dfc148 feat(web): AI drafting for style profiles and de-AI-slop rules
+ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
+09777ea feat(web): AI character drafting with editable preview dialog
+48f6cce feat(web): asset-drafts foundation for AI-assisted resource creation
+243f00a feat(web): real 1-token ping for model provider test endpoint
+```
+
+### 风险与下一步
+
+- 真实模式整链路尚未端到端跑过(因为本地无 `ENCRYPTION_KEY` + 真实 API key)。fake 模式已 100% 覆盖,真实模式靠单测保证(单测 mock 了 createAdapter)。
+- 6 类资产 AI 草稿暴露了一个 prompt task type 数组:`draft_character / draft_world_item / draft_outline / draft_plot_thread / draft_style_profile / draft_deslop_rule`。未来若想给某类资产配专属(更便宜)模型,在 Settings → Profile 里新建对应 taskType 即可,无需改代码。
+- Dialog 组件本身可继续抽通用化用于其他场景(prompt 复用、记忆抽取等),目前仅供 6 个 asset draft 用。
