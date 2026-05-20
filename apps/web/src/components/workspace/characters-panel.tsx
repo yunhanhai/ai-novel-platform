@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useWorkspaceResource } from "./use-workspace-resource";
+import { AiDraftDialog, type FieldSpec } from "./ai-draft-dialog";
 
 export interface CharacterItem {
   id: string;
@@ -23,6 +24,26 @@ const ROLE_OPTIONS = [
   { value: "minor", label: "次要" }
 ];
 
+interface CharacterDraft extends Record<string, unknown> {
+  name: string;
+  roleType: string;
+  aliases: string[];
+  personality: string;
+  motivation: string;
+  speechPattern: string;
+  arc: string;
+}
+
+const DRAFT_FIELDS: ReadonlyArray<FieldSpec<CharacterDraft>> = [
+  { key: "name", label: "姓名", control: "input" },
+  { key: "roleType", label: "类型", control: "select", options: ROLE_OPTIONS },
+  { key: "aliases", label: "别名", control: "tags" },
+  { key: "personality", label: "性格", control: "textarea", rows: 2 },
+  { key: "motivation", label: "动机", control: "textarea", rows: 2 },
+  { key: "speechPattern", label: "语言特色", control: "textarea", rows: 2 },
+  { key: "arc", label: "成长弧光", control: "textarea", rows: 2 }
+];
+
 export function CharactersPanel({ projectId }: { projectId: string | null }) {
   const { items, isLoading, error, create, patch, deactivate } = useWorkspaceResource<CharacterItem>({
     endpoint: ENDPOINT,
@@ -36,6 +57,7 @@ export function CharactersPanel({ projectId }: { projectId: string | null }) {
   const [motivation, setMotivation] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
@@ -66,6 +88,16 @@ export function CharactersPanel({ projectId }: { projectId: string | null }) {
 
   return (
     <div className="resource-panel">
+      <div className="resource-panel-header">
+        <button
+          type="button"
+          className="btn-primary btn-small"
+          onClick={() => setAiOpen(true)}
+        >
+          ✨ AI 帮我设计角色
+        </button>
+      </div>
+
       <form className="resource-form" onSubmit={handleCreate}>
         <h3>新建角色</h3>
         <label>
@@ -114,6 +146,31 @@ export function CharactersPanel({ projectId }: { projectId: string | null }) {
           ))}
         </ul>
       </div>
+
+      <AiDraftDialog<CharacterDraft, { projectId: string; existingNames: string[] }>
+        open={aiOpen}
+        title="AI 帮我设计角色"
+        endpoint="/api/asset-drafts/characters"
+        fields={DRAFT_FIELDS}
+        titleField="name"
+        extraPayload={{
+          projectId,
+          existingNames: items.map((i) => i.name)
+        }}
+        onAdopt={async (draft) => {
+          await create({
+            projectId,
+            name: draft.name,
+            roleType: draft.roleType,
+            aliases: draft.aliases ?? [],
+            personality: draft.personality || undefined,
+            motivation: draft.motivation || undefined,
+            speechPattern: draft.speechPattern || undefined,
+            arc: draft.arc || undefined
+          });
+        }}
+        onClose={() => setAiOpen(false)}
+      />
     </div>
   );
 }
