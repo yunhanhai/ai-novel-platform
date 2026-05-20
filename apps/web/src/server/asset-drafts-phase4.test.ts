@@ -8,6 +8,8 @@ vi.mock("@ai-novel/model-adapters", () => ({
 import { draftWorldItems } from "./world-item-drafts";
 import { draftOutlineNodes } from "./outline-drafts";
 import { draftPlotThreads } from "./plot-thread-drafts";
+import { draftStyleProfiles } from "./style-profile-drafts";
+import { draftDeslopRules } from "./deslop-rule-drafts";
 
 const originalEnv = { ...process.env };
 const ctx = {
@@ -65,6 +67,39 @@ describe("draftPlotThreads (fake)", () => {
       expect(d.title).toBeTruthy();
       expect(["main", "side", "foreshadowing", "mystery", "conflict"]).toContain(d.threadType);
       expect(d.priority).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+describe("draftStyleProfiles (fake)", () => {
+  beforeEach(() => { process.env = { ...originalEnv, USE_FAKE_MODEL: "true" }; });
+  afterEach(() => { process.env = { ...originalEnv }; });
+
+  it("produces N fake profiles with banned + preferred words", async () => {
+    const res = await draftStyleProfiles({ count: 2 }, ctx);
+    expect(res.drafts).toHaveLength(2);
+    for (const d of res.drafts) {
+      expect(d.name).toBeTruthy();
+      expect(d.bannedWords.length).toBeGreaterThan(0);
+      expect(d.preferredWords.length).toBeGreaterThan(0);
+      expect(d.rhythmNotes).toBeTruthy();
+    }
+  });
+});
+
+describe("draftDeslopRules (fake)", () => {
+  beforeEach(() => { process.env = { ...originalEnv, USE_FAKE_MODEL: "true" }; });
+  afterEach(() => { process.env = { ...originalEnv }; });
+
+  it("produces N rules with exact_match type and valid category/severity", async () => {
+    const res = await draftDeslopRules({ count: 5 }, ctx);
+    expect(res.drafts).toHaveLength(5);
+    for (const d of res.drafts) {
+      expect(d.pattern).toBeTruthy();
+      expect(d.ruleType).toBe("exact_match");
+      expect(["stock_phrase", "weak_adverb", "abstract_noun_triple", "repetition", "sentence_pattern", "custom"])
+        .toContain(d.category);
+      expect(["info", "warning", "error"]).toContain(d.severity);
     }
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { AiDraftDialog, type FieldSpec } from "./ai-draft-dialog";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -40,6 +41,36 @@ interface DeslopRule {
   isActive: boolean;
 }
 
+interface DeslopRuleDraft extends Record<string, unknown> {
+  pattern: string;
+  category: string;
+  severity: string;
+  suggestion: string;
+  ruleType: string;
+}
+
+const RULE_CATEGORY_OPTIONS = [
+  { value: "stock_phrase", label: "套话" },
+  { value: "weak_adverb", label: "弱化副词" },
+  { value: "abstract_noun_triple", label: "抽象名词" },
+  { value: "repetition", label: "重复" },
+  { value: "sentence_pattern", label: "句式" },
+  { value: "custom", label: "自定义" }
+];
+
+const RULE_SEVERITY_OPTIONS = [
+  { value: "info", label: "提示" },
+  { value: "warning", label: "警告" },
+  { value: "error", label: "错误" }
+];
+
+const RULE_DRAFT_FIELDS: ReadonlyArray<FieldSpec<DeslopRuleDraft>> = [
+  { key: "pattern", label: "匹配词/短语", control: "input" },
+  { key: "category", label: "分类", control: "select", options: RULE_CATEGORY_OPTIONS },
+  { key: "severity", label: "严重度", control: "select", options: RULE_SEVERITY_OPTIONS },
+  { key: "suggestion", label: "建议", control: "textarea", rows: 2 }
+];
+
 function applyReplacement(originalText: string, issue: DeslopIssue): string {
   const { start, end } = issue.position;
   // suggestion 非空 → 替换；为空 → 删除
@@ -70,6 +101,7 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
   const [submitting, setSubmitting] = useState(false);
   const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const reloadRules = useCallback(async () => {
     if (!projectId) return;
@@ -255,7 +287,12 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
 
       {showRuleForm && (
         <div className="deslop-rules-section">
-          <h4>项目自定义规则 ({rules.length})</h4>
+          <div className="resource-panel-header">
+            <h4 style={{ margin: 0 }}>项目自定义规则 ({rules.length})</h4>
+            <button type="button" className="btn-primary btn-small" onClick={() => setAiOpen(true)}>
+              ✨ AI 帮我生成规则
+            </button>
+          </div>
           <form className="resource-form" onSubmit={handleAddRule}>
             <label>
               <span>词/短语 *</span>
@@ -306,6 +343,36 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
           </ul>
         </div>
       )}
+
+      <AiDraftDialog<DeslopRuleDraft, { projectId: string; existingPatterns: string[] }>
+        open={aiOpen}
+        title="AI 帮我生成去 AI 味规则"
+        endpoint="/api/asset-drafts/deslop-rules"
+        fields={RULE_DRAFT_FIELDS}
+        titleField="pattern"
+        extraPayload={{
+          projectId,
+          existingPatterns: rules.map((r) => r.pattern)
+        }}
+        onAdopt={async (draft) => {
+          const res = await fetch("/api/deslop-rules", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId,
+              ruleType: draft.ruleType || "exact_match",
+              pattern: draft.pattern,
+              category: draft.category,
+              severity: draft.severity,
+              suggestion: draft.suggestion || undefined
+            })
+          });
+          const json = (await res.json()) as ApiEnvelope<DeslopRule>;
+          if (!res.ok || !json.success) throw new Error(json.error ?? "添加失败");
+          await reloadRules();
+        }}
+        onClose={() => setAiOpen(false)}
+      />
     </div>
   );
 }

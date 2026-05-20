@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useWorkspaceResource } from "./use-workspace-resource";
+import { AiDraftDialog, type FieldSpec } from "./ai-draft-dialog";
 
 export interface StyleProfile {
   id: string;
@@ -18,6 +19,22 @@ export interface StyleProfile {
 
 const ENDPOINT = "/api/style-profiles";
 
+interface StyleProfileDraft extends Record<string, unknown> {
+  name: string;
+  styleBrief: string;
+  bannedWords: string[];
+  preferredWords: string[];
+  rhythmNotes: string;
+}
+
+const DRAFT_FIELDS: ReadonlyArray<FieldSpec<StyleProfileDraft>> = [
+  { key: "name", label: "风格名", control: "input" },
+  { key: "styleBrief", label: "风格简述", control: "textarea", rows: 2 },
+  { key: "bannedWords", label: "禁用词", control: "tags" },
+  { key: "preferredWords", label: "偏好词", control: "tags" },
+  { key: "rhythmNotes", label: "节奏与句长", control: "textarea", rows: 2 }
+];
+
 export function StyleProfilePanel({ projectId }: { projectId: string | null }) {
   const { items, isLoading, error, create, patch, deactivate } = useWorkspaceResource<StyleProfile>({
     endpoint: ENDPOINT,
@@ -30,6 +47,7 @@ export function StyleProfilePanel({ projectId }: { projectId: string | null }) {
   const [preferred, setPreferred] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => Number(b.isActive) - Number(a.isActive)),
@@ -66,6 +84,12 @@ export function StyleProfilePanel({ projectId }: { projectId: string | null }) {
 
   return (
     <div className="resource-panel">
+      <div className="resource-panel-header">
+        <button type="button" className="btn-primary btn-small" onClick={() => setAiOpen(true)}>
+          ✨ AI 帮我生成风格画像
+        </button>
+      </div>
+
       <form className="resource-form" onSubmit={handleCreate}>
         <h3>新建风格画像</h3>
         <label>
@@ -129,6 +153,26 @@ export function StyleProfilePanel({ projectId }: { projectId: string | null }) {
           ))}
         </ul>
       </div>
+
+      <AiDraftDialog<StyleProfileDraft, { projectId: string }>
+        open={aiOpen}
+        title="AI 帮我生成风格画像"
+        endpoint="/api/asset-drafts/style-profiles"
+        fields={DRAFT_FIELDS}
+        titleField="name"
+        extraPayload={{ projectId }}
+        onAdopt={async (draft) => {
+          await create({
+            projectId,
+            name: draft.name,
+            styleBrief: draft.styleBrief || undefined,
+            bannedWords: draft.bannedWords ?? [],
+            preferredWords: draft.preferredWords ?? [],
+            rhythmNotes: draft.rhythmNotes || undefined
+          });
+        }}
+        onClose={() => setAiOpen(false)}
+      />
     </div>
   );
 }
