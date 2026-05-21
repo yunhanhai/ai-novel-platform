@@ -71,4 +71,42 @@ describe("POST /api/generation-jobs", () => {
     const res = await POST(req({ chapterId: "ch-1", jobType: "GENERATE_CHAPTER" }));
     expect(res.status).toBe(201);
   });
+
+  it("stores normalized quality mode and performance budget", async () => {
+    p().chapter.findFirst.mockResolvedValue({ id: "ch-1", projectId: "proj-1" });
+    cj().mockResolvedValue({
+      id: "job-1", jobType: "GENERATE_CHAPTER", status: "QUEUED", projectId: "proj-1"
+    });
+
+    const res = await POST(req({
+      chapterId: "ch-1",
+      jobType: "GENERATE_CHAPTER",
+      qualityMode: "fast",
+      performanceBudget: { maxModelCalls: 99 }
+    }));
+
+    expect(res.status).toBe(201);
+    expect(cj()).toHaveBeenCalledWith(expect.objectContaining({
+      input: expect.objectContaining({
+        qualityMode: "fast",
+        performanceBudget: expect.objectContaining({ maxModelCalls: 12 })
+      })
+    }));
+  });
+
+  it("rejects invalid quality mode", async () => {
+    const res = await POST(req({ projectId: "proj-1", qualityMode: "slow" }));
+    const body = await res.json() as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain("qualityMode");
+  });
+
+  it("requires chapter target for diagnostic jobs", async () => {
+    const res = await POST(req({ projectId: "proj-1", jobType: "DIAGNOSE_CHAPTER" }));
+    const body = await res.json() as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain("chapterId");
+  });
 });

@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma, createJob } from "@ai-novel/db";
+import {
+  normalizePerformanceBudget,
+  normalizeQualityMode,
+  type PerformanceBudgetInput,
+  type QualityMode
+} from "@ai-novel/shared/generation/performance";
 import { getOrganizationId, getUserId } from "../../../server/context";
 
 type JobType =
@@ -10,7 +16,11 @@ type JobType =
   | "POLISH"
   | "DESLOP"
   | "REVIEW"
-  | "EXTRACT_MEMORY";
+  | "EXTRACT_MEMORY"
+  | "DIAGNOSE_CHAPTER"
+  | "READER_SIMULATION"
+  | "STYLE_DRIFT_CHECK"
+  | "CONTINUITY_CHECK";
 
 interface CreateJobBody {
   chapterId?: string;
@@ -18,6 +28,8 @@ interface CreateJobBody {
   jobType?: JobType;
   modelProfileId?: string;
   input?: Record<string, unknown>;
+  qualityMode?: unknown;
+  performanceBudget?: PerformanceBudgetInput;
 }
 
 const ALLOWED_JOB_TYPES: JobType[] = [
@@ -28,8 +40,19 @@ const ALLOWED_JOB_TYPES: JobType[] = [
   "POLISH",
   "DESLOP",
   "REVIEW",
-  "EXTRACT_MEMORY"
+  "EXTRACT_MEMORY",
+  "DIAGNOSE_CHAPTER",
+  "READER_SIMULATION",
+  "STYLE_DRIFT_CHECK",
+  "CONTINUITY_CHECK"
 ];
+
+const DIAGNOSTIC_JOB_TYPES = new Set<JobType>([
+  "DIAGNOSE_CHAPTER",
+  "READER_SIMULATION",
+  "STYLE_DRIFT_CHECK",
+  "CONTINUITY_CHECK"
+]);
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -86,6 +109,18 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  if (body.qualityMode !== undefined && !isQualityMode(body.qualityMode)) {
+    return NextResponse.json(
+      { success: false, error: "qualityMode must be fast, balanced, or deep" },
+      { status: 400 }
+    );
+  }
+  if (DIAGNOSTIC_JOB_TYPES.has(jobType) && !chapterId) {
+    return NextResponse.json(
+      { success: false, error: "chapterId is required for diagnostic jobs" },
+      { status: 400 }
+    );
+  }
   if (!chapterId && !body.projectId) {
     return NextResponse.json(
       { success: false, error: "chapterId 或 projectId 必填" },
@@ -121,12 +156,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "无法解析 projectId" }, { status: 400 });
     }
 
+    const qualityMode = normalizeQualityMode(body.qualityMode);
+    const performanceBudget = normalizePerformanceBudget(qualityMode, body.performanceBudget);
+    const input = {
+      ...(body.input ?? {}),
+      qualityMode,
+      performanceBudget: {
+        maxModelCalls: performanceBudget.maxModelCalls,
+        maxInputTokens: performanceBudget.maxInputTokens,
+        maxOutputTokens: performanceBudget.maxOutputTokens,
+        maxLatencyMs: performanceBudget.maxLatencyMs
+      }
+    };
+
     const job = await createJob({
       organizationId,
       projectId,
       userId,
       jobType,
-      input: (body.input ?? {}) as Parameters<typeof createJob>[0]["input"],
+      input: input as Parameters<typeof createJob>[0]["input"],
       ...(body.modelProfileId ? { modelProfileId: body.modelProfileId } : {}),
       ...(targetEntityType ? { targetEntityType } : {}),
       ...(targetEntityId ? { targetEntityId } : {}),
@@ -149,6 +197,10 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     return errorResponse(error);
   }
+}
+
+function isQualityMode(value: unknown): value is QualityMode {
+  return value === "fast" || value === "balanced" || value === "deep";
 }
 
 function errorResponse(error: unknown): NextResponse {
