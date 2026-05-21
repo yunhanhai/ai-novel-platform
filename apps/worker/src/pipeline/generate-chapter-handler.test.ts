@@ -79,6 +79,10 @@ function createPrismaStub(options: PrismaStubOptions = {}) {
       create: vi.fn().mockResolvedValue({ id: "step-x" }),
       update: vi.fn().mockResolvedValue({})
     },
+    generationJob: {
+      create: vi.fn().mockResolvedValue({ id: "diag-1" }),
+      update: vi.fn().mockResolvedValue({})
+    },
     $transaction: vi.fn(async (cb: (tx: TxStub) => Promise<unknown>) => cb(tx))
   };
   return { prisma, tx };
@@ -148,12 +152,81 @@ describe("createGenerateChapterHandler", () => {
           output: expect.objectContaining({
             chapterId: "chapter-1",
             versionId: "ver-1",
-            versionNo: 1
+            versionNo: 1,
+            performanceSummary: expect.objectContaining({
+              qualityMode: "balanced"
+            })
           })
         })
       })
     );
     expect(updateJobStatus).not.toHaveBeenCalled();
+  });
+
+  it("enqueues a diagnostic job after deep generation succeeds", async () => {
+    const { prisma } = createPrismaStub();
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never
+    });
+
+    await handler({
+      ...baseJob,
+      input: { qualityMode: "deep" }
+    });
+
+    expect(prisma.generationJob.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          jobType: "DIAGNOSE_CHAPTER",
+          targetEntityType: "CHAPTER",
+          targetEntityId: "chapter-1",
+          input: expect.objectContaining({
+            chapterId: "chapter-1",
+            parentJobId: "job-1"
+          })
+        })
+      })
+    );
+  });
+
+  it("keeps parent succeeded when deep diagnostic enqueue fails", async () => {
+    const { prisma, tx } = createPrismaStub();
+    prisma.generationJob.create.mockRejectedValue(new Error("queue unavailable"));
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never
+    });
+
+    await handler({
+      ...baseJob,
+      input: { qualityMode: "deep" }
+    });
+
+    expect(tx.generationJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "SUCCEEDED" })
+      })
+    );
+    expect(prisma.generationJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job-1" },
+        data: expect.objectContaining({
+          output: expect.objectContaining({
+            diagnosticWarning: expect.stringContaining("queue unavailable")
+          })
+        })
+      })
+    );
+    expect(updateJobStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "FAILED" })
+    );
   });
 
   it("marks job FAILED with CHAPTER_NOT_FOUND when chapter is missing", async () => {

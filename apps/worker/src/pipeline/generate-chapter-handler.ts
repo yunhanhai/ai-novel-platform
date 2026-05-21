@@ -1,4 +1,10 @@
 import type { PrismaClient } from "@ai-novel/db";
+import {
+  normalizePerformanceBudget,
+  normalizeQualityMode,
+  type PerformanceBudgetInput,
+  type PerformanceSummary
+} from "@ai-novel/shared/generation/performance";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { getMethodologyTemplate, type MethodType, type MethodologyTemplate } from "@ai-novel/shared/methodology/templates";
 import { createFakeModel } from "./fake-model";
@@ -71,21 +77,31 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
       }
     }
 
-    let finalContent: string;
+    let pipelineResult: PipelineRunResult;
     try {
-      finalContent = await runPipelineForContent({ prisma, job, model, chapterId });
+      pipelineResult = await runPipelineForContent({ prisma, job, model, chapterId });
     } catch (error: unknown) {
       await fail(job.id, ERROR_CODES.HANDLER_ERROR, errorMessage(error, "pipeline failed"));
       return;
     }
 
-    if (!finalContent) {
+    if (!pipelineResult.content) {
       await fail(job.id, ERROR_CODES.HANDLER_ERROR, "pipeline 未产出最终正文");
       return;
     }
 
     try {
-      await commitFinalize({ prisma, job, chapter, finalContent, wordCount: computeWordCount(finalContent) });
+      const finalOutput = await commitFinalize({
+        prisma,
+        job,
+        chapter,
+        finalContent: pipelineResult.content,
+        wordCount: computeWordCount(pipelineResult.content),
+        performanceSummary: pipelineResult.performanceSummary
+      });
+      if (pipelineResult.performanceSummary.qualityMode === "deep") {
+        await enqueueDeepDiagnostic({ prisma, job, chapter, finalOutput });
+      }
     } catch (error: unknown) {
       await fail(job.id, ERROR_CODES.FINALIZE_FAILED, errorMessage(error, "finalize transaction failed"));
     }
@@ -113,6 +129,11 @@ interface PipelineRunParams {
   job: GenerationJob;
   model: FakeModel;
   chapterId: string;
+}
+
+interface PipelineRunResult {
+  content: string;
+  performanceSummary: PerformanceSummary;
 }
 
 interface MethodologyGuide {
@@ -167,14 +188,15 @@ async function loadActiveMethodology(
 // runChapterPipeline 当前会调用 persistVersion 写入 ContentVersion，但本 handler 要求最终
 // 正文与 version 必须在最终事务内提交。因此把 persistVersion 退化为只回传内容的 passthrough，
 // 由 commitFinalize 在事务内创建真正的 ContentVersion。pipeline 返回的 v-final 占位一律忽略。
-async function runPipelineForContent(params: PipelineRunParams): Promise<string> {
+async function runPipelineForContent(params: PipelineRunParams): Promise<PipelineRunResult> {
   const { prisma, job, model, chapterId } = params;
 
   // 提前查询方法论，以便同步注入 buildContext
   const methodologyGuide = await loadActiveMethodology(prisma, job.projectId);
+  const performance = readPerformanceConfig(job);
 
   let finalContent = "";
-  await runChapterPipeline({
+  const pipelineResult = await runChapterPipeline({
     job,
     model,
     buildContext: () => ({
@@ -203,13 +225,29 @@ async function runPipelineForContent(params: PipelineRunParams): Promise<string>
           latencyMs: update.latencyMs
         }
       });
-    }
+    },
+    performance
   });
-  return finalContent;
+  return {
+    content: finalContent,
+    performanceSummary: pipelineResult.performanceSummary
+  };
 }
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+function readPerformanceConfig(job: GenerationJob) {
+  const input = (job.input ?? {}) as {
+    qualityMode?: unknown;
+    performanceBudget?: PerformanceBudgetInput;
+  };
+  const qualityMode = normalizeQualityMode(input.qualityMode);
+  return {
+    qualityMode,
+    budget: normalizePerformanceBudget(qualityMode, input.performanceBudget)
+  };
 }
 
 interface CommitParams {
@@ -218,6 +256,8 @@ interface CommitParams {
   chapter: ChapterRef;
   finalContent: string;
   wordCount: number;
+  performanceSummary?: PerformanceSummary;
+  diagnosticWarning?: string;
 }
 
 interface FinalOutput {
@@ -225,10 +265,12 @@ interface FinalOutput {
   versionId: string;
   versionNo: number;
   wordCount: number;
+  performanceSummary?: PerformanceSummary;
+  diagnosticWarning?: string;
 }
 
 export async function commitFinalize(params: CommitParams): Promise<FinalOutput> {
-  const { prisma, job, chapter, finalContent, wordCount } = params;
+  const { prisma, job, chapter, finalContent, wordCount, performanceSummary, diagnosticWarning } = params;
 
   return prisma.$transaction(async (tx: Tx) => {
     await assertChapterStillValid(tx, chapter, job);
@@ -264,7 +306,9 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       chapterId: chapter.id,
       versionId: version.id,
       versionNo: version.versionNo,
-      wordCount
+      wordCount,
+      ...(performanceSummary ? { performanceSummary } : {}),
+      ...(diagnosticWarning ? { diagnosticWarning } : {})
     };
 
     await tx.generationStep.create({
@@ -280,11 +324,63 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
 
     await tx.generationJob.update({
       where: { id: job.id },
-      data: { status: "SUCCEEDED", progress: "100", finishedAt, output }
+      data: {
+        status: "SUCCEEDED",
+        progress: "100",
+        finishedAt,
+        output: output as unknown as Parameters<PrismaClient["generationJob"]["update"]>[0]["data"]["output"]
+      }
     });
 
     return output;
   });
+}
+
+async function enqueueDeepDiagnostic(params: {
+  prisma: PrismaClient;
+  job: GenerationJob;
+  chapter: ChapterRef;
+  finalOutput: FinalOutput;
+}): Promise<void> {
+  const { prisma, job, chapter, finalOutput } = params;
+  const diagnosticBudget = normalizePerformanceBudget("balanced", undefined);
+  const diagnosticInput = {
+    chapterId: chapter.id,
+    parentJobId: job.id,
+    qualityMode: "deep",
+    performanceBudget: {
+      maxModelCalls: diagnosticBudget.maxModelCalls,
+      maxInputTokens: diagnosticBudget.maxInputTokens,
+      maxOutputTokens: diagnosticBudget.maxOutputTokens,
+      maxLatencyMs: diagnosticBudget.maxLatencyMs
+    }
+  };
+
+  try {
+    await prisma.generationJob.create({
+      data: {
+        organizationId: job.organizationId,
+        projectId: job.projectId,
+        userId: job.userId,
+        jobType: "DIAGNOSE_CHAPTER",
+        targetEntityType: "CHAPTER",
+        targetEntityId: chapter.id,
+        status: "QUEUED",
+        progress: "0",
+        input: diagnosticInput as unknown as Parameters<PrismaClient["generationJob"]["create"]>[0]["data"]["input"]
+      }
+    });
+  } catch (error: unknown) {
+    await prisma.generationJob.update({
+      where: { id: job.id },
+      data: {
+        output: {
+          ...finalOutput,
+          diagnosticWarning: errorMessage(error, "diagnostic enqueue failed")
+        } as unknown as Parameters<PrismaClient["generationJob"]["update"]>[0]["data"]["output"]
+      }
+    });
+  }
 }
 
 async function assertChapterStillValid(tx: Tx, chapter: ChapterRef, job: GenerationJob): Promise<void> {
