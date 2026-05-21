@@ -1,5 +1,13 @@
+import {
+  createPerformanceTracker,
+  normalizePerformanceBudget,
+  type BudgetSkipReason,
+  type PerformanceBudget,
+  type PerformanceSummary,
+  type QualityMode
+} from "@ai-novel/shared/generation/performance";
 import type { ActivationReport } from "../context/keyword-activation";
-import type { StyleGuide, MethodologyGuide } from "../context/build-context-packet";
+import type { MethodologyGuide, StyleGuide } from "../context/build-context-packet";
 
 interface PipelineJob {
   id: string;
@@ -73,32 +81,51 @@ export interface PipelineDeps {
     outputTokens: number;
     latencyMs: number;
   }) => Promise<unknown>;
+  performance?: {
+    qualityMode: QualityMode;
+    budget: PerformanceBudget;
+  };
 }
 
 interface PipelineResult {
   steps: StepRecord[];
   extracted: ExtractOutput;
   activationReport: ActivationReport;
+  performanceSummary: PerformanceSummary;
 }
+
+const EMPTY_EXTRACT: ExtractOutput = {
+  characterChanges: [],
+  worldFacts: [],
+  newHooks: [],
+  summary: "",
+  chapterSummary: "pending"
+};
 
 export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   const { job, model, buildContext, persistVersion, createStep, updateStep } = deps;
   const input = job.input as { chapterId: string };
   const chapterId = input.chapterId;
-
   const context = buildContext(chapterId);
   const steps: StepRecord[] = [];
+  const performance = deps.performance ?? {
+    qualityMode: "balanced" as const,
+    budget: normalizePerformanceBudget("balanced", undefined)
+  };
+  const tracker = createPerformanceTracker(performance);
 
-  async function execStep(
-    key: string,
-    promptText: string,
-    opts: { previewLen?: number } = {}
-  ): Promise<string> {
+  async function execStep(key: string, promptText: string, opts: { previewLen?: number } = {}): Promise<string> {
     const step = await createStep({ stepKey: key });
     const started = Date.now();
     const result = await model.generate(promptText);
     const elapsed = Date.now() - started;
     const preview = result.text.slice(0, opts.previewLen ?? 200);
+
+    tracker.recordModelStep({
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      latencyMs: elapsed
+    });
 
     await updateStep({
       stepId: step.id,
@@ -121,23 +148,50 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
     return result.text;
   }
 
-  // Step 1: plan
+  async function skipStep(key: string, reason: BudgetSkipReason): Promise<void> {
+    const step = await createStep({ stepKey: key });
+    await updateStep({
+      stepId: step.id,
+      status: "SKIPPED",
+      outputPreview: reason,
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: 0
+    });
+    tracker.recordSkippedStep(key, reason);
+    steps.push({
+      stepKey: key,
+      status: "SKIPPED",
+      outputPreview: reason,
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: 0
+    });
+  }
+
+  async function execOptionalStep(key: string, promptText: string, opts: { previewLen?: number } = {}): Promise<string | null> {
+    const allowed = tracker.canRunModelStep(key, { estimatedInputTokens: estimatePromptTokens(promptText) });
+    if (!allowed.ok) {
+      await skipStep(key, allowed.reason);
+      return null;
+    }
+    return execStep(key, promptText, opts);
+  }
+
   const methodologyHint = context.methodologyGuide
-    ? `\n\n[方法论对齐] 请按「${context.methodologyGuide.name}」的结构提示组织 sceneBeats 与 hookAgenda。`
+    ? `\n\n[方法论对齐] ${context.methodologyGuide.name}\n${context.methodologyGuide.guideText}`
     : "";
 
-  const planPrompt = `你是一位专业的小说策划。根据以下上下文，为本章节制定写作计划。以 JSON 格式输出。
-
+  const planPrompt = `Plan this chapter from context. Return valid JSON only.
 ${context.prompt}${methodologyHint}
 
-输出格式：
 {
-  "chapterGoal": "本章核心目标",
-  "sceneBeats": [{"description": "场景描述", "goal": "场景目标"}],
-  "charactersInScene": ["角色名"],
-  "mustIncludeFacts": ["必须包含的事实"],
-  "hookAgenda": ["钩子安排"],
-  "forbiddenMoves": ["禁止操作"]
+  "chapterGoal": "core goal",
+  "sceneBeats": [{"description": "scene", "goal": "goal"}],
+  "charactersInScene": ["name"],
+  "mustIncludeFacts": ["fact"],
+  "hookAgenda": ["hook"],
+  "forbiddenMoves": ["move"]
 }`;
 
   const planText = await execStep("plan", planPrompt);
@@ -145,77 +199,72 @@ ${context.prompt}${methodologyHint}
     chapterGoal: "", sceneBeats: [], charactersInScene: []
   });
 
-  // Step 2: draft
-  const draftPrompt = `你是一位小说作家。根据写作计划和上下文，撰写本章正文。
+  const draftPrompt = `Draft the chapter from the plan and context.
 
-写作计划：
+Writing plan:
 ${JSON.stringify(plan, null, 2)}
 
 ${context.prompt}
 
-直接输出正文内容，不需要解释。`;
+Return chapter prose only.`;
 
   let draftText = await execStep("draft", draftPrompt, { previewLen: 500 });
 
-  // Step 3: review
   const reviewExtras: string[] = [];
   if (context.styleGuide?.banned && context.styleGuide.banned.length > 0) {
-    reviewExtras.push(`必须扫描禁用词：${context.styleGuide.banned.join("、")}（命中视为 style_drift 错误）`);
+    reviewExtras.push(`禁用词 ${context.styleGuide.banned.join(", ")} style_drift`);
   }
   if (context.methodologyGuide?.reviewCriteria && context.methodologyGuide.reviewCriteria.length > 0) {
-    reviewExtras.push(`方法论必查项：${context.methodologyGuide.reviewCriteria.join("；")}（违反视为 methodology_violation）`);
+    reviewExtras.push(`方法论必查项 ${context.methodologyGuide.reviewCriteria.join(", ")} methodology_violation`);
   }
-  const reviewExtraText = reviewExtras.length > 0 ? `\n\n[必查项]\n${reviewExtras.map((e) => `- ${e}`).join("\n")}` : "";
+  const reviewExtraText = reviewExtras.length > 0 ? `\n\nRequired checks:\n${reviewExtras.map((e) => `- ${e}`).join("\n")}` : "";
+  const reviewPrompt = `Review the chapter for consistency, pacing, style, and methodology issues.
 
-  const reviewPrompt = `你是一位严格的小说审稿人。检查以下正文是否存在问题。
-
-正文：
+Chapter:
 ${draftText}
 
-上下文：
+Context:
 ${context.prompt}${reviewExtraText}
 
-以 JSON 格式输出审计结果：
+Return valid JSON:
 {
   "issues": [
     {
       "type": "consistency|world_conflict|foreshadowing|timeline|knowledge_boundary|ai_slop|pacing|style_drift|methodology_violation",
-      "detail": "问题描述",
-      "suggestion": "建议修改",
+      "detail": "issue",
+      "suggestion": "fix",
       "severity": "info|warning|error"
     }
   ],
   "passed": true
 }`;
 
-  const reviewText = await execStep("review", reviewPrompt);
-  const review = safeJson<ReviewOutput>(reviewText, { issues: [], passed: true });
-
-  // Step 4: revise (only if review has issues)
-  if (review.issues.length > 0) {
-    const revisePrompt = `根据审稿意见修改以下正文。只输出修改后的正文，不需要解释。
-
-审稿意见：
-${JSON.stringify(review.issues, null, 2)}
-
-原文：
-${draftText}
-
-修改后正文：`;
-
-    draftText = await execStep("revise", revisePrompt, { previewLen: 500 });
+  let review: ReviewOutput = { issues: [], passed: true };
+  if (performance.qualityMode === "fast") {
+    await skipStep("review", "quality_mode");
   } else {
-    steps.push({
-      stepKey: "revise",
-      status: "SKIPPED",
-      outputPreview: "",
-      inputTokens: 0,
-      outputTokens: 0,
-      latencyMs: 0
-    });
+    const reviewText = await execOptionalStep("review", reviewPrompt);
+    review = reviewText ? safeJson<ReviewOutput>(reviewText, { issues: [], passed: true }) : { issues: [], passed: true };
   }
 
-  // Step 5: persist_version
+  if (performance.qualityMode === "fast") {
+    await skipStep("revise", "quality_mode");
+  } else if (review.issues.length > 0) {
+    const revisePrompt = `Revise the chapter according to review notes. Return only revised prose.
+
+Review notes:
+${JSON.stringify(review.issues, null, 2)}
+
+Original chapter:
+${draftText}`;
+    const revised = await execOptionalStep("revise", revisePrompt, { previewLen: 500 });
+    if (revised) {
+      draftText = revised;
+    }
+  } else {
+    await skipStep("revise", "not_applicable");
+  }
+
   {
     const step = await createStep({ stepKey: "persist_version" });
     const started = Date.now();
@@ -246,44 +295,43 @@ ${draftText}
     });
   }
 
-  // Step 6: extract_memory
-  const extractPrompt = `你是小说记忆抽取器。分析本章正文，提取需要记录的信息。以 JSON 格式输出。
+  const extractPrompt = `Extract durable story memory from the final chapter. Return valid JSON only.
 
-正文：
+Chapter:
 ${draftText}
 
-上下文：
+Context:
 ${context.prompt}
 
-输出格式：
 {
-  "characterChanges": [{"characterId": "", "characterName": "角色名", "change": "变化描述"}],
-  "worldFacts": [{"fact": "新发现的世界事实", "worldItemId": ""}],
-  "newHooks": [{"hook": "新埋设的伏笔", "threadId": ""}],
-  "summary": "一句话总结本章",
-  "chapterSummary": "详细章节摘要（200字以内）"
+  "characterChanges": [],
+  "worldFacts": [],
+  "newHooks": [],
+  "summary": "",
+  "chapterSummary": ""
 }`;
 
-  const extractText = await execStep("extract_memory", extractPrompt);
-  const extracted = safeJson<ExtractOutput>(extractText, {
-    characterChanges: [], worldFacts: [], newHooks: [],
-    summary: "", chapterSummary: "待抽取"
-  });
+  const extractText = await execOptionalStep("extract_memory", extractPrompt);
+  const extracted = extractText ? safeJson<ExtractOutput>(extractText, EMPTY_EXTRACT) : EMPTY_EXTRACT;
 
   return {
     steps,
     extracted,
-    activationReport: context.activationReport
+    activationReport: context.activationReport,
+    performanceSummary: tracker.summary()
   };
 }
 
 function safeJson<T>(text: string, fallback: T): T {
   try {
-    // 提取第一个 JSON 对象
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return fallback;
     return JSON.parse(match[0]) as T;
   } catch {
     return fallback;
   }
+}
+
+function estimatePromptTokens(prompt: string): number {
+  return Math.ceil(prompt.length / 4);
 }
