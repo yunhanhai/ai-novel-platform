@@ -52,6 +52,52 @@ describe("createExtractMemoryHandler", () => {
     );
   });
 
+  it("records usage events for resolved real model calls", async () => {
+    const tx = {
+      projectMemory: { create: vi.fn().mockResolvedValue({}) },
+      generationStep: { create: vi.fn().mockResolvedValue({}) },
+      generationJob: { update: vi.fn().mockResolvedValue({}) }
+    };
+    const prisma = {
+      chapter: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "chapter-1", content: "content", title: "test", chapterNo: 1
+        })
+      },
+      usageEvent: { create: vi.fn().mockResolvedValue({}) },
+      $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx))
+    };
+    const resolvedModel = {
+      usage: { providerId: "provider-2", modelName: "claude-test", billingSource: "PLATFORM" as const },
+      generate: vi.fn().mockResolvedValue({
+        text: '{"characterChanges":[],"worldFacts":[],"newHooks":[],"summary":"ok","chapterSummary":"ok"}',
+        inputTokens: 44,
+        outputTokens: 22
+      })
+    };
+    const handler = createExtractMemoryHandler({
+      prisma: prisma as never,
+      updateJobStatus: vi.fn().mockResolvedValue({}),
+      model: stubModel as never,
+      resolveModel: vi.fn(async () => resolvedModel) as never
+    });
+
+    await handler(baseJob);
+
+    expect(prisma.usageEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          generationJobId: "job-1",
+          providerId: "provider-2",
+          modelName: "claude-test",
+          billingSource: "PLATFORM",
+          inputTokens: 44,
+          outputTokens: 22
+        })
+      })
+    );
+  });
+
   it("fails when chapter has no content", async () => {
     const prisma = {
       chapter: {

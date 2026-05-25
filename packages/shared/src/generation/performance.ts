@@ -36,6 +36,13 @@ export interface PerformanceSummary {
   outputTokens: number;
   latencyMs: number;
   skippedSteps: SkippedStepSummary[];
+  contextBudget?: {
+    tokenBudget: number;
+    appliedTokenBudget: number;
+    estimatedTokens: number;
+    includedCount: number;
+    trimmedCount: number;
+  };
 }
 
 const DEFAULT_BUDGETS: Record<QualityMode, PerformanceBudget> = {
@@ -99,8 +106,8 @@ export function createPerformanceTracker(params: {
     recordSkippedStep(stepKey: string, reason: BudgetSkipReason) {
       skippedSteps.push({ stepKey, reason });
     },
-    summary(): PerformanceSummary {
-      return {
+    summary(extra?: Pick<PerformanceSummary, "contextBudget">): PerformanceSummary {
+      const summary: PerformanceSummary = {
         qualityMode: params.qualityMode,
         budget: params.budget,
         modelCalls,
@@ -109,6 +116,10 @@ export function createPerformanceTracker(params: {
         latencyMs,
         skippedSteps
       };
+      if (extra?.contextBudget) {
+        summary.contextBudget = extra.contextBudget;
+      }
+      return summary;
     }
   };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PerformanceSummary, QualityMode } from "@ai-novel/shared/generation/performance";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -188,6 +189,17 @@ export interface JobSummary {
   errorMessage: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  performanceSummary?: PerformanceSummary;
+  diagnosticType?: string;
+  diagnosticSummary?: {
+    readerScore?: number;
+    abandonRisk?: string;
+    hookStrength?: number;
+    pacingScore?: number;
+    styleDrift?: number;
+    continuityIssues?: Array<{ severity?: string; detail?: string; suggestion?: string }>;
+    suggestions?: string[];
+  };
   steps?: Array<{
     id: string;
     stepKey: string;
@@ -202,7 +214,7 @@ export interface JobSummary {
 
 interface UseJobPollingResult {
   job: JobSummary | null;
-  startJob: (chapterId: string, jobType?: string) => Promise<JobSummary | null>;
+  startJob: (chapterId: string, jobType?: string, options?: { qualityMode?: QualityMode }) => Promise<JobSummary | null>;
   isStarting: boolean;
   error: string | null;
 }
@@ -239,14 +251,14 @@ export function useJobPolling(): UseJobPollingResult {
   useEffect(() => stopPolling, [stopPolling]);
 
   const startJob = useCallback(
-    async (chapterId: string, jobType: string = "GENERATE_CHAPTER"): Promise<JobSummary | null> => {
+    async (chapterId: string, jobType: string = "GENERATE_CHAPTER", options: { qualityMode?: QualityMode } = {}): Promise<JobSummary | null> => {
       setStarting(true);
       setError(null);
       try {
         const res = await fetch("/api/generation-jobs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chapterId, jobType })
+          body: JSON.stringify({ chapterId, jobType, ...(options.qualityMode ? { qualityMode: options.qualityMode } : {}) })
         });
         const json = (await res.json()) as ApiEnvelope<{ id: string; jobType: string; status: JobSummary["status"] }>;
         if (!res.ok || !json.success || !json.data) {

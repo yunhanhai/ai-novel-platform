@@ -7,8 +7,11 @@ import {
 } from "@ai-novel/shared/generation/performance";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { getMethodologyTemplate, type MethodType, type MethodologyTemplate } from "@ai-novel/shared/methodology/templates";
+import { buildContextPacket, type MethodologyGuide, type StyleGuide } from "../context/build-context-packet";
+import { deriveGenerationContextTokenBudget } from "../context/generation-context-budget";
 import { createFakeModel } from "./fake-model";
 import { runChapterPipeline } from "./chapter-pipeline";
+import { readModelUsage, recordModelUsage } from "./usage-recorder";
 import type { GenerationJob } from "../poll";
 
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
@@ -42,6 +45,9 @@ interface ChapterRef {
   id: string;
   projectId: string;
   organizationId: string;
+  chapterNo?: number;
+  title?: string;
+  outlineSummary?: string | null;
 }
 
 export function createGenerateChapterHandler(deps: HandlerDeps) {
@@ -119,7 +125,14 @@ function resolveChapterId(job: GenerationJob): string | null {
 async function loadChapter(prisma: PrismaClient, chapterId: string, job: GenerationJob): Promise<ChapterRef | null> {
   const chapter = await prisma.chapter.findFirst({
     where: { id: chapterId, organizationId: job.organizationId, deletedAt: null },
-    select: { id: true, projectId: true, organizationId: true }
+    select: {
+      id: true,
+      projectId: true,
+      organizationId: true,
+      chapterNo: true,
+      title: true,
+      outlineSummary: true
+    }
   });
   return chapter && chapter.projectId === job.projectId ? chapter : null;
 }
@@ -134,13 +147,6 @@ interface PipelineRunParams {
 interface PipelineRunResult {
   content: string;
   performanceSummary: PerformanceSummary;
-}
-
-interface MethodologyGuide {
-  name: string;
-  methodType: string;
-  guideText: string;
-  reviewCriteria?: string[];
 }
 
 async function loadActiveMethodology(
@@ -194,16 +200,19 @@ async function runPipelineForContent(params: PipelineRunParams): Promise<Pipelin
   // 提前查询方法论，以便同步注入 buildContext
   const methodologyGuide = await loadActiveMethodology(prisma, job.projectId);
   const performance = readPerformanceConfig(job);
+  const contextPacket = await loadGenerationContextPacket({
+    prisma,
+    job,
+    chapterId,
+    methodologyGuide,
+    contextTokenBudget: deriveGenerationContextTokenBudget(performance)
+  });
 
   let finalContent = "";
   const pipelineResult = await runChapterPipeline({
     job,
     model,
-    buildContext: () => ({
-      prompt: `章节生成上下文（chapterId=${chapterId}）`,
-      activationReport: { activated: [], totalSourcesChecked: 0, triggeredBy: "" },
-      ...(methodologyGuide ? { methodologyGuide } : {})
-    }),
+    buildContext: () => contextPacket,
     persistVersion: async ({ content }) => {
       finalContent = content;
       return { id: "pending", versionNo: 0 };
@@ -226,12 +235,303 @@ async function runPipelineForContent(params: PipelineRunParams): Promise<Pipelin
         }
       });
     },
+    recordModelUsage: (usage) =>
+      recordModelUsage({
+        prisma,
+        job,
+        usage: readModelUsage(model),
+        ...usage
+      }),
     performance
   });
   return {
     content: finalContent,
     performanceSummary: pipelineResult.performanceSummary
   };
+}
+
+interface GenerationContextLoadParams {
+  prisma: PrismaClient;
+  job: GenerationJob;
+  chapterId: string;
+  methodologyGuide?: MethodologyGuide;
+  contextTokenBudget: number;
+}
+
+interface ProjectRecord {
+  id: string;
+  title: string;
+  styleBrief?: string | null;
+}
+
+interface ChapterContextRecord {
+  id: string;
+  chapterNo: number;
+  title: string;
+  outlineSummary?: string | null;
+}
+
+interface CharacterRecord {
+  id: string;
+  name: string;
+  roleType: string;
+  personality?: string | null;
+  speechPattern?: string | null;
+  motivation?: string | null;
+  arc?: string | null;
+  constraints?: string | null;
+}
+
+interface WorldItemRecord {
+  id: string;
+  name: string;
+  itemType: string;
+  summary?: string | null;
+  detail?: string | null;
+  constraints?: string | null;
+  activationKeywords?: unknown;
+}
+
+interface PlotThreadRecord {
+  id: string;
+  threadType: string;
+  title: string;
+  description?: string | null;
+  status: string;
+}
+
+interface ProjectMemoryRecord {
+  memoryType: string;
+  content: string;
+  scopeType: string;
+  sourceChapterId?: string | null;
+}
+
+interface StyleProfileRecord {
+  styleBrief?: string | null;
+  bannedWords?: unknown;
+  preferredWords?: unknown;
+  sentenceLengthProfile?: unknown;
+}
+
+async function loadGenerationContextPacket(params: GenerationContextLoadParams) {
+  const { prisma, job, chapterId, methodologyGuide, contextTokenBudget } = params;
+  const delegates = prisma as unknown as GenerationContextDelegates;
+
+  const [project, chapter, characters, worldItems, plotThreads, recentMemories, styleProfile] = await Promise.all([
+    loadProjectForContext(delegates, job),
+    loadChapterForContext(delegates, chapterId, job),
+    loadCharactersForContext(delegates, job),
+    loadWorldItemsForContext(delegates, job),
+    loadPlotThreadsForContext(delegates, job),
+    loadRecentMemoriesForContext(delegates, job),
+    loadStyleProfileForContext(delegates, job)
+  ]);
+
+  return buildContextPacket({
+    projectId: job.projectId,
+    projectTitle: project?.title ?? job.projectId,
+    ...(project?.styleBrief ? { styleBrief: project.styleBrief } : {}),
+    currentChapter: {
+      id: chapter?.id ?? chapterId,
+      chapterNo: chapter?.chapterNo ?? 0,
+      title: chapter?.title ?? chapterId,
+      ...(chapter?.outlineSummary ? { outlineSummary: chapter.outlineSummary } : {})
+    },
+    characters: characters.map((character) => ({
+      id: character.id,
+      name: character.name,
+      roleType: character.roleType,
+      ...(character.personality ? { personality: character.personality } : {}),
+      ...(character.speechPattern ? { speechPattern: character.speechPattern } : {}),
+      content: compactJoin([character.motivation, character.arc, character.constraints])
+    })),
+    worldItems: worldItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      itemType: item.itemType,
+      content: compactJoin([item.summary, item.detail, item.constraints]),
+      activationKeywords: toStringArray(item.activationKeywords, [item.name])
+    })),
+    plotThreads: plotThreads.map((thread) => ({
+      id: thread.id,
+      threadType: thread.threadType,
+      title: thread.title,
+      content: thread.description ?? "",
+      status: thread.status
+    })),
+    recentMemories: recentMemories.map((memory) => ({
+      memoryType: memory.memoryType,
+      content: memory.content,
+      scopeType: memory.scopeType,
+      ...(memory.sourceChapterId ? { sourceChapterId: memory.sourceChapterId } : {})
+    })),
+    tokenBudget: contextTokenBudget,
+    ...(styleProfile ? { styleGuide: mapStyleGuide(styleProfile) } : {}),
+    ...(methodologyGuide ? { methodologyGuide } : {})
+  });
+}
+
+interface GenerationContextDelegates {
+  project?: {
+    findFirst(args: unknown): Promise<ProjectRecord | null>;
+  };
+  chapter?: {
+    findFirst(args: unknown): Promise<ChapterContextRecord | null>;
+  };
+  character?: {
+    findMany(args: unknown): Promise<CharacterRecord[]>;
+  };
+  worldItem?: {
+    findMany(args: unknown): Promise<WorldItemRecord[]>;
+  };
+  plotThread?: {
+    findMany(args: unknown): Promise<PlotThreadRecord[]>;
+  };
+  projectMemory?: {
+    findMany(args: unknown): Promise<ProjectMemoryRecord[]>;
+  };
+  styleProfile?: {
+    findFirst(args: unknown): Promise<StyleProfileRecord | null>;
+  };
+}
+
+async function loadProjectForContext(delegates: GenerationContextDelegates, job: GenerationJob): Promise<ProjectRecord | null> {
+  if (!delegates.project) return null;
+  return delegates.project.findFirst({
+    where: { id: job.projectId, organizationId: job.organizationId, deletedAt: null },
+    select: { id: true, title: true, styleBrief: true }
+  });
+}
+
+async function loadChapterForContext(
+  delegates: GenerationContextDelegates,
+  chapterId: string,
+  job: GenerationJob
+): Promise<ChapterContextRecord | null> {
+  if (!delegates.chapter) return null;
+  return delegates.chapter.findFirst({
+    where: { id: chapterId, organizationId: job.organizationId, projectId: job.projectId, deletedAt: null },
+    select: { id: true, chapterNo: true, title: true, outlineSummary: true }
+  });
+}
+
+async function loadCharactersForContext(
+  delegates: GenerationContextDelegates,
+  job: GenerationJob
+): Promise<CharacterRecord[]> {
+  if (!delegates.character) return [];
+  return delegates.character.findMany({
+    where: { organizationId: job.organizationId, projectId: job.projectId, status: "active", deletedAt: null },
+    orderBy: [{ roleType: "asc" }, { updatedAt: "desc" }],
+    take: 80,
+    select: {
+      id: true,
+      name: true,
+      roleType: true,
+      personality: true,
+      speechPattern: true,
+      motivation: true,
+      arc: true,
+      constraints: true
+    }
+  });
+}
+
+async function loadWorldItemsForContext(
+  delegates: GenerationContextDelegates,
+  job: GenerationJob
+): Promise<WorldItemRecord[]> {
+  if (!delegates.worldItem) return [];
+  return delegates.worldItem.findMany({
+    where: { organizationId: job.organizationId, projectId: job.projectId, status: "active", deletedAt: null },
+    orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
+    take: 120,
+    select: {
+      id: true,
+      name: true,
+      itemType: true,
+      summary: true,
+      detail: true,
+      constraints: true,
+      activationKeywords: true
+    }
+  });
+}
+
+async function loadPlotThreadsForContext(
+  delegates: GenerationContextDelegates,
+  job: GenerationJob
+): Promise<PlotThreadRecord[]> {
+  if (!delegates.plotThread) return [];
+  return delegates.plotThread.findMany({
+    where: {
+      organizationId: job.organizationId,
+      projectId: job.projectId,
+      deletedAt: null,
+      status: { in: ["planted", "progressing", "deferred"] }
+    },
+    orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
+    take: 80,
+    select: { id: true, threadType: true, title: true, description: true, status: true }
+  });
+}
+
+async function loadRecentMemoriesForContext(
+  delegates: GenerationContextDelegates,
+  job: GenerationJob
+): Promise<ProjectMemoryRecord[]> {
+  if (!delegates.projectMemory) return [];
+  return delegates.projectMemory.findMany({
+    where: {
+      organizationId: job.organizationId,
+      projectId: job.projectId,
+      status: { in: ["accepted", "proposed"] }
+    },
+    orderBy: [{ confidence: "desc" }, { createdAt: "desc" }],
+    take: 60,
+    select: { memoryType: true, content: true, scopeType: true, sourceChapterId: true }
+  });
+}
+
+async function loadStyleProfileForContext(
+  delegates: GenerationContextDelegates,
+  job: GenerationJob
+): Promise<StyleProfileRecord | null> {
+  if (!delegates.styleProfile) return null;
+  return delegates.styleProfile.findFirst({
+    where: { organizationId: job.organizationId, projectId: job.projectId, isActive: true },
+    orderBy: { updatedAt: "desc" },
+    select: { styleBrief: true, bannedWords: true, preferredWords: true, sentenceLengthProfile: true }
+  });
+}
+
+function mapStyleGuide(profile: StyleProfileRecord): StyleGuide {
+  const guide: StyleGuide = {};
+  if (profile.styleBrief) guide.brief = profile.styleBrief;
+  const banned = toStringArray(profile.bannedWords);
+  if (banned.length > 0) guide.banned = banned;
+  const preferred = toStringArray(profile.preferredWords);
+  if (preferred.length > 0) guide.preferred = preferred;
+  const sentenceTarget = parseSentenceTarget(profile.sentenceLengthProfile);
+  if (sentenceTarget) guide.sentenceTarget = sentenceTarget;
+  return guide;
+}
+
+function parseSentenceTarget(value: unknown): StyleGuide["sentenceTarget"] | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const v = value as Record<string, unknown>;
+  return typeof v.avg === "number" && typeof v.min === "number" && typeof v.max === "number"
+    ? { avg: v.avg, min: v.min, max: v.max }
+    : undefined;
+}
+
+function toStringArray(value: unknown, fallback: string[] = []): string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : fallback;
+}
+
+function compactJoin(parts: Array<string | null | undefined>): string {
+  return parts.filter((part): part is string => Boolean(part && part.trim())).join("\n");
 }
 
 function errorMessage(error: unknown, fallback: string): string {

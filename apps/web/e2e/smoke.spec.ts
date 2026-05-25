@@ -23,6 +23,7 @@ const CHAPTER_TITLE = "首章 · 故事开端";
 test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) => {
   // 1. 注册
   await page.goto("/register");
+  await page.waitForLoadState("networkidle");
   await expect(page.getByRole("heading", { name: "注册" })).toBeVisible();
   await page.locator('input[type="email"]').fill(EMAIL);
   await page.locator('input[type="text"]').first().fill(DISPLAY_NAME);
@@ -30,14 +31,14 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await page.getByRole("button", { name: "注册" }).click();
 
   // 2. 注册成功跳到 /projects
-  await page.waitForURL("**/projects", { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/projects\/?$/, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "我的作品" })).toBeVisible();
   // 顶栏显示用户名（session middleware 注入 → layout 读取）
   await expect(page.locator(".user-tag", { hasText: DISPLAY_NAME })).toBeVisible();
 
   // 3. 新建项目（向导：Step 1 基础信息 → Step 2 题材风格 → 创建）
   await page.getByRole("link", { name: "新建作品" }).click();
-  await page.waitForURL("**/projects/new", { timeout: 10_000 });
+  await expect(page).toHaveURL(/\/projects\/new\/?$/, { timeout: 10_000 });
   await expect(page.getByRole("heading", { name: "新建作品" })).toBeVisible();
 
   // Step 1：作品名称 / 标识符 / 类型（类型默认 LONG_NOVEL，跳过点击）
@@ -59,7 +60,7 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await page.getByRole("button", { name: "创建" }).click();
 
   // 4. 跳转到 workspace（URL 应是 /projects/{id}/workspace，不是 /app/...）
-  await page.waitForURL(/\/projects\/[a-f0-9-]+\/workspace$/, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/projects\/[a-f0-9-]+\/workspace\/?$/, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "章节目录" })).toBeVisible();
 
   // 5. 新建章节
@@ -72,16 +73,21 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(chapterItem).toBeVisible({ timeout: 10_000 });
   await expect(chapterItem).toHaveClass(/active/);
 
-  // 6. 触发 GENERATE_CHAPTER（AI 面板默认是激活 tab）
+  // 6. 从 AI 面板触发 balanced GENERATE_CHAPTER。
   await expect(page.getByRole("heading", { name: "AI 助手" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "均衡" })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: "生成章节" }).click();
 
-  // 7. 等待 job 类型显示为 GENERATE_CHAPTER 且状态达到 SUCCEEDED
+  // 7. 等待 GENERATE_CHAPTER 成功，并确认性能指标已展示。
   //    （先等 type 切换，避免抓到上一轮残留状态）
-  const jobTypeCell = page.locator(".job-status-card .job-status-row:has(.muted:text(\"类型\")) > span:not(.muted)");
+  const jobTypeCell = page
+    .locator(".job-status-card .job-status-row")
+    .filter({ hasText: "类型" })
+    .locator("span:not(.muted)");
   const jobStatusTag = page.locator(".tag-job").first();
   await expect(jobTypeCell).toHaveText("GENERATE_CHAPTER", { timeout: 10_000 });
   await expect(jobStatusTag).toHaveText("SUCCEEDED", { timeout: 30_000 });
+  await expect(page.locator(".performance-summary-card")).toContainText("模式 balanced", { timeout: 10_000 });
 
   // 8. 章节正文应已经被 worker 写回（fake-model 输出 > 0 字符）
   const editor = page.locator("textarea").first();
@@ -100,6 +106,15 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await extractBtn.click();
   await expect(jobTypeCell).toHaveText("EXTRACT_MEMORY", { timeout: 10_000 });
   await expect(jobStatusTag).toHaveText("SUCCEEDED", { timeout: 30_000 });
+
+  // 11. 触发手动诊断，并确认诊断摘要单独展示。
+  const diagnoseBtn = page.getByRole("button", { name: "诊断" });
+  await expect(diagnoseBtn).toBeEnabled({ timeout: 15_000 });
+  await diagnoseBtn.click();
+  await expect(jobTypeCell).toHaveText("DIAGNOSE_CHAPTER", { timeout: 10_000 });
+  await expect(jobStatusTag).toHaveText("SUCCEEDED", { timeout: 30_000 });
+  await expect(page.locator(".diagnostic-summary-card")).toContainText("读者", { timeout: 10_000 });
+  await expect(page.locator(".performance-summary-card")).toContainText("调用", { timeout: 10_000 });
 
   console.log(`✓ smoke 通过: 用户=${EMAIL} 项目=${PROJECT_TITLE}`);
 });

@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@ai-novel/db";
-import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { createFakeModel } from "./fake-model";
+import { readModelUsage, recordModelUsage } from "./usage-recorder";
 import type { GenerationJob } from "../poll";
 
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
@@ -87,7 +87,17 @@ ${chapter.content.slice(0, 8000)}
   "chapterSummary": "详细章节摘要（200字以内）"
 }`;
 
+      const started = Date.now();
       const result = await model.generate(extractPrompt);
+      const latencyMs = Date.now() - started;
+      await recordModelUsage({
+        prisma,
+        job,
+        usage: readModelUsage(model),
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        latencyMs
+      });
       const extracted = safeJson<ExtractOutput>(result.text, {
         characterChanges: [], worldFacts: [], newHooks: [],
         summary: "抽取失败", chapterSummary: ""
@@ -178,7 +188,8 @@ ${chapter.content.slice(0, 8000)}
             finishedAt: now,
             outputPreview: extracted.summary,
             inputTokens: result.inputTokens,
-            outputTokens: result.outputTokens
+            outputTokens: result.outputTokens,
+            latencyMs
           }
         });
 

@@ -56,6 +56,28 @@ describe("chapter-pipeline", () => {
     );
   });
 
+  it("uses targetEntityId when input.chapterId is absent", async () => {
+    const deps = mockDeps({
+      job: {
+        id: "j1",
+        organizationId: "org1",
+        projectId: "p1",
+        userId: "u1",
+        jobType: "GENERATE_CHAPTER",
+        input: {},
+        targetEntityType: "CHAPTER",
+        targetEntityId: "target-chapter"
+      }
+    });
+
+    await runChapterPipeline(deps);
+
+    expect(deps.buildContext).toHaveBeenCalledWith("target-chapter");
+    expect(deps.persistVersion).toHaveBeenCalledWith(
+      expect.objectContaining({ chapterId: "target-chapter" })
+    );
+  });
+
   it("skips revise step when review finds no issues", async () => {
     const deps = mockDeps({
       model: {

@@ -1,67 +1,139 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { execFileSync, spawn } from "node:child_process";
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
-/**
- * 启动 worker 子进程并等待其打印 "Worker started"，作为 Playwright globalSetup。
- * 进程引用通过 process.env.__WORKER_PID 透传给 globalTeardown。
- *
- * 失败处理：若 30s 内未看到就绪信号，抛错让 Playwright 中止整轮测试。
- */
+const require = createRequire(import.meta.url);
 
-const WORKER_CWD = join(process.cwd(), "..", "worker");
+const WEB_CWD = process.cwd();
+const WORKER_CWD = join(WEB_CWD, "..", "worker");
+const NEXT_CLI = join(dirname(require.resolve("next/package.json")), "dist", "bin", "next");
+const TSX_CLI = join(dirname(require.resolve("tsx/package.json")), "dist", "cli.mjs");
 const READY_SIGNAL = "Worker started";
-const LOG_DIR = join(process.cwd(), "test-results");
-const LOG_FILE = join(LOG_DIR, "worker.log");
+const WORKER_PID_PATTERN = /Worker started \[worker-(\d+)-/;
+const LOG_DIR = join(WEB_CWD, "test-results");
+const WEB_LOG = join(LOG_DIR, "web.log");
+const WEB_ERR = join(LOG_DIR, "web.err.log");
+const WORKER_LOG = join(LOG_DIR, "worker.log");
+const WORKER_ERR = join(LOG_DIR, "worker.err.log");
+const PID_FILE = join(LOG_DIR, "services.pid");
+const READY_TIMEOUT_MS = 30_000;
+const READY_POLL_MS = 250;
+const ROOT_URL = "http://127.0.0.1:3000";
 
-async function waitForWorkerReady(child: ChildProcess): Promise<void> {
-  mkdirSync(LOG_DIR, { recursive: true });
-  const chunks: string[] = [];
+function psQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
 
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`worker 未在 30s 内打印 "${READY_SIGNAL}"\n--- worker 日志 ---\n${chunks.join("")}`));
-    }, 30_000);
+function writePid(pid: number | undefined, existing: string[] = []): void {
+  const pids = [pid, ...existing.map((value) => Number(value))].filter((value) => Number.isFinite(value) && value > 0);
+  writeFileSync(PID_FILE, [...new Set(pids)].join("\n"));
+}
 
-    const onChunk = (data: Buffer | string) => {
-      const text = data.toString();
-      chunks.push(text);
-      if (text.includes(READY_SIGNAL)) {
-        clearTimeout(timer);
-        resolve();
+function readPidFile(): string[] {
+  try {
+    return readFileSync(PID_FILE, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((pid) => /^\d+$/.test(pid));
+  } catch {
+    return [];
+  }
+}
+
+function readCombinedLog(): string {
+  let text = "";
+  for (const file of [WEB_LOG, WEB_ERR, WORKER_LOG, WORKER_ERR]) {
+    try {
+      text += readFileSync(file, "utf8");
+    } catch {
+      // Ignore missing files during startup.
+    }
+  }
+  return text;
+}
+
+function stopProcessTree(pid: string): void {
+  try {
+    if (process.platform === "win32") {
+      execFileSync("taskkill", ["/PID", pid, "/T", "/F"], { stdio: "ignore" });
+    } else {
+      process.kill(Number(pid), "SIGTERM");
+    }
+  } catch {
+    // Best effort cleanup for failed startup.
+  }
+}
+
+async function waitForWorkerReady(): Promise<void> {
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    const log = readCombinedLog();
+    if (log.includes(READY_SIGNAL)) {
+      const match = log.match(WORKER_PID_PATTERN);
+      if (match?.[1]) {
+        const pids = readPidFile();
+        writePid(Number(match[1]), pids);
       }
-    };
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, READY_POLL_MS));
+  }
 
-    child.stdout?.on("data", onChunk);
-    child.stderr?.on("data", onChunk);
-    child.on("exit", (code) => {
-      clearTimeout(timer);
-      writeFileSync(LOG_FILE, chunks.join(""));
-      reject(new Error(`worker 异常退出 (code=${code})，日志见 ${LOG_FILE}`));
-    });
+  throw new Error(`worker did not print "${READY_SIGNAL}" within 30s\n--- worker log ---\n${readCombinedLog()}`);
+}
+
+async function waitForWebReady(): Promise<void> {
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(ROOT_URL);
+      if (response.ok) return;
+    } catch {
+      // Keep polling until the dev server is ready.
+    }
+    await new Promise((resolve) => setTimeout(resolve, READY_POLL_MS));
+  }
+
+  throw new Error(`web server did not become ready within 30s\n--- web log ---\n${readCombinedLog()}`);
+}
+
+function startDetached(command: string, args: string[], cwd: string, stdout: string, stderr: string): number {
+  const outFd = openSync(stdout, "a");
+  const errFd = openSync(stderr, "a");
+  const child = spawn(process.execPath, [command, ...args], {
+    cwd,
+    stdio: ["ignore", outFd, errFd],
+    env: process.env,
+    detached: true,
+    windowsHide: true
   });
+  closeSync(outFd);
+  closeSync(errFd);
+  child.unref();
+  return child.pid ?? 0;
 }
 
 export default async function globalSetup(): Promise<void> {
-  const isWindows = process.platform === "win32";
-  const child = spawn("pnpm", ["dev"], {
-    cwd: WORKER_CWD,
-    stdio: ["ignore", "pipe", "pipe"],
-    env: process.env,
-    shell: isWindows, // Windows 上 pnpm.cmd 需要走 shell 解析
-    windowsHide: true
-  });
+  mkdirSync(LOG_DIR, { recursive: true });
+  writeFileSync(WEB_LOG, "");
+  writeFileSync(WEB_ERR, "");
+  writeFileSync(WORKER_LOG, "");
+  writeFileSync(WORKER_ERR, "");
+  writeFileSync(PID_FILE, "");
+
+  const webPid = startDetached(NEXT_CLI, ["dev"], WEB_CWD, WEB_LOG, WEB_ERR);
+  const workerPid = startDetached(TSX_CLI, ["--env-file=../../.env", "src/index.ts"], WORKER_CWD, WORKER_LOG, WORKER_ERR);
+  writePid(webPid, [String(workerPid)]);
 
   try {
-    await waitForWorkerReady(child);
+    await Promise.all([waitForWebReady(), waitForWorkerReady()]);
   } catch (error) {
-    child.kill("SIGKILL");
+    for (const pid of readPidFile()) stopProcessTree(pid);
     throw error;
   }
 
-  // 透传 PID 给 teardown 用
-  process.env.__WORKER_PID = String(child.pid);
-  // 让子进程脱离父进程（unref），避免 Playwright 退出时被吊死
-  child.unref();
-  console.log(`[globalSetup] worker started (pid=${child.pid})`);
+  console.log(`[globalSetup] web pid=${webPid}, worker pid=${workerPid}`);
 }

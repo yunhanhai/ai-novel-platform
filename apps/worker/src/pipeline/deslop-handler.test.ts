@@ -51,6 +51,49 @@ describe("createDeslopHandler", () => {
     );
   });
 
+  it("records usage events for resolved real model calls", async () => {
+    const tx = {
+      generationStep: { create: vi.fn().mockResolvedValue({}) },
+      generationJob: { update: vi.fn().mockResolvedValue({}) }
+    };
+    const prisma = {
+      chapter: {
+        findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", content: "content", title: "test" })
+      },
+      usageEvent: { create: vi.fn().mockResolvedValue({}) },
+      $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx))
+    };
+    const resolvedModel = {
+      usage: { providerId: "provider-1", modelName: "gpt-test", billingSource: "USER_KEY" as const },
+      generate: vi.fn().mockResolvedValue({
+        text: '{"issues":[],"overallScore":98,"summary":"clean"}',
+        inputTokens: 22,
+        outputTokens: 11
+      })
+    };
+    const handler = createDeslopHandler({
+      prisma: prisma as never,
+      updateJobStatus: vi.fn().mockResolvedValue({}),
+      model: stubModel as never,
+      resolveModel: vi.fn(async () => resolvedModel) as never
+    });
+
+    await handler(baseJob);
+
+    expect(prisma.usageEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          generationJobId: "job-1",
+          providerId: "provider-1",
+          modelName: "gpt-test",
+          billingSource: "USER_KEY",
+          inputTokens: 22,
+          outputTokens: 11
+        })
+      })
+    );
+  });
+
   it("fails when chapter not found", async () => {
     const prisma = {
       chapter: { findFirst: vi.fn().mockResolvedValue(null) }

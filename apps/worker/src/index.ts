@@ -1,9 +1,6 @@
 import { prisma, claimNextJob, updateJobStatus } from "@ai-novel/db";
-import { createPoller, type JobHandler, type UpdateStatusFn } from "./poll";
-import { createGenerateChapterHandler } from "./pipeline/generate-chapter-handler";
-import { createDeslopHandler } from "./pipeline/deslop-handler";
-import { createExtractMemoryHandler } from "./pipeline/extract-memory-handler";
-import { createFakeModel } from "./pipeline/fake-model";
+import { createPoller, type UpdateStatusFn } from "./poll";
+import { createHandlers } from "./worker-handlers";
 import { resolveModelProfile, createAdapter } from "@ai-novel/model-adapters";
 import type { GenerationJob } from "./poll";
 
@@ -41,6 +38,7 @@ async function resolveModel(job: GenerationJob) {
   }
 
   const provider = profile.provider as {
+    id?: string;
     providerType: "OPENAI_COMPATIBLE" | "ANTHROPIC" | "DEEPSEEK" | "CUSTOM" | "GEMINI";
     authMode: "USER_KEY" | "PLATFORM_KEY";
     baseUrl: string | null;
@@ -49,7 +47,14 @@ async function resolveModel(job: GenerationJob) {
 
   try {
     const adapter = await createAdapter(provider, profile.modelName as string, { encryptionKey });
-    return { generate: (prompt: string) => adapter.generate(prompt) };
+    return {
+      usage: {
+        providerId: provider.id,
+        modelName: adapter.modelName,
+        billingSource: provider.authMode === "USER_KEY" ? "USER_KEY" as const : "PLATFORM" as const
+      },
+      generate: (prompt: string) => adapter.generate(prompt)
+    };
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     console.warn(`Failed to create adapter: ${msg}, falling back to fake model`);
@@ -57,26 +62,12 @@ async function resolveModel(job: GenerationJob) {
   }
 }
 
-const handlers = new Map<string, JobHandler>([
-  ["GENERATE_CHAPTER", createGenerateChapterHandler({
-    prisma,
-    updateJobStatus: updateJobStatusFn,
-    resolveModel,
-    ...(USE_FAKE_MODEL ? { model: createFakeModel() } : {})
-  })],
-  ["DESLOP", createDeslopHandler({
-    prisma,
-    updateJobStatus: updateJobStatusFn,
-    resolveModel,
-    ...(USE_FAKE_MODEL ? { model: createFakeModel() } : {})
-  })],
-  ["EXTRACT_MEMORY", createExtractMemoryHandler({
-    prisma,
-    updateJobStatus: updateJobStatusFn,
-    resolveModel,
-    ...(USE_FAKE_MODEL ? { model: createFakeModel() } : {})
-  })]
-]);
+const handlers = createHandlers({
+  prisma,
+  updateJobStatus: updateJobStatusFn,
+  resolveModel,
+  useFakeModel: USE_FAKE_MODEL
+});
 
 const poller = createPoller({
   claimNext: () =>

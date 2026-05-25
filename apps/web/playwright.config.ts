@@ -37,13 +37,5 @@ export default defineConfig({
         channel: "chromium"
       }
     }
-  ],
-  webServer: {
-    command: "pnpm dev",
-    url: "http://localhost:3000",
-    timeout: 120_000,
-    reuseExistingServer: true,
-    stdout: "pipe",
-    stderr: "pipe"
-  }
+  ]
 });

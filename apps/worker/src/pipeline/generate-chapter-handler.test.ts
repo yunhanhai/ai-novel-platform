@@ -83,6 +83,9 @@ function createPrismaStub(options: PrismaStubOptions = {}) {
       create: vi.fn().mockResolvedValue({ id: "diag-1" }),
       update: vi.fn().mockResolvedValue({})
     },
+    usageEvent: {
+      create: vi.fn().mockResolvedValue({})
+    },
     $transaction: vi.fn(async (cb: (tx: TxStub) => Promise<unknown>) => cb(tx))
   };
   return { prisma, tx };
@@ -401,6 +404,9 @@ describe("model resolution", () => {
           create: vi.fn().mockResolvedValue({ id: "step-x" }),
           update: vi.fn().mockResolvedValue({})
         },
+        usageEvent: {
+          create: vi.fn().mockResolvedValue({})
+        },
         $transaction: vi.fn(async (cb: (tx: TxStub) => Promise<unknown>) => cb(tx))
       },
       tx
@@ -431,6 +437,167 @@ describe("model resolution", () => {
     expect(tx.generationJob.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: "SUCCEEDED" })
+      })
+    );
+  });
+
+  it("records usage events for resolved real model calls", async () => {
+    const { prisma } = createPrismaForResolution();
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const resolvedModel = {
+      usage: {
+        providerId: "provider-1",
+        modelName: "gpt-test",
+        billingSource: "USER_KEY" as const
+      },
+      generate: vi.fn().mockResolvedValue({ text: "real output", inputTokens: 50, outputTokens: 30 })
+    };
+    const resolveModel = vi.fn(async () => resolvedModel);
+
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never,
+      resolveModel: resolveModel as never
+    });
+
+    await handler(baseJob);
+
+    expect(prisma.usageEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          organizationId: "org-1",
+          userId: "user-1",
+          projectId: "proj-1",
+          generationJobId: "job-1",
+          providerId: "provider-1",
+          modelName: "gpt-test",
+          billingSource: "USER_KEY",
+          inputTokens: 50,
+          outputTokens: 30,
+          latencyMs: expect.any(Number)
+        })
+      })
+    );
+  });
+
+  it("builds generation context from project assets using the performance budget", async () => {
+    const { prisma, tx } = createPrismaForResolution();
+    const projectFindFirst = vi.fn().mockResolvedValue({
+      id: "proj-1",
+      title: "星河项目",
+      styleBrief: "冷峻克制"
+    });
+    const characterFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "char-1",
+        name: "林澈",
+        roleType: "protagonist",
+        personality: "冷静",
+        speechPattern: "短句",
+        motivation: "找到星门",
+        arc: "从逃避到承担",
+        constraints: "不能暴露身份"
+      }
+    ]);
+    Object.assign(prisma, {
+      project: { findFirst: projectFindFirst },
+      character: { findMany: characterFindMany },
+      worldItem: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "world-1",
+            name: "星门",
+            itemType: "artifact",
+            summary: "远古传送装置",
+            detail: "需要三枚钥匙启动",
+            constraints: "每次开启都会留下能量痕迹",
+            activationKeywords: ["星门"]
+          }
+        ])
+      },
+      plotThread: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "thread-1",
+            threadType: "mystery",
+            title: "星门来源",
+            description: "制造者身份未知",
+            status: "progressing"
+          }
+        ])
+      },
+      projectMemory: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            memoryType: "chapter_summary",
+            content: "上一章发现星门坐标",
+            scopeType: "chapter",
+            sourceChapterId: "chapter-0"
+          }
+        ])
+      },
+      styleProfile: {
+        findFirst: vi.fn().mockResolvedValue({
+          styleBrief: "多用动作句",
+          bannedWords: ["仿佛"],
+          preferredWords: ["寒光"],
+          sentenceLengthProfile: { avg: 12, min: 6, max: 24 }
+        })
+      }
+    });
+
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const resolvedModel = {
+      generate: vi.fn()
+        .mockResolvedValueOnce({ text: '{"chapterGoal":"开启星门","sceneBeats":[],"charactersInScene":["林澈"]}', inputTokens: 50, outputTokens: 20 })
+        .mockResolvedValueOnce({ text: "林澈按下钥匙，星门亮起。", inputTokens: 60, outputTokens: 30 })
+        .mockResolvedValueOnce({ text: '{"characterChanges":[],"worldFacts":[],"newHooks":[],"summary":"ok","chapterSummary":"ok"}', inputTokens: 30, outputTokens: 10 })
+    };
+    const resolveModel = vi.fn(async () => resolvedModel);
+
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never,
+      resolveModel: resolveModel as never
+    });
+
+    await handler({
+      ...baseJob,
+      input: {
+        qualityMode: "fast",
+        performanceBudget: { maxInputTokens: 6000 }
+      }
+    });
+
+    expect(projectFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "proj-1", organizationId: "org-1" })
+      })
+    );
+    expect(characterFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ projectId: "proj-1", organizationId: "org-1", status: "active" })
+      })
+    );
+    const firstPrompt = resolvedModel.generate.mock.calls[0]?.[0] as string;
+    expect(firstPrompt).toContain("星河项目");
+    expect(firstPrompt).toContain("林澈");
+    expect(firstPrompt).toContain("星门");
+    expect(firstPrompt).not.toContain("章节生成上下文");
+    expect(tx.generationJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          output: expect.objectContaining({
+            performanceSummary: expect.objectContaining({
+              contextBudget: expect.objectContaining({
+                tokenBudget: expect.any(Number),
+                trimmedCount: expect.any(Number)
+              })
+            })
+          })
+        })
       })
     );
   });

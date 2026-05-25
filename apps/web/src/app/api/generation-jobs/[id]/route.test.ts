@@ -38,6 +38,27 @@ describe("GET /api/generation-jobs/[id]", () => {
     expect(body.data.steps).toHaveLength(1);
   });
 
+  it("maps performance and diagnostic summaries from job output", async () => {
+    p().generationJob.findFirst.mockResolvedValue({
+      id: "job-2", jobType: "DIAGNOSE_CHAPTER", status: "SUCCEEDED",
+      progress: "100", targetEntityType: "CHAPTER", targetEntityId: "ch-1",
+      errorCode: null, errorMessage: null,
+      output: {
+        performanceSummary: { qualityMode: "balanced", modelCalls: 1, inputTokens: 10, outputTokens: 20, latencyMs: 30, skippedSteps: [] },
+        diagnosticSummary: { readerScore: 88, abandonRisk: "low", hookStrength: 70, suggestions: ["keep hook"] }
+      },
+      startedAt: new Date(), finishedAt: new Date(), createdAt: new Date(),
+      steps: []
+    });
+
+    const res = await GET(new Request("http://localhost/api/generation-jobs/job-2"), routeCtx("job-2"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.performanceSummary).toMatchObject({ modelCalls: 1 });
+    expect(body.data.diagnosticSummary).toMatchObject({ readerScore: 88 });
+  });
+
   it("returns 404 when job not found", async () => {
     p().generationJob.findFirst.mockResolvedValue(null);
     const res = await GET(new Request("http://localhost/api/generation-jobs/nope"), routeCtx("nope"));

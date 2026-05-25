@@ -12,6 +12,7 @@ import { VersionsPanel } from "./versions-panel";
 import { DeslopPanel } from "./deslop-panel";
 import { OutlinePanel } from "./outline-panel";
 import type { JobSummary } from "./use-workspace-data";
+import type { QualityMode } from "@ai-novel/shared/generation/performance";
 
 type TabKey =
   | "ai" | "characters" | "world" | "threads" | "memories"
@@ -34,9 +35,10 @@ interface Props {
   projectId: string | null;
   chapterId: string | null;
   currentChapterText: string;
-  onGenerate: () => void;
+  onGenerate: (qualityMode: QualityMode) => void;
   onDeslop: () => void;
   onExtractMemory: () => void;
+  onDiagnose: () => void;
   isStarting: boolean;
   job: JobSummary | null;
   jobError: string | null;
@@ -51,6 +53,7 @@ export function WorkspaceSideTabs({
   onGenerate,
   onDeslop,
   onExtractMemory,
+  onDiagnose,
   isStarting,
   job,
   jobError,
@@ -81,6 +84,7 @@ export function WorkspaceSideTabs({
             onGenerate={onGenerate}
             onDeslop={onDeslop}
             onExtractMemory={onExtractMemory}
+            onDiagnose={onDiagnose}
             isStarting={isStarting}
             job={job}
             error={jobError}

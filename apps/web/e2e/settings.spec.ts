@@ -26,15 +26,16 @@ test("Settings 模型管理：banner / 测试连接 / 编辑 Provider / Profile 
 
   // 1. 注册并登录
   await page.goto("/register");
+  await page.waitForLoadState("networkidle");
   await page.locator('input[type="email"]').fill(EMAIL);
   await page.locator('input[type="text"]').first().fill(DISPLAY_NAME);
   await page.locator('input[type="password"]').fill(PASSWORD);
   await page.getByRole("button", { name: "注册" }).click();
-  await page.waitForURL("**/projects", { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/projects\/?$/, { timeout: 15_000 });
 
   // 2. 进入设置页
   await page.getByRole("link", { name: "设置" }).click();
-  await page.waitForURL("**/settings/models", { timeout: 10_000 });
+  await expect(page).toHaveURL(/\/settings\/models\/?$/, { timeout: 10_000 });
   await expect(page.getByRole("heading", { name: "模型设置" })).toBeVisible();
 
   // 3. Fake-model banner 应可见（USE_FAKE_MODEL=true 状态）
@@ -54,15 +55,14 @@ test("Settings 模型管理：banner / 测试连接 / 编辑 Provider / Profile 
     .toContainText(/连通成功|fake/i, { timeout: 15_000 });
 
   // 6. 编辑 seed Provider（仅改名称，apiKey 在编辑模式始终 disabled）
-  const renamedSuffix = ` · 改名${STAMP}`;
+  const renamedName = `E2E Provider ${STAMP}`;
   await firstProviderRow.getByRole("button", { name: "编辑" }).click();
   const editDialog = page.locator(".settings-form").first();
   const nameInput = editDialog.locator('input[type="text"]').first();
-  const originalName = (await nameInput.inputValue()).trim();
-  await nameInput.fill(originalName + renamedSuffix);
+  await nameInput.fill(renamedName);
   await editDialog.getByRole("button", { name: "保存" }).click();
   // 重命名后列表显示新名
-  await expect(providersList).toContainText(originalName + renamedSuffix, { timeout: 10_000 });
+  await expect(providersList).toContainText(renamedName, { timeout: 10_000 });
 
   // 7. Profile 列表区
   await expect(page.getByRole("heading", { name: "模型档案（Profile）" })).toBeVisible();

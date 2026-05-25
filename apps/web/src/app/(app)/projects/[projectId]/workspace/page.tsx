@@ -10,6 +10,7 @@ import {
   useChapterContent,
   useJobPolling
 } from "../../../../../components/workspace/use-workspace-data";
+import type { QualityMode } from "@ai-novel/shared/generation/performance";
 
 export default function WorkspacePage() {
   const params = useParams<{ projectId: string }>();
@@ -42,10 +43,10 @@ export default function WorkspacePage() {
     setActiveChapterId(id);
   }
 
-  async function handleGenerate() {
+  async function handleGenerate(qualityMode: QualityMode) {
     if (!activeChapterId) return;
     await flush();
-    await startJob(activeChapterId, "GENERATE_CHAPTER");
+    await startJob(activeChapterId, "GENERATE_CHAPTER", { qualityMode });
   }
 
   async function handleDeslop() {
@@ -58,6 +59,12 @@ export default function WorkspacePage() {
     if (!activeChapterId) return;
     await flush();
     await startJob(activeChapterId, "EXTRACT_MEMORY");
+  }
+
+  async function handleDiagnose() {
+    if (!activeChapterId) return;
+    await flush();
+    await startJob(activeChapterId, "DIAGNOSE_CHAPTER", { qualityMode: "balanced" });
   }
 
   return (
@@ -87,6 +94,7 @@ export default function WorkspacePage() {
         onGenerate={handleGenerate}
         onDeslop={handleDeslop}
         onExtractMemory={handleExtractMemory}
+        onDiagnose={handleDiagnose}
         isStarting={isStarting}
         job={job}
         jobError={jobError}

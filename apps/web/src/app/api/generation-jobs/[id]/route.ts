@@ -45,9 +45,22 @@ export async function GET(_request: Request, context: RouteContext) {
     if (!job) {
       return NextResponse.json({ success: false, error: "任务不存在" }, { status: 404 });
     }
-    return NextResponse.json({ success: true, data: job });
+    const output = isRecord(job.output) ? job.output : {};
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...job,
+        performanceSummary: output.performanceSummary,
+        diagnosticType: output.diagnosticType,
+        diagnosticSummary: output.diagnosticSummary
+      }
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "服务异常";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

@@ -150,4 +150,43 @@ describe("build-context-packet", () => {
 
     expect(prompt).toContain("仿佛");
   });
+
+  it("reports context budget usage and trimming", () => {
+    const { contextBudget } = buildContextPacket({
+      ...baseInput,
+      recentMemories: [
+        ...baseInput.recentMemories,
+        {
+          memoryType: "chapter_summary",
+          content: "X".repeat(1000),
+          scopeType: "chapter"
+        }
+      ],
+      tokenBudget: 200
+    });
+
+    expect(contextBudget).toMatchObject({
+      tokenBudget: 200,
+      includedCount: expect.any(Number),
+      trimmedCount: expect.any(Number),
+      estimatedTokens: expect.any(Number)
+    });
+    expect(contextBudget.trimmedCount).toBeGreaterThan(0);
+    expect(contextBudget.estimatedTokens).toBeLessThanOrEqual(contextBudget.tokenBudget);
+  });
+
+  it("counts mandatory context tokens in usage reporting", () => {
+    const { contextBudget } = buildContextPacket({
+      ...baseInput,
+      characters: [],
+      worldItems: [],
+      plotThreads: [],
+      recentMemories: [],
+      tokenBudget: 4000
+    });
+
+    expect(contextBudget.estimatedTokens).toBeGreaterThan(0);
+    expect(contextBudget.includedCount).toBe(0);
+    expect(contextBudget.trimmedCount).toBe(0);
+  });
 });

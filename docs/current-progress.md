@@ -428,3 +428,17 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - 真实模式整链路尚未端到端跑过(因为本地无 `ENCRYPTION_KEY` + 真实 API key)。fake 模式已 100% 覆盖,真实模式靠单测保证(单测 mock 了 createAdapter)。
 - 6 类资产 AI 草稿暴露了一个 prompt task type 数组:`draft_character / draft_world_item / draft_outline / draft_plot_thread / draft_style_profile / draft_deslop_rule`。未来若想给某类资产配专属(更便宜)模型,在 Settings → Profile 里新建对应 taskType 即可,无需改代码。
 - Dialog 组件本身可继续抽通用化用于其他场景(prompt 复用、记忆抽取等),目前仅供 6 个 asset draft 用。
+
+## 2026-05-22 Generation Performance Architecture
+
+- Added shared quality modes and performance budget helpers in `packages/shared`.
+- Extended generation job types for chapter diagnostics and added the async diagnostic worker path.
+- Web generation jobs now accept `qualityMode` and `performanceBudget`, and the workspace shows performance and diagnostic summaries.
+- The AI panel now supports Fast / Balanced / Deep generation and a manual diagnostics action.
+- E2E smoke now covers balanced generation plus manual diagnostics, and it passes in fake-model mode on Windows.
+- Diagnostic jobs now use focused worker profiles for reader simulation, style drift, and continuity checks instead of sharing one generic prompt.
+- Real model-backed worker calls now write `usage_events` with provider/model/billing source, token counts, and latency so later trend, cost, and rate-control work has a durable data source.
+- Chapter generation now builds the real context packet from project, chapter, character, world item, plot thread, memory, active style profile, and methodology records instead of a placeholder string.
+- Generation context uses a quality-mode aware token budget, prunes low-priority context before model calls, persists `performanceSummary.contextBudget`, and exposes context usage plus trimmed count in the workspace timeline.
+- Context budget usage now includes mandatory project/chapter/style/methodology prompt tokens, and the pipeline resolves `chapterId` from either job input or the canonical chapter target.
+- Local validation note: the worktree needs `apps/web/.env.local` plus a running local PostgreSQL instance for e2e and auth flows.

@@ -16,6 +16,8 @@ interface PipelineJob {
   userId: string;
   jobType: string;
   input: unknown;
+  targetEntityType?: string | null;
+  targetEntityId?: string | null;
 }
 
 interface FakeModelLike {
@@ -63,6 +65,7 @@ interface ExtractOutput {
 interface BuiltContext {
   prompt: string;
   activationReport: ActivationReport;
+  contextBudget?: PerformanceSummary["contextBudget"];
   styleGuide?: StyleGuide;
   methodologyGuide?: MethodologyGuide;
 }
@@ -77,6 +80,11 @@ export interface PipelineDeps {
     stepId: string;
     status: "SUCCEEDED" | "SKIPPED";
     outputPreview: string;
+    inputTokens: number;
+    outputTokens: number;
+    latencyMs: number;
+  }) => Promise<unknown>;
+  recordModelUsage?: (params: {
     inputTokens: number;
     outputTokens: number;
     latencyMs: number;
@@ -104,8 +112,7 @@ const EMPTY_EXTRACT: ExtractOutput = {
 
 export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   const { job, model, buildContext, persistVersion, createStep, updateStep } = deps;
-  const input = job.input as { chapterId: string };
-  const chapterId = input.chapterId;
+  const chapterId = resolvePipelineChapterId(job);
   const context = buildContext(chapterId);
   const steps: StepRecord[] = [];
   const performance = deps.performance ?? {
@@ -122,6 +129,11 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
     const preview = result.text.slice(0, opts.previewLen ?? 200);
 
     tracker.recordModelStep({
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      latencyMs: elapsed
+    });
+    await deps.recordModelUsage?.({
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
       latencyMs: elapsed
@@ -318,7 +330,7 @@ ${context.prompt}
     steps,
     extracted,
     activationReport: context.activationReport,
-    performanceSummary: tracker.summary()
+    performanceSummary: tracker.summary({ contextBudget: context.contextBudget })
   };
 }
 
@@ -334,4 +346,15 @@ function safeJson<T>(text: string, fallback: T): T {
 
 function estimatePromptTokens(prompt: string): number {
   return Math.ceil(prompt.length / 4);
+}
+
+function resolvePipelineChapterId(job: PipelineJob): string {
+  const input = (job.input ?? {}) as { chapterId?: unknown };
+  if (typeof input.chapterId === "string" && input.chapterId.length > 0) {
+    return input.chapterId;
+  }
+  if (job.targetEntityType === "CHAPTER" && job.targetEntityId) {
+    return job.targetEntityId;
+  }
+  return "";
 }

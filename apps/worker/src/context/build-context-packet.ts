@@ -71,6 +71,13 @@ export interface PacketInput {
 interface PacketResult {
   prompt: string;
   activationReport: ActivationReport;
+  contextBudget: {
+    tokenBudget: number;
+    appliedTokenBudget: number;
+    estimatedTokens: number;
+    includedCount: number;
+    trimmedCount: number;
+  };
   styleGuide?: StyleGuide;
   methodologyGuide?: MethodologyGuide;
 }
@@ -177,7 +184,8 @@ export function buildContextPacket(input: PacketInput): PacketResult {
     ...buildMethodologyBudgetItems(input.methodologyGuide)
   ];
 
-  const budget = input.tokenBudget - estimateTotalChars(sections);
+  const mandatoryTokens = estimateTotalTokens(sections);
+  const budget = input.tokenBudget - mandatoryTokens;
   const budgetCapped = Math.max(100, budget);
   const budgetResult = applyTokenBudget({ items: budgetItems, tokenBudget: budgetCapped });
 
@@ -199,6 +207,13 @@ export function buildContextPacket(input: PacketInput): PacketResult {
   return {
     prompt: sections.join("\n"),
     activationReport,
+    contextBudget: {
+      tokenBudget: input.tokenBudget,
+      appliedTokenBudget: budgetResult.tokenBudget,
+      estimatedTokens: mandatoryTokens + budgetResult.estimatedTokens,
+      includedCount: budgetResult.included.length,
+      trimmedCount: budgetResult.trimmed.length
+    },
     ...(input.styleGuide ? { styleGuide: input.styleGuide } : {}),
     ...(input.methodologyGuide ? { methodologyGuide: input.methodologyGuide } : {})
   };
@@ -247,6 +262,6 @@ function formatWorldItem(w: WorldItemInfo): string {
   return `【世界观 - ${w.itemType}】${w.name}\n${w.content}`;
 }
 
-function estimateTotalChars(sections: string[]): number {
-  return sections.reduce((sum, s) => sum + s.length, 0);
+function estimateTotalTokens(sections: string[]): number {
+  return Math.ceil(sections.reduce((sum, s) => sum + s.length, 0) / 2);
 }

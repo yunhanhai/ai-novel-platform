@@ -58,4 +58,29 @@ describe("generation performance options", () => {
       skippedSteps: [{ stepKey: "review", reason: "budget_model_calls" }]
     });
   });
+
+  it("can include context budget details in the final summary", () => {
+    const tracker = createPerformanceTracker({
+      qualityMode: "balanced",
+      budget: normalizePerformanceBudget("balanced", undefined)
+    });
+
+    expect(tracker.summary({
+      contextBudget: {
+        tokenBudget: 1000,
+        appliedTokenBudget: 800,
+        estimatedTokens: 700,
+        includedCount: 6,
+        trimmedCount: 2
+      }
+    })).toMatchObject({
+      contextBudget: {
+        tokenBudget: 1000,
+        appliedTokenBudget: 800,
+        estimatedTokens: 700,
+        includedCount: 6,
+        trimmedCount: 2
+      }
+    });
+  });
 });
