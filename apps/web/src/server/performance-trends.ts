@@ -48,6 +48,16 @@ export interface JobTypePerformanceBreakdown {
   totalTokens: number;
 }
 
+export interface ProjectPerformanceBreakdown {
+  projectId: string | null;
+  projectTitle: string;
+  projectSlug: string | null;
+  calls: number;
+  totalTokens: number;
+  averageLatencyMs: number | null;
+  p95LatencyMs: number | null;
+}
+
 export interface PerformanceTrends {
   scope: "project" | "organization";
   window: PerformanceTrendWindow;
@@ -57,6 +67,7 @@ export interface PerformanceTrends {
   byProvider: ProviderPerformanceBreakdown[];
   byBillingSource: BillingSourcePerformanceBreakdown[];
   byJobType: JobTypePerformanceBreakdown[];
+  byProject: ProjectPerformanceBreakdown[];
 }
 
 interface UsageEventForTrend {
@@ -67,6 +78,8 @@ interface UsageEventForTrend {
   estimatedCostCents: number | null;
   latencyMs: number | null;
   createdAt: Date;
+  projectId: string | null;
+  project: { id: string; title: string; slug: string } | null;
   providerId: string | null;
   provider: { name: string } | null;
   generationJob: { jobType: string } | null;
@@ -107,6 +120,8 @@ export async function getPerformanceTrends(params: {
       estimatedCostCents: true,
       latencyMs: true,
       createdAt: true,
+      projectId: true,
+      project: { select: { id: true, title: true, slug: true } },
       providerId: true,
       provider: { select: { name: true } },
       generationJob: { select: { jobType: true } }
@@ -135,6 +150,7 @@ function aggregateEvents(params: {
   const providerBuckets = new Map<string, AggregateBucket & { providerId: string | null; providerName: string | null }>();
   const billingBuckets = new Map<string, AggregateBucket>();
   const jobTypeBuckets = new Map<string, AggregateBucket>();
+  const projectBuckets = new Map<string, AggregateBucket & { projectId: string | null; projectTitle: string; projectSlug: string | null }>();
   const allLatencies: number[] = [];
   let inputTokens = 0;
   let outputTokens = 0;
@@ -164,6 +180,13 @@ function aggregateEvents(params: {
 
     addToBucket(getBucket(billingBuckets, event.billingSource), event.inputTokens, event.outputTokens, latency);
     addToBucket(getBucket(jobTypeBuckets, event.generationJob?.jobType ?? "UNKNOWN"), event.inputTokens, event.outputTokens, latency);
+    const projectKey = event.projectId ?? "__unknown_project__";
+    const projectBucket = getBucket(projectBuckets, projectKey, {
+      projectId: event.projectId,
+      projectTitle: event.project?.title ?? "未关联项目",
+      projectSlug: event.project?.slug ?? null
+    });
+    addToBucket(projectBucket, event.inputTokens, event.outputTokens, latency);
 
     // Keep totalTokens local to the loop for readability around distribution math.
     void totalTokens;
@@ -218,6 +241,17 @@ function aggregateEvents(params: {
         jobType,
         calls: bucket.calls,
         totalTokens: bucket.inputTokens + bucket.outputTokens
+      }))
+    ),
+    byProject: sortBreakdown(
+      Array.from(projectBuckets.values()).map((bucket) => ({
+        projectId: bucket.projectId,
+        projectTitle: bucket.projectTitle,
+        projectSlug: bucket.projectSlug,
+        calls: bucket.calls,
+        totalTokens: bucket.inputTokens + bucket.outputTokens,
+        averageLatencyMs: average(bucket.latencies),
+        p95LatencyMs: percentileNearestRank(bucket.latencies, 95)
       }))
     )
   };

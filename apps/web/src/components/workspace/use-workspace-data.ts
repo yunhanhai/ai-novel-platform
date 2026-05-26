@@ -257,6 +257,15 @@ export interface PerformanceTrends {
     calls: number;
     totalTokens: number;
   }>;
+  byProject: Array<{
+    projectId: string | null;
+    projectTitle: string;
+    projectSlug: string | null;
+    calls: number;
+    totalTokens: number;
+    averageLatencyMs: number | null;
+    p95LatencyMs: number | null;
+  }>;
 }
 
 interface UsePerformanceTrendsResult {

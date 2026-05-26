@@ -194,6 +194,11 @@ function DailyTrend({ trends }: { trends: PerformanceTrends }) {
 }
 
 function Breakdowns({ trends }: { trends: PerformanceTrends }) {
+  const projectItems = toBreakdownItems(trends.byProject, 5, (item) => ({
+    key: item.projectId ?? "unknown-project",
+    label: item.projectTitle,
+    meta: `${item.calls} 次 / ${formatTokens(item.totalTokens)} / P95 ${formatLatency(item.p95LatencyMs)}`
+  }));
   const modelItems = toBreakdownItems(trends.byModel, 4, (item) => ({
     key: item.modelName,
     label: item.modelName,
@@ -212,6 +217,7 @@ function Breakdowns({ trends }: { trends: PerformanceTrends }) {
 
   return (
     <div className="organization-performance-breakdowns">
+      <BreakdownList title="项目排行" items={projectItems} />
       <BreakdownList title="模型" items={modelItems} />
       <BreakdownList title="Provider" items={providerItems} />
       <BreakdownList title="任务" items={jobItems} />

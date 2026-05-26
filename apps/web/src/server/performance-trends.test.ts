@@ -9,6 +9,8 @@ type UsageEventRow = {
   estimatedCostCents: number | null;
   latencyMs: number | null;
   createdAt: Date;
+  projectId: string | null;
+  project: { id: string; title: string; slug: string } | null;
   providerId: string | null;
   provider: { name: string } | null;
   generationJob: { jobType: string } | null;
@@ -23,6 +25,8 @@ function event(overrides: Partial<UsageEventRow> = {}): UsageEventRow {
     estimatedCostCents: 3,
     latencyMs: 1000,
     createdAt: new Date("2026-05-25T10:00:00.000Z"),
+    projectId: "project-1",
+    project: { id: "project-1", title: "Project One", slug: "project-one" },
     providerId: "provider-1",
     provider: { name: "OpenAI" },
     generationJob: { jobType: "GENERATE_CHAPTER" },
@@ -199,6 +203,76 @@ describe("getPerformanceTrends", () => {
       expect.objectContaining({ jobType: "GENERATE_CHAPTER", calls: 1, totalTokens: 140 }),
       expect.objectContaining({ jobType: "DIAGNOSE_CHAPTER", calls: 1, totalTokens: 140 }),
       expect.objectContaining({ jobType: "UNKNOWN", calls: 1, totalTokens: 140 })
+    ]);
+  });
+
+  it("aggregates project rankings for organization trends", async () => {
+    const prisma = mockPrisma([
+      event({
+        projectId: "project-a",
+        project: { id: "project-a", title: "Project A", slug: "project-a" },
+        inputTokens: 100,
+        outputTokens: 20,
+        latencyMs: 100
+      }),
+      event({
+        projectId: "project-a",
+        project: { id: "project-a", title: "Project A", slug: "project-a" },
+        inputTokens: 300,
+        outputTokens: 30,
+        latencyMs: 500
+      }),
+      event({
+        projectId: "project-b",
+        project: { id: "project-b", title: "Project B", slug: "project-b" },
+        inputTokens: 700,
+        outputTokens: 40,
+        latencyMs: null
+      }),
+      event({
+        projectId: null,
+        project: null,
+        inputTokens: 10,
+        outputTokens: 5,
+        latencyMs: 50
+      })
+    ]);
+
+    const result = await getPerformanceTrends({
+      prisma,
+      organizationId: "org-1",
+      window: "7d",
+      now: new Date("2026-05-25T12:00:00.000Z")
+    });
+
+    expect(result.byProject).toEqual([
+      expect.objectContaining({
+        projectId: "project-a",
+        projectTitle: "Project A",
+        projectSlug: "project-a",
+        calls: 2,
+        totalTokens: 450,
+        averageLatencyMs: 300,
+        p95LatencyMs: 500
+      }),
+      expect.objectContaining({
+        projectId: "project-b",
+        projectTitle: "Project B",
+        projectSlug: "project-b",
+        calls: 1,
+        totalTokens: 740,
+        averageLatencyMs: null,
+        p95LatencyMs: null
+      }),
+      expect.objectContaining({
+        projectId: null,
+        projectTitle: "未关联项目",
+        projectSlug: null,
+        calls: 1,
+        totalTokens: 15,
+        averageLatencyMs: 50,
+        p95LatencyMs: 50
+      })
     ]);
   });
 

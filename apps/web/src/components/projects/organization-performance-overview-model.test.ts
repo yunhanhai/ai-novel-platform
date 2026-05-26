@@ -25,7 +25,8 @@ function trends(calls: number): PerformanceTrends {
     byModel: [],
     byProvider: [],
     byBillingSource: [],
-    byJobType: []
+    byJobType: [],
+    byProject: []
   };
 }
 
