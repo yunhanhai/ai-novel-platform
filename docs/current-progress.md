@@ -459,4 +459,11 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - The overview includes 7/30 day switching, calls/tokens/average latency/P95 tiles, daily trend rows, and model/provider/job type breakdown lists.
 - Added pure view-model tests for organization performance empty-state and stable bar-width behavior.
 - Smoke e2e now verifies the organization overview is visible immediately after registration redirects to the projects page.
-- Remaining future work: extend the backend DTO with `byProject` so the organization view can rank projects by usage, latency, and diagnostic load.
+- Remaining future work: add cost-aware alerts and deeper per-project diagnostic load analysis.
+
+## 2026-05-27 Project Ranking In Performance Trends
+
+- Extended `PerformanceTrends` with `byProject`, including project id/title/slug, calls, total tokens, average latency, and P95 latency.
+- Organization performance overview now shows a `项目排行` list so heavy or slow projects are visible before entering a workspace.
+- The ranking includes an explicit `未关联项目` bucket for usage events that are not tied to a project.
+- Smoke e2e now checks that the organization overview includes the project ranking section.
