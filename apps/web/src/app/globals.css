@@ -277,6 +277,77 @@ select {
   color: var(--muted);
 }
 
+.organization-performance-overview {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.organization-performance-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.organization-performance-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.organization-performance-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.organization-performance-header .performance-window-control {
+  width: min(220px, 100%);
+}
+
+.organization-performance-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 12px;
+}
+
+.organization-performance-metrics {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.organization-performance-breakdowns {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.organization-performance-skeleton {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 760px) {
+  .organization-performance-header {
+    display: grid;
+  }
+
+  .organization-performance-header .performance-window-control {
+    width: 100%;
+  }
+
+  .organization-performance-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .organization-performance-metrics,
+  .organization-performance-skeleton {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* New project form */
 
 .project-form {
