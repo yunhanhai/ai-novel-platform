@@ -594,6 +594,12 @@ describe("model resolution", () => {
               contextBudget: expect.objectContaining({
                 tokenBudget: expect.any(Number),
                 trimmedCount: expect.any(Number)
+              }),
+              contextFingerprint: expect.objectContaining({
+                hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+                chapterId: "chapter-1",
+                contextOptionsHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+                sourceUpdatedAt: expect.any(String)
               })
             })
           })

@@ -83,4 +83,27 @@ describe("generation performance options", () => {
       }
     });
   });
+
+  it("can include context fingerprint details in the final summary", () => {
+    const tracker = createPerformanceTracker({
+      qualityMode: "balanced",
+      budget: normalizePerformanceBudget("balanced", undefined)
+    });
+
+    expect(tracker.summary({
+      contextFingerprint: {
+        hash: "a".repeat(64),
+        chapterId: "chapter-1",
+        contextOptionsHash: "ctx-options",
+        sourceUpdatedAt: "2026-05-25T08:00:00.000Z"
+      }
+    })).toMatchObject({
+      contextFingerprint: {
+        hash: "a".repeat(64),
+        chapterId: "chapter-1",
+        contextOptionsHash: "ctx-options",
+        sourceUpdatedAt: "2026-05-25T08:00:00.000Z"
+      }
+    });
+  });
 });

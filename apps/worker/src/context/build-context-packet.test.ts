@@ -189,4 +189,35 @@ describe("build-context-packet", () => {
     expect(contextBudget.includedCount).toBe(0);
     expect(contextBudget.trimmedCount).toBe(0);
   });
+
+  it("produces a deterministic context fingerprint", () => {
+    const first = buildContextPacket({
+      ...baseInput,
+      contextOptionsHash: "ctx-options-1",
+      sourceUpdatedAt: "2026-05-25T08:00:00.000Z"
+    });
+    const second = buildContextPacket({
+      ...baseInput,
+      contextOptionsHash: "ctx-options-1",
+      sourceUpdatedAt: "2026-05-25T08:00:00.000Z"
+    });
+    const changed = buildContextPacket({
+      ...baseInput,
+      currentChapter: {
+        ...baseInput.currentChapter,
+        outlineSummary: "主角团队首次激活远古星门，并发现求救信号"
+      },
+      contextOptionsHash: "ctx-options-1",
+      sourceUpdatedAt: "2026-05-25T08:00:00.000Z"
+    });
+
+    expect(first.contextFingerprint).toEqual(second.contextFingerprint);
+    expect(first.contextFingerprint).toMatchObject({
+      chapterId: "c5",
+      contextOptionsHash: "ctx-options-1",
+      sourceUpdatedAt: "2026-05-25T08:00:00.000Z",
+      hash: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    expect(changed.contextFingerprint.hash).not.toBe(first.contextFingerprint.hash);
+  });
 });

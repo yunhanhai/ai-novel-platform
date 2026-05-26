@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { activateByKeywords, type ActivationReport, type KeywordSource } from "./keyword-activation";
 import { applyTokenBudget } from "./token-budget";
 
@@ -52,6 +53,7 @@ export interface MethodologyGuide {
   methodType: string;
   guideText: string;        // 由 renderMethodologyGuide 渲染好的短文本
   reviewCriteria?: string[]; // 检查项清单，独立保留以便 review 步直接读
+  updatedAt?: string | Date | null;
 }
 
 export interface PacketInput {
@@ -64,6 +66,8 @@ export interface PacketInput {
   plotThreads: PlotThreadInfo[];
   recentMemories: MemoryInfo[];
   tokenBudget: number;
+  contextOptionsHash?: string;
+  sourceUpdatedAt?: string | Date | null;
   styleGuide?: StyleGuide;
   methodologyGuide?: MethodologyGuide;
 }
@@ -77,6 +81,12 @@ interface PacketResult {
     estimatedTokens: number;
     includedCount: number;
     trimmedCount: number;
+  };
+  contextFingerprint: {
+    hash: string;
+    chapterId: string;
+    contextOptionsHash: string;
+    sourceUpdatedAt: string;
   };
   styleGuide?: StyleGuide;
   methodologyGuide?: MethodologyGuide;
@@ -204,8 +214,12 @@ export function buildContextPacket(input: PacketInput): PacketResult {
     }
   }
 
+  const prompt = sections.join("\n");
+  const contextOptionsHash = input.contextOptionsHash ?? stableHash({ tokenBudget: input.tokenBudget });
+  const sourceUpdatedAt = normalizeTimestamp(input.sourceUpdatedAt);
+
   return {
-    prompt: sections.join("\n"),
+    prompt,
     activationReport,
     contextBudget: {
       tokenBudget: input.tokenBudget,
@@ -213,6 +227,18 @@ export function buildContextPacket(input: PacketInput): PacketResult {
       estimatedTokens: mandatoryTokens + budgetResult.estimatedTokens,
       includedCount: budgetResult.included.length,
       trimmedCount: budgetResult.trimmed.length
+    },
+    contextFingerprint: {
+      hash: stableHash({
+        projectId: input.projectId,
+        chapterId: input.currentChapter.id,
+        contextOptionsHash,
+        sourceUpdatedAt,
+        prompt
+      }),
+      chapterId: input.currentChapter.id,
+      contextOptionsHash,
+      sourceUpdatedAt
     },
     ...(input.styleGuide ? { styleGuide: input.styleGuide } : {}),
     ...(input.methodologyGuide ? { methodologyGuide: input.methodologyGuide } : {})
@@ -264,4 +290,21 @@ function formatWorldItem(w: WorldItemInfo): string {
 
 function estimateTotalTokens(sections: string[]): number {
   return Math.ceil(sections.reduce((sum, s) => sum + s.length, 0) / 2);
+}
+
+function stableHash(value: unknown): string {
+  return createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
+}
+
+function normalizeTimestamp(value: string | Date | null | undefined): string {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string" && value.length > 0) return value;
+  return "1970-01-01T00:00:00.000Z";
 }

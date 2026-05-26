@@ -66,6 +66,7 @@ interface BuiltContext {
   prompt: string;
   activationReport: ActivationReport;
   contextBudget?: PerformanceSummary["contextBudget"];
+  contextFingerprint?: PerformanceSummary["contextFingerprint"];
   styleGuide?: StyleGuide;
   methodologyGuide?: MethodologyGuide;
 }
@@ -330,7 +331,10 @@ ${context.prompt}
     steps,
     extracted,
     activationReport: context.activationReport,
-    performanceSummary: tracker.summary({ contextBudget: context.contextBudget })
+    performanceSummary: tracker.summary({
+      contextBudget: context.contextBudget,
+      contextFingerprint: context.contextFingerprint
+    })
   };
 }
 

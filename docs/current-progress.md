@@ -441,4 +441,5 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - Chapter generation now builds the real context packet from project, chapter, character, world item, plot thread, memory, active style profile, and methodology records instead of a placeholder string.
 - Generation context uses a quality-mode aware token budget, prunes low-priority context before model calls, persists `performanceSummary.contextBudget`, and exposes context usage plus trimmed count in the workspace timeline.
 - Context budget usage now includes mandatory project/chapter/style/methodology prompt tokens, and the pipeline resolves `chapterId` from either job input or the canonical chapter target.
+- Context packets now emit a deterministic `contextFingerprint` (`hash`, `chapterId`, `contextOptionsHash`, `sourceUpdatedAt`) into `performanceSummary`, so generated chapters and diagnostics can be traced back to the exact prompt/context version used.
 - Local validation note: the worktree needs `apps/web/.env.local` plus a running local PostgreSQL instance for e2e and auth flows.

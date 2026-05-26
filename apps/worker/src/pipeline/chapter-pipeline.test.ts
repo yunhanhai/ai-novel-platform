@@ -211,4 +211,27 @@ describe("chapter-pipeline", () => {
     });
     expect(result.performanceSummary.modelCalls).toBe(2);
   });
+
+  it("carries context fingerprint into the performance summary", async () => {
+    const deps = mockDeps({
+      buildContext: vi.fn().mockReturnValue({
+        prompt: "上下文",
+        activationReport: { activated: [], totalSourcesChecked: 0, triggeredBy: "" },
+        contextFingerprint: {
+          hash: "b".repeat(64),
+          chapterId: "c5",
+          contextOptionsHash: "ctx-options",
+          sourceUpdatedAt: "2026-05-25T08:00:00.000Z"
+        }
+      })
+    });
+
+    const result = await runChapterPipeline(deps);
+
+    expect(result.performanceSummary.contextFingerprint).toMatchObject({
+      hash: "b".repeat(64),
+      chapterId: "c5",
+      contextOptionsHash: "ctx-options"
+    });
+  });
 });

@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@ai-novel/db";
+import { createHash } from "node:crypto";
 import {
   normalizePerformanceBudget,
   normalizeQualityMode,
@@ -155,13 +156,13 @@ async function loadActiveMethodology(
 ): Promise<MethodologyGuide | undefined> {
   const wm = (prisma as unknown as {
     writingMethodology?: {
-      findFirst(args: unknown): Promise<{ name: string; methodType: string; reviewCriteria: unknown; outlineMetadata: unknown } | null>;
+      findFirst(args: unknown): Promise<{ name: string; methodType: string; reviewCriteria: unknown; outlineMetadata: unknown; updatedAt?: Date | string | null } | null>;
     };
   }).writingMethodology;
   if (!wm) return undefined;
   const record = await wm.findFirst({
     where: { projectId, isActive: true },
-    select: { name: true, methodType: true, reviewCriteria: true, outlineMetadata: true }
+    select: { name: true, methodType: true, reviewCriteria: true, outlineMetadata: true, updatedAt: true }
   });
   if (!record) return undefined;
 
@@ -187,6 +188,7 @@ async function loadActiveMethodology(
     name: record.name,
     methodType: record.methodType,
     guideText,
+    ...(record.updatedAt ? { updatedAt: record.updatedAt } : {}),
     ...(reviewCriteria.length > 0 ? { reviewCriteria } : {})
   };
 }
@@ -262,6 +264,7 @@ interface ProjectRecord {
   id: string;
   title: string;
   styleBrief?: string | null;
+  updatedAt?: Date | string | null;
 }
 
 interface ChapterContextRecord {
@@ -269,6 +272,7 @@ interface ChapterContextRecord {
   chapterNo: number;
   title: string;
   outlineSummary?: string | null;
+  updatedAt?: Date | string | null;
 }
 
 interface CharacterRecord {
@@ -280,6 +284,7 @@ interface CharacterRecord {
   motivation?: string | null;
   arc?: string | null;
   constraints?: string | null;
+  updatedAt?: Date | string | null;
 }
 
 interface WorldItemRecord {
@@ -290,6 +295,7 @@ interface WorldItemRecord {
   detail?: string | null;
   constraints?: string | null;
   activationKeywords?: unknown;
+  updatedAt?: Date | string | null;
 }
 
 interface PlotThreadRecord {
@@ -298,6 +304,7 @@ interface PlotThreadRecord {
   title: string;
   description?: string | null;
   status: string;
+  updatedAt?: Date | string | null;
 }
 
 interface ProjectMemoryRecord {
@@ -305,6 +312,7 @@ interface ProjectMemoryRecord {
   content: string;
   scopeType: string;
   sourceChapterId?: string | null;
+  updatedAt?: Date | string | null;
 }
 
 interface StyleProfileRecord {
@@ -312,6 +320,7 @@ interface StyleProfileRecord {
   bannedWords?: unknown;
   preferredWords?: unknown;
   sentenceLengthProfile?: unknown;
+  updatedAt?: Date | string | null;
 }
 
 async function loadGenerationContextPacket(params: GenerationContextLoadParams) {
@@ -367,6 +376,17 @@ async function loadGenerationContextPacket(params: GenerationContextLoadParams) 
       ...(memory.sourceChapterId ? { sourceChapterId: memory.sourceChapterId } : {})
     })),
     tokenBudget: contextTokenBudget,
+    contextOptionsHash: contextOptionsHash(job, contextTokenBudget),
+    sourceUpdatedAt: latestTimestamp([
+      project?.updatedAt,
+      chapter?.updatedAt,
+      ...characters.map((character) => character.updatedAt),
+      ...worldItems.map((item) => item.updatedAt),
+      ...plotThreads.map((thread) => thread.updatedAt),
+      ...recentMemories.map((memory) => memory.updatedAt),
+      styleProfile?.updatedAt,
+      methodologyGuide?.updatedAt
+    ]),
     ...(styleProfile ? { styleGuide: mapStyleGuide(styleProfile) } : {}),
     ...(methodologyGuide ? { methodologyGuide } : {})
   });
@@ -400,7 +420,7 @@ async function loadProjectForContext(delegates: GenerationContextDelegates, job:
   if (!delegates.project) return null;
   return delegates.project.findFirst({
     where: { id: job.projectId, organizationId: job.organizationId, deletedAt: null },
-    select: { id: true, title: true, styleBrief: true }
+    select: { id: true, title: true, styleBrief: true, updatedAt: true }
   });
 }
 
@@ -412,7 +432,7 @@ async function loadChapterForContext(
   if (!delegates.chapter) return null;
   return delegates.chapter.findFirst({
     where: { id: chapterId, organizationId: job.organizationId, projectId: job.projectId, deletedAt: null },
-    select: { id: true, chapterNo: true, title: true, outlineSummary: true }
+    select: { id: true, chapterNo: true, title: true, outlineSummary: true, updatedAt: true }
   });
 }
 
@@ -433,7 +453,8 @@ async function loadCharactersForContext(
       speechPattern: true,
       motivation: true,
       arc: true,
-      constraints: true
+      constraints: true,
+      updatedAt: true
     }
   });
 }
@@ -454,7 +475,8 @@ async function loadWorldItemsForContext(
       summary: true,
       detail: true,
       constraints: true,
-      activationKeywords: true
+      activationKeywords: true,
+      updatedAt: true
     }
   });
 }
@@ -473,7 +495,7 @@ async function loadPlotThreadsForContext(
     },
     orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
     take: 80,
-    select: { id: true, threadType: true, title: true, description: true, status: true }
+    select: { id: true, threadType: true, title: true, description: true, status: true, updatedAt: true }
   });
 }
 
@@ -490,7 +512,7 @@ async function loadRecentMemoriesForContext(
     },
     orderBy: [{ confidence: "desc" }, { createdAt: "desc" }],
     take: 60,
-    select: { memoryType: true, content: true, scopeType: true, sourceChapterId: true }
+    select: { memoryType: true, content: true, scopeType: true, sourceChapterId: true, updatedAt: true }
   });
 }
 
@@ -502,7 +524,7 @@ async function loadStyleProfileForContext(
   return delegates.styleProfile.findFirst({
     where: { organizationId: job.organizationId, projectId: job.projectId, isActive: true },
     orderBy: { updatedAt: "desc" },
-    select: { styleBrief: true, bannedWords: true, preferredWords: true, sentenceLengthProfile: true }
+    select: { styleBrief: true, bannedWords: true, preferredWords: true, sentenceLengthProfile: true, updatedAt: true }
   });
 }
 
@@ -532,6 +554,34 @@ function toStringArray(value: unknown, fallback: string[] = []): string[] {
 
 function compactJoin(parts: Array<string | null | undefined>): string {
   return parts.filter((part): part is string => Boolean(part && part.trim())).join("\n");
+}
+
+function contextOptionsHash(job: GenerationJob, tokenBudget: number): string {
+  const input = (job.input ?? {}) as { contextOptions?: unknown };
+  return stableHash({
+    tokenBudget,
+    contextOptions: input.contextOptions ?? null
+  });
+}
+
+function latestTimestamp(values: Array<Date | string | null | undefined>): string {
+  const latest = values.reduce<number>((max, value) => {
+    if (!value) return max;
+    const time = value instanceof Date ? value.getTime() : Date.parse(value);
+    return Number.isFinite(time) && time > max ? time : max;
+  }, 0);
+  return new Date(latest).toISOString();
+}
+
+function stableHash(value: unknown): string {
+  return createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
 }
 
 function errorMessage(error: unknown, fallback: string): string {

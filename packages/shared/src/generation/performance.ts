@@ -43,6 +43,12 @@ export interface PerformanceSummary {
     includedCount: number;
     trimmedCount: number;
   };
+  contextFingerprint?: {
+    hash: string;
+    chapterId: string;
+    contextOptionsHash: string;
+    sourceUpdatedAt: string;
+  };
 }
 
 const DEFAULT_BUDGETS: Record<QualityMode, PerformanceBudget> = {
@@ -106,7 +112,7 @@ export function createPerformanceTracker(params: {
     recordSkippedStep(stepKey: string, reason: BudgetSkipReason) {
       skippedSteps.push({ stepKey, reason });
     },
-    summary(extra?: Pick<PerformanceSummary, "contextBudget">): PerformanceSummary {
+    summary(extra?: Pick<PerformanceSummary, "contextBudget" | "contextFingerprint">): PerformanceSummary {
       const summary: PerformanceSummary = {
         qualityMode: params.qualityMode,
         budget: params.budget,
@@ -118,6 +124,9 @@ export function createPerformanceTracker(params: {
       };
       if (extra?.contextBudget) {
         summary.contextBudget = extra.contextBudget;
+      }
+      if (extra?.contextFingerprint) {
+        summary.contextFingerprint = extra.contextFingerprint;
       }
       return summary;
     }
