@@ -452,3 +452,11 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - UI implementation follows the `ui-ux-pro-max` direction for operational dashboards: dense layout, readable contrast, visible controls, stable async space, and no decorative chart dependency.
 - E2E smoke now opens the `性能` tab and accepts either populated metrics or the empty-state scaffold, because fake-model usage data can be sparse.
 - Current limitation: organization-wide UI and cost estimation beyond stored `estimatedCostCents` are intentionally left for a later phase.
+
+## 2026-05-27 Organization Performance Overview
+
+- Added a `/projects` page `全部项目性能` overview backed by the existing organization-scoped `/api/performance-trends` route.
+- The overview includes 7/30 day switching, calls/tokens/average latency/P95 tiles, daily trend rows, and model/provider/job type breakdown lists.
+- Added pure view-model tests for organization performance empty-state and stable bar-width behavior.
+- Smoke e2e now verifies the organization overview is visible immediately after registration redirects to the projects page.
+- Remaining future work: extend the backend DTO with `byProject` so the organization view can rank projects by usage, latency, and diagnostic load.
