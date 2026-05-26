@@ -11,15 +11,17 @@ import { MemoriesPanel } from "./memories-panel";
 import { VersionsPanel } from "./versions-panel";
 import { DeslopPanel } from "./deslop-panel";
 import { OutlinePanel } from "./outline-panel";
+import { PerformancePanel } from "./performance-panel";
 import type { JobSummary } from "./use-workspace-data";
 import type { QualityMode } from "@ai-novel/shared/generation/performance";
 
 type TabKey =
   | "ai" | "characters" | "world" | "threads" | "memories"
-  | "style" | "methodology" | "versions" | "deslop" | "outline";
+  | "style" | "methodology" | "versions" | "deslop" | "outline" | "performance";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "ai", label: "AI" },
+  { key: "performance", label: "性能" },
   { key: "outline", label: "大纲" },
   { key: "versions", label: "版本" },
   { key: "deslop", label: "去 AI 味" },
@@ -91,6 +93,7 @@ export function WorkspaceSideTabs({
             canGenerate={canGenerate}
           />
         )}
+        {active === "performance" && <PerformancePanel projectId={projectId} />}
         {active === "versions" && (
           <VersionsPanel chapterId={chapterId} onRestored={onChapterContentRefreshed} />
         )}
