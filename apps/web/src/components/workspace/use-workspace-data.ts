@@ -212,6 +212,122 @@ export interface JobSummary {
   }>;
 }
 
+export type PerformanceTrendWindow = "7d" | "30d";
+
+export interface PerformanceTrends {
+  scope: "project" | "organization";
+  window: PerformanceTrendWindow;
+  totals: {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    latencySamples: number;
+    averageLatencyMs: number | null;
+    p50LatencyMs: number | null;
+    p95LatencyMs: number | null;
+    estimatedCostCents: number | null;
+  };
+  daily: Array<{
+    date: string;
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    averageLatencyMs: number | null;
+  }>;
+  byModel: Array<{
+    modelName: string;
+    calls: number;
+    totalTokens: number;
+    averageLatencyMs: number | null;
+  }>;
+  byProvider: Array<{
+    providerId: string | null;
+    providerName: string | null;
+    calls: number;
+    totalTokens: number;
+  }>;
+  byBillingSource: Array<{
+    billingSource: string;
+    calls: number;
+    totalTokens: number;
+  }>;
+  byJobType: Array<{
+    jobType: string;
+    calls: number;
+    totalTokens: number;
+  }>;
+}
+
+interface UsePerformanceTrendsResult {
+  trends: PerformanceTrends | null;
+  isLoading: boolean;
+  error: string | null;
+  reload: () => Promise<void>;
+}
+
+export function usePerformanceTrends(projectId: string | null, window: PerformanceTrendWindow): UsePerformanceTrendsResult {
+  const [trends, setTrends] = useState<PerformanceTrends | null>(null);
+  const [isLoading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchTrends = useCallback(async (id: string) => {
+    const res = await fetch(`/api/projects/${id}/performance-trends?window=${window}`);
+    const json = (await res.json()) as ApiEnvelope<PerformanceTrends>;
+    if (!res.ok || !json.success || !json.data) {
+      throw new Error(json.error ?? `加载性能趋势失败 (${res.status})`);
+    }
+    return json.data;
+  }, [window]);
+
+  const reload = useCallback(async () => {
+    if (!projectId) {
+      setTrends(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      setTrends(await fetchTrends(projectId));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "加载性能趋势失败");
+      setTrends(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchTrends, projectId]);
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      if (!projectId) {
+        if (active) setTrends(null);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await fetchTrends(projectId);
+        if (active) setTrends(data);
+      } catch (err: unknown) {
+        if (active) {
+          setError(err instanceof Error ? err.message : "加载性能趋势失败");
+          setTrends(null);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [fetchTrends, projectId]);
+
+  return { trends, isLoading, error, reload };
+}
+
 interface UseJobPollingResult {
   job: JobSummary | null;
   startJob: (chapterId: string, jobType?: string, options?: { qualityMode?: QualityMode }) => Promise<JobSummary | null>;
