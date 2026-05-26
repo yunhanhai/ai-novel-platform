@@ -443,3 +443,12 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - Context budget usage now includes mandatory project/chapter/style/methodology prompt tokens, and the pipeline resolves `chapterId` from either job input or the canonical chapter target.
 - Context packets now emit a deterministic `contextFingerprint` (`hash`, `chapterId`, `contextOptionsHash`, `sourceUpdatedAt`) into `performanceSummary`, so generated chapters and diagnostics can be traced back to the exact prompt/context version used.
 - Local validation note: the worktree needs `apps/web/.env.local` plus a running local PostgreSQL instance for e2e and auth flows.
+
+## 2026-05-26 Performance Trends Observability
+
+- Added `usage_events` trend aggregation for project and organization scopes, including daily buckets, totals, latency p50/p95, model/provider/billing/job type breakdowns, and empty-data handling.
+- Added `GET /api/projects/[projectId]/performance-trends` for the workspace and `GET /api/performance-trends` as the reusable organization-level backend route for a later global dashboard.
+- Added a workspace `性能` tab with a compact project performance panel: 7/30 day window switch, stable metric tiles, daily rows, and distribution lists.
+- UI implementation follows the `ui-ux-pro-max` direction for operational dashboards: dense layout, readable contrast, visible controls, stable async space, and no decorative chart dependency.
+- E2E smoke now opens the `性能` tab and accepts either populated metrics or the empty-state scaffold, because fake-model usage data can be sparse.
+- Current limitation: organization-wide UI and cost estimation beyond stored `estimatedCostCents` are intentionally left for a later phase.

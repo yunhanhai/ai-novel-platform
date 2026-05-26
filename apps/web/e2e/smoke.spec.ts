@@ -116,5 +116,10 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(page.locator(".diagnostic-summary-card")).toContainText("读者", { timeout: 10_000 });
   await expect(page.locator(".performance-summary-card")).toContainText("调用", { timeout: 10_000 });
 
+  // 12. 打开项目性能趋势面板。fake-model 下 usage 可能为空，但面板结构必须可用。
+  await page.getByRole("tab", { name: "性能" }).click();
+  await expect(page.getByRole("heading", { name: "性能趋势" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(".performance-metric-grid, .performance-empty").first()).toBeVisible({ timeout: 10_000 });
+
   console.log(`✓ smoke 通过: 用户=${EMAIL} 项目=${PROJECT_TITLE}`);
 });
