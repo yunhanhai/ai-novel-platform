@@ -58,6 +58,17 @@ export interface ProjectPerformanceBreakdown {
   p95LatencyMs: number | null;
 }
 
+export interface PerformanceInsight {
+  id: string;
+  severity: "info" | "warning" | "critical";
+  category: "data" | "cost" | "latency" | "tokens" | "usage";
+  title: string;
+  detail: string;
+  targetProjectId?: string | null;
+  targetProjectTitle?: string;
+  metricLabel?: string;
+}
+
 export interface PerformanceTrends {
   scope: "project" | "organization";
   window: PerformanceTrendWindow;
@@ -68,6 +79,7 @@ export interface PerformanceTrends {
   byBillingSource: BillingSourcePerformanceBreakdown[];
   byJobType: JobTypePerformanceBreakdown[];
   byProject: ProjectPerformanceBreakdown[];
+  insights: PerformanceInsight[];
 }
 
 interface UsageEventForTrend {
@@ -192,20 +204,33 @@ function aggregateEvents(params: {
     void totalTokens;
   }
 
+  const totals: PerformanceTrendTotals = {
+    calls: params.events.length,
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    latencySamples: allLatencies.length,
+    averageLatencyMs: average(allLatencies),
+    p50LatencyMs: percentileNearestRank(allLatencies, 50),
+    p95LatencyMs: percentileNearestRank(allLatencies, 95),
+    estimatedCostCents: hasCost ? estimatedCostCents : null
+  };
+  const byProject = sortBreakdown(
+    Array.from(projectBuckets.values()).map((bucket) => ({
+      projectId: bucket.projectId,
+      projectTitle: bucket.projectTitle,
+      projectSlug: bucket.projectSlug,
+      calls: bucket.calls,
+      totalTokens: bucket.inputTokens + bucket.outputTokens,
+      averageLatencyMs: average(bucket.latencies),
+      p95LatencyMs: percentileNearestRank(bucket.latencies, 95)
+    }))
+  );
+
   return {
     scope: params.scope,
     window: params.window,
-    totals: {
-      calls: params.events.length,
-      inputTokens,
-      outputTokens,
-      totalTokens: inputTokens + outputTokens,
-      latencySamples: allLatencies.length,
-      averageLatencyMs: average(allLatencies),
-      p50LatencyMs: percentileNearestRank(allLatencies, 50),
-      p95LatencyMs: percentileNearestRank(allLatencies, 95),
-      estimatedCostCents: hasCost ? estimatedCostCents : null
-    },
+    totals,
     daily: Array.from(dailyBuckets.entries()).map(([date, bucket]) => ({
       date,
       calls: bucket.calls,
@@ -243,18 +268,88 @@ function aggregateEvents(params: {
         totalTokens: bucket.inputTokens + bucket.outputTokens
       }))
     ),
-    byProject: sortBreakdown(
-      Array.from(projectBuckets.values()).map((bucket) => ({
-        projectId: bucket.projectId,
-        projectTitle: bucket.projectTitle,
-        projectSlug: bucket.projectSlug,
-        calls: bucket.calls,
-        totalTokens: bucket.inputTokens + bucket.outputTokens,
-        averageLatencyMs: average(bucket.latencies),
-        p95LatencyMs: percentileNearestRank(bucket.latencies, 95)
-      }))
-    )
+    byProject,
+    insights: buildInsights(totals, byProject)
   };
+}
+
+function buildInsights(totals: PerformanceTrendTotals, byProject: ProjectPerformanceBreakdown[]): PerformanceInsight[] {
+  const insights: PerformanceInsight[] = [];
+
+  if (totals.calls === 0) {
+    insights.push({
+      id: "no_data",
+      severity: "info",
+      category: "data",
+      title: "暂无性能数据",
+      detail: "当前时间窗口还没有模型调用记录。"
+    });
+    return insights;
+  }
+
+  if (totals.estimatedCostCents === null) {
+    insights.push({
+      id: "missing_cost_data",
+      severity: "info",
+      category: "cost",
+      title: "缺少成本数据",
+      detail: "已有调用记录，但没有可汇总的成本字段；成本视图会暂时不完整。"
+    });
+  }
+
+  const slowProject = byProject.find((project) => (project.p95LatencyMs ?? 0) >= 15_000);
+  if (slowProject) {
+    const p95 = slowProject.p95LatencyMs ?? 0;
+    insights.push({
+      id: "high_latency_project",
+      severity: p95 >= 30_000 ? "critical" : "warning",
+      category: "latency",
+      title: "项目延迟偏高",
+      detail: `${slowProject.projectTitle} 的 P95 延迟已明显偏高，建议检查模型、上下文预算或生成模式。`,
+      targetProjectId: slowProject.projectId,
+      targetProjectTitle: slowProject.projectTitle,
+      metricLabel: `P95 ${p95}ms`
+    });
+  }
+
+  const heavyTokenProject = byProject.find((project) => project.totalTokens >= 50_000);
+  if (heavyTokenProject) {
+    insights.push({
+      id: "high_token_project",
+      severity: heavyTokenProject.totalTokens >= 150_000 ? "critical" : "warning",
+      category: "tokens",
+      title: "项目 token 消耗偏高",
+      detail: `${heavyTokenProject.projectTitle} 在当前窗口消耗较多 tokens，建议关注上下文裁剪和 deep 模式使用频率。`,
+      targetProjectId: heavyTokenProject.projectId,
+      targetProjectTitle: heavyTokenProject.projectTitle,
+      metricLabel: `${heavyTokenProject.totalTokens} tokens`
+    });
+  }
+
+  const topProject = byProject[0];
+  if (topProject && totals.calls >= 3 && topProject.calls / totals.calls >= 0.6) {
+    insights.push({
+      id: "concentrated_usage",
+      severity: "warning",
+      category: "usage",
+      title: "调用集中在单一项目",
+      detail: `${topProject.projectTitle} 占用了大部分调用量，组织级趋势可能主要由它驱动。`,
+      targetProjectId: topProject.projectId,
+      targetProjectTitle: topProject.projectTitle,
+      metricLabel: `${topProject.calls}/${totals.calls} 次`
+    });
+  }
+
+  return sortInsights(insights).slice(0, 5);
+}
+
+function sortInsights(insights: PerformanceInsight[]): PerformanceInsight[] {
+  const weight: Record<PerformanceInsight["severity"], number> = {
+    critical: 0,
+    warning: 1,
+    info: 2
+  };
+  return [...insights].sort((a, b) => weight[a.severity] - weight[b.severity]);
 }
 
 function initializeDailyBuckets(start: Date, days: number): Map<string, AggregateBucket> {

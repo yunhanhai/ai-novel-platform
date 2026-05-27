@@ -266,6 +266,16 @@ export interface PerformanceTrends {
     averageLatencyMs: number | null;
     p95LatencyMs: number | null;
   }>;
+  insights: Array<{
+    id: string;
+    severity: "info" | "warning" | "critical";
+    category: "data" | "cost" | "latency" | "tokens" | "usage";
+    title: string;
+    detail: string;
+    targetProjectId?: string | null;
+    targetProjectTitle?: string;
+    metricLabel?: string;
+  }>;
 }
 
 interface UsePerformanceTrendsResult {

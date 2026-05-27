@@ -137,6 +137,7 @@ export function OrganizationPerformanceOverview({ enabled }: Props) {
       {trends && !isLoading && !error && (
         <div className="organization-performance-layout">
           <MetricGrid trends={trends} />
+          <Insights trends={trends} />
           <DailyTrend trends={trends} />
           <Breakdowns trends={trends} />
         </div>
@@ -162,6 +163,35 @@ function Metric({ label, value }: { label: string; value: string }) {
       <span className="muted">{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function Insights({ trends }: { trends: PerformanceTrends }) {
+  const insights = trends.insights ?? [];
+
+  return (
+    <section className="performance-section organization-performance-insights" aria-label="需要关注">
+      <div className="performance-section-heading">
+        <h4>需要关注</h4>
+        <span className="muted">{insights.length} 项</span>
+      </div>
+      {insights.length === 0 ? (
+        <p className="performance-empty muted">当前窗口没有明显性能异常。</p>
+      ) : (
+        <ul className="performance-insight-list">
+          {insights.map((insight) => (
+            <li key={`${insight.id}-${insight.targetProjectId ?? "global"}`} className={`performance-insight performance-insight-${insight.severity}`}>
+              <span className="performance-insight-severity">{labelSeverity(insight.severity)}</span>
+              <div>
+                <strong>{insight.title}</strong>
+                <p className="muted">{insight.detail}</p>
+              </div>
+              {insight.metricLabel && <span className="performance-insight-metric">{insight.metricLabel}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -243,6 +273,15 @@ function BreakdownList({ title, items }: { title: string; items: Array<{ key: st
       )}
     </section>
   );
+}
+
+function labelSeverity(severity: "info" | "warning" | "critical"): string {
+  const labels = {
+    info: "提示",
+    warning: "关注",
+    critical: "紧急"
+  };
+  return labels[severity];
 }
 
 function labelJobType(jobType: string): string {

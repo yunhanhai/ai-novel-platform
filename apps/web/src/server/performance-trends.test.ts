@@ -291,4 +291,89 @@ describe("getPerformanceTrends", () => {
 
     expect(result.totals.estimatedCostCents).toBeNull();
   });
+
+  it("emits a no-data insight when no usage exists", async () => {
+    const prisma = mockPrisma([]);
+
+    const result = await getPerformanceTrends({
+      prisma,
+      organizationId: "org-1",
+      window: "7d",
+      now: new Date("2026-05-25T12:00:00.000Z")
+    });
+
+    expect(result.insights).toContainEqual(
+      expect.objectContaining({
+        id: "no_data",
+        severity: "info",
+        category: "data"
+      })
+    );
+  });
+
+  it("emits missing cost and project health insights", async () => {
+    const prisma = mockPrisma([
+      event({
+        projectId: "slow",
+        project: { id: "slow", title: "Slow Project", slug: "slow-project" },
+        inputTokens: 80_000,
+        outputTokens: 20_000,
+        estimatedCostCents: null,
+        latencyMs: 40_000
+      }),
+      event({
+        projectId: "slow",
+        project: { id: "slow", title: "Slow Project", slug: "slow-project" },
+        inputTokens: 70_000,
+        outputTokens: 20_000,
+        estimatedCostCents: null,
+        latencyMs: 35_000
+      }),
+      event({
+        projectId: "other",
+        project: { id: "other", title: "Other Project", slug: "other-project" },
+        inputTokens: 500,
+        outputTokens: 100,
+        estimatedCostCents: null,
+        latencyMs: 800
+      })
+    ]);
+
+    const result = await getPerformanceTrends({
+      prisma,
+      organizationId: "org-1",
+      window: "7d",
+      now: new Date("2026-05-25T12:00:00.000Z")
+    });
+
+    expect(result.insights).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "missing_cost_data",
+          severity: "info",
+          category: "cost"
+        }),
+        expect.objectContaining({
+          id: "high_latency_project",
+          severity: "critical",
+          category: "latency",
+          targetProjectId: "slow",
+          metricLabel: "P95 40000ms"
+        }),
+        expect.objectContaining({
+          id: "high_token_project",
+          severity: "critical",
+          category: "tokens",
+          targetProjectId: "slow",
+          metricLabel: "190000 tokens"
+        }),
+        expect.objectContaining({
+          id: "concentrated_usage",
+          severity: "warning",
+          category: "usage",
+          targetProjectId: "slow"
+        })
+      ])
+    );
+  });
 });

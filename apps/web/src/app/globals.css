@@ -319,6 +319,10 @@ select {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.organization-performance-insights {
+  grid-column: 1 / -1;
+}
+
 .organization-performance-breakdowns {
   display: grid;
   gap: 10px;
@@ -1427,6 +1431,66 @@ select {
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
+}
+
+.performance-insight-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.performance-insight {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 48px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+}
+
+.performance-insight strong {
+  display: block;
+  font-size: 12px;
+}
+
+.performance-insight p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.performance-insight-severity {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.performance-insight-warning .performance-insight-severity {
+  background: #fff3e0;
+  color: var(--warning);
+}
+
+.performance-insight-critical .performance-insight-severity {
+  background: #fdecea;
+  color: #b3261e;
+}
+
+.performance-insight-metric {
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .performance-breakdown-list span:first-child {
