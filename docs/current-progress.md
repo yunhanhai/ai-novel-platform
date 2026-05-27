@@ -467,3 +467,10 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - Organization performance overview now shows a `项目排行` list so heavy or slow projects are visible before entering a workspace.
 - The ranking includes an explicit `未关联项目` bucket for usage events that are not tied to a project.
 - Smoke e2e now checks that the organization overview includes the project ranking section.
+
+## 2026-05-27 Performance Health Insights
+
+- Added deterministic `PerformanceTrends.insights` generated from existing trend data, with no new DB storage or estimated cost fabrication.
+- Insight rules cover no usage data, missing cost data, high project P95 latency, high token consumption, and concentrated project usage.
+- The `/projects` organization performance overview now shows a `需要关注` section above trend and ranking details.
+- Smoke e2e now verifies the organization overview includes both the health insight section and project ranking.

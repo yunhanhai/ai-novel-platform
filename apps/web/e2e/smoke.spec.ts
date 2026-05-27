@@ -37,6 +37,7 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(page.locator(".user-tag", { hasText: DISPLAY_NAME })).toBeVisible();
   await expect(page.getByRole("heading", { name: "全部项目性能" })).toBeVisible({ timeout: 10_000 });
   await expect(page.locator(".organization-performance-overview")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: "需要关注" })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("heading", { name: "项目排行" })).toBeVisible({ timeout: 10_000 });
 
   // 3. 新建项目（向导：Step 1 基础信息 → Step 2 题材风格 → 创建）
