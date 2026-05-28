@@ -32,6 +32,7 @@ interface ClaimParams {
   organizationId: string;
   lockKey: string;
   leaseDurationMs: number;
+  now?: Date;
   prisma: PrismaClient;
 }
 
@@ -63,6 +64,36 @@ interface UpdateStepParams {
   prisma: PrismaClient;
 }
 
+interface ScheduleJobRetryParams {
+  jobId: string;
+  attemptCount: number;
+  errorCode: string;
+  errorMessage: string;
+  now?: Date;
+  prisma: PrismaClient;
+}
+
+interface MarkJobFailedParams {
+  jobId: string;
+  errorCode: string;
+  errorMessage: string;
+  now?: Date;
+  prisma: PrismaClient;
+}
+
+interface RecoverExpiredJobLeasesParams {
+  organizationId: string;
+  now?: Date;
+  limit?: number;
+  prisma: PrismaClient;
+}
+
+interface RecoverableJob {
+  id: string;
+  attemptCount: number;
+  maxAttempts: number;
+}
+
 export async function createJob(params: CreateJobParams) {
   const { organizationId, projectId, userId, jobType, input, modelProfileId, targetEntityType, targetEntityId, prisma } = params;
 
@@ -70,6 +101,9 @@ export async function createJob(params: CreateJobParams) {
     data: {
       organizationId, projectId, userId, jobType, input,
       status: "QUEUED", progress: "0",
+      attemptCount: 0,
+      maxAttempts: 3,
+      nextRunAt: null,
       ...(modelProfileId ? { modelProfileId } : {}),
       ...(targetEntityType ? { targetEntityType } : {}),
       ...(targetEntityId ? { targetEntityId } : {})
@@ -77,15 +111,15 @@ export async function createJob(params: CreateJobParams) {
   });
 }
 
-export async function claimNextJob({ organizationId, lockKey, leaseDurationMs, prisma }: ClaimParams) {
+export async function claimNextJob({ organizationId, lockKey, leaseDurationMs, now = new Date(), prisma }: ClaimParams) {
   return prisma.$transaction(async (tx: Tx) => {
     const job = await tx.generationJob.findFirst({
       where: {
         organizationId,
         status: "QUEUED",
         OR: [
-          { leaseExpiresAt: null },
-          { leaseExpiresAt: { lt: new Date() } }
+          { nextRunAt: null },
+          { nextRunAt: { lte: now } }
         ]
       },
       orderBy: { createdAt: "asc" }
@@ -93,11 +127,11 @@ export async function claimNextJob({ organizationId, lockKey, leaseDurationMs, p
 
     if (!job) return null;
 
-    const leaseExpiresAt = new Date(Date.now() + leaseDurationMs);
+    const leaseExpiresAt = new Date(now.getTime() + leaseDurationMs);
 
     return tx.generationJob.update({
       where: { id: job.id },
-      data: { status: "RUNNING", lockKey, leaseExpiresAt, startedAt: new Date() }
+      data: { status: "RUNNING", lockKey, leaseExpiresAt, startedAt: now }
     });
   });
 }
@@ -124,6 +158,105 @@ export async function updateJobStatus({ jobId, status, output, errorCode, errorM
       ...(errorMessage !== undefined ? { errorMessage } : {})
     }
   });
+}
+
+export function computeRetryDelayMs(attemptNumber: number): number {
+  if (attemptNumber <= 1) return 10_000;
+  if (attemptNumber === 2) return 30_000;
+  return 120_000;
+}
+
+export async function scheduleJobRetry({
+  jobId,
+  attemptCount,
+  errorCode,
+  errorMessage,
+  now = new Date(),
+  prisma
+}: ScheduleJobRetryParams) {
+  const nextAttempt = attemptCount + 1;
+  const nextRunAt = new Date(now.getTime() + computeRetryDelayMs(nextAttempt));
+
+  return prisma.generationJob.update({
+    where: { id: jobId },
+    data: {
+      status: "QUEUED",
+      attemptCount: { increment: 1 },
+      nextRunAt,
+      lockKey: null,
+      leaseExpiresAt: null,
+      startedAt: null,
+      errorCode,
+      errorMessage
+    }
+  });
+}
+
+export async function markJobFailed({
+  jobId,
+  errorCode,
+  errorMessage,
+  now = new Date(),
+  prisma
+}: MarkJobFailedParams) {
+  return prisma.generationJob.update({
+    where: { id: jobId },
+    data: {
+      status: "FAILED",
+      finishedAt: now,
+      lockKey: null,
+      leaseExpiresAt: null,
+      nextRunAt: null,
+      errorCode,
+      errorMessage
+    }
+  });
+}
+
+export async function recoverExpiredJobLeases({
+  organizationId,
+  now = new Date(),
+  limit = 10,
+  prisma
+}: RecoverExpiredJobLeasesParams): Promise<{ recovered: number; failed: number }> {
+  const expired = await prisma.generationJob.findMany({
+    where: {
+      organizationId,
+      status: "RUNNING",
+      leaseExpiresAt: { lt: now }
+    },
+    orderBy: { leaseExpiresAt: "asc" },
+    take: limit
+  });
+
+  let recovered = 0;
+  let failed = 0;
+
+  for (const job of expired as RecoverableJob[]) {
+    const nextAttempt = job.attemptCount + 1;
+    if (nextAttempt >= job.maxAttempts) {
+      await markJobFailed({
+        jobId: job.id,
+        errorCode: "LEASE_EXPIRED",
+        errorMessage: "Worker lease expired and retry attempts are exhausted",
+        now,
+        prisma
+      });
+      failed += 1;
+    } else {
+      await scheduleJobRetry({
+        jobId: job.id,
+        attemptCount: job.attemptCount,
+        errorCode: "LEASE_EXPIRED",
+        errorMessage: "Worker lease expired before the job completed",
+        now,
+        prisma
+      });
+      recovered += 1;
+    }
+  }
+
+  return { recovered, failed };
 }
 
 export async function createStep({ organizationId, jobId, stepKey, modelProfileId, prisma }: CreateStepParams) {

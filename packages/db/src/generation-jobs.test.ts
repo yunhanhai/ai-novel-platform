@@ -1,11 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
-import { createJob, claimNextJob, releaseJobLease, updateJobStatus, createStep, updateStep } from "./generation-jobs";
+import {
+  createJob,
+  claimNextJob,
+  releaseJobLease,
+  updateJobStatus,
+  createStep,
+  updateStep,
+  computeRetryDelayMs,
+  scheduleJobRetry,
+  markJobFailed,
+  recoverExpiredJobLeases
+} from "./generation-jobs";
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
   return {
     generationJob: {
       create: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn()
     },
     generationStep: {
@@ -24,6 +36,7 @@ const job = {
   status: "QUEUED", input: {}, output: null,
   errorCode: null, errorMessage: null, progress: "0",
   lockKey: null, leaseExpiresAt: null,
+  attemptCount: 0, maxAttempts: 3, nextRunAt: null,
   startedAt: null, finishedAt: null, createdAt: new Date()
 };
 
@@ -38,7 +51,8 @@ const step = {
 describe("generation-jobs", () => {
   describe("createJob", () => {
     it("creates a queued generation job", async () => {
-      const prisma = mockPrisma({ generationJob: { create: vi.fn().mockResolvedValue(job) } });
+      const createMock = vi.fn().mockResolvedValue(job);
+      const prisma = mockPrisma({ generationJob: { create: createMock } });
 
       const result = await createJob({
         organizationId: "org1", projectId: "p1", userId: "u1",
@@ -48,6 +62,15 @@ describe("generation-jobs", () => {
 
       expect(result.status).toBe("QUEUED");
       expect(result.jobType).toBe("GENERATE_CHAPTER");
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            attemptCount: 0,
+            maxAttempts: 3,
+            nextRunAt: null
+          })
+        })
+      );
     });
 
     it("creates chapter diagnostic jobs", async () => {
@@ -114,6 +137,157 @@ describe("generation-jobs", () => {
 
       expect(result).not.toBeNull();
       expect(result!.status).toBe("RUNNING");
+    });
+
+    it("does not claim queued jobs scheduled for a future retry", async () => {
+      const findFirst = vi.fn().mockResolvedValue(null);
+      const tx = {
+        generationJob: {
+          findFirst,
+          update: vi.fn()
+        }
+      };
+      const prisma = mockPrisma({
+        $transaction: vi.fn((cb: (tx: typeof tx) => Promise<unknown>) => cb(tx))
+      });
+      const now = new Date("2026-05-28T10:00:00.000Z");
+
+      await claimNextJob({
+        organizationId: "org1",
+        lockKey: "worker-1",
+        leaseDurationMs: 60_000,
+        now,
+        prisma
+      });
+
+      expect(findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: [
+              { nextRunAt: null },
+              { nextRunAt: { lte: now } }
+            ]
+          })
+        })
+      );
+    });
+  });
+
+  describe("retry helpers", () => {
+    it("uses a bounded retry delay schedule", () => {
+      expect(computeRetryDelayMs(1)).toBe(10_000);
+      expect(computeRetryDelayMs(2)).toBe(30_000);
+      expect(computeRetryDelayMs(3)).toBe(120_000);
+      expect(computeRetryDelayMs(10)).toBe(120_000);
+    });
+
+    it("schedules a retry by incrementing attempts and clearing lease fields", async () => {
+      const update = vi.fn().mockResolvedValue({
+        ...job,
+        attemptCount: 1,
+        nextRunAt: new Date("2026-05-28T10:00:10.000Z")
+      });
+      const prisma = mockPrisma({ generationJob: { update } });
+
+      const result = await scheduleJobRetry({
+        jobId: "j1",
+        attemptCount: 0,
+        errorCode: "HANDLER_ERROR",
+        errorMessage: "timeout",
+        now: new Date("2026-05-28T10:00:00.000Z"),
+        prisma
+      });
+
+      expect(result.attemptCount).toBe(1);
+      expect(update).toHaveBeenCalledWith({
+        where: { id: "j1" },
+        data: expect.objectContaining({
+          status: "QUEUED",
+          attemptCount: { increment: 1 },
+          nextRunAt: new Date("2026-05-28T10:00:10.000Z"),
+          lockKey: null,
+          leaseExpiresAt: null,
+          startedAt: null,
+          errorCode: "HANDLER_ERROR",
+          errorMessage: "timeout"
+        })
+      });
+    });
+
+    it("marks a job as finally failed when attempts are exhausted", async () => {
+      const update = vi.fn().mockResolvedValue({
+        ...job,
+        status: "FAILED",
+        attemptCount: 3,
+        errorCode: "HANDLER_ERROR"
+      });
+      const prisma = mockPrisma({ generationJob: { update } });
+
+      const result = await markJobFailed({
+        jobId: "j1",
+        errorCode: "HANDLER_ERROR",
+        errorMessage: "timeout",
+        now: new Date("2026-05-28T10:00:00.000Z"),
+        prisma
+      });
+
+      expect(result.status).toBe("FAILED");
+      expect(update).toHaveBeenCalledWith({
+        where: { id: "j1" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          finishedAt: new Date("2026-05-28T10:00:00.000Z"),
+          lockKey: null,
+          leaseExpiresAt: null,
+          nextRunAt: null,
+          errorCode: "HANDLER_ERROR",
+          errorMessage: "timeout"
+        })
+      });
+    });
+
+    it("recovers expired running leases back to delayed queued jobs", async () => {
+      const expired = { ...job, id: "expired-1", status: "RUNNING", attemptCount: 1, maxAttempts: 3 };
+      const findMany = vi.fn().mockResolvedValue([expired]);
+      const update = vi.fn().mockResolvedValue({
+        ...expired,
+        status: "QUEUED",
+        attemptCount: 2,
+        nextRunAt: new Date("2026-05-28T10:00:30.000Z")
+      });
+      const prisma = mockPrisma({ generationJob: { findMany, update } });
+
+      const result = await recoverExpiredJobLeases({
+        organizationId: "org1",
+        now: new Date("2026-05-28T10:00:00.000Z"),
+        limit: 5,
+        prisma
+      });
+
+      expect(result.recovered).toBe(1);
+      expect(findMany).toHaveBeenCalledWith({
+        where: {
+          organizationId: "org1",
+          status: "RUNNING",
+          leaseExpiresAt: { lt: new Date("2026-05-28T10:00:00.000Z") }
+        },
+        orderBy: { leaseExpiresAt: "asc" },
+        take: 5
+      });
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "expired-1" },
+          data: expect.objectContaining({
+            status: "QUEUED",
+            attemptCount: { increment: 1 },
+            nextRunAt: new Date("2026-05-28T10:00:30.000Z"),
+            lockKey: null,
+            leaseExpiresAt: null,
+            startedAt: null,
+            errorCode: "LEASE_EXPIRED"
+          })
+        })
+      );
     });
   });
 

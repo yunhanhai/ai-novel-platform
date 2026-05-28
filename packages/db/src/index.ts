@@ -7,7 +7,11 @@ export {
   releaseJobLease,
   updateJobStatus,
   createStep,
-  updateStep
+  updateStep,
+  computeRetryDelayMs,
+  scheduleJobRetry,
+  markJobFailed,
+  recoverExpiredJobLeases
 } from "./generation-jobs";
 export {
   upsertWorkerHeartbeat,
