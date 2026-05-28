@@ -1,4 +1,12 @@
-import { prisma, claimNextJob, updateJobStatus, upsertWorkerHeartbeat } from "@ai-novel/db";
+import {
+  prisma,
+  claimNextJob,
+  updateJobStatus,
+  upsertWorkerHeartbeat,
+  scheduleJobRetry,
+  markJobFailed,
+  recoverExpiredJobLeases
+} from "@ai-novel/db";
 import { createPoller, type UpdateStatusFn } from "./poll";
 import { createWorkerHeartbeat } from "./heartbeat";
 import { createHandlers } from "./worker-handlers";
@@ -81,6 +89,15 @@ const poller = createPoller({
       prisma
     }) as ReturnType<typeof claimNextJob>,
   updateJobStatus: updateJobStatusFn,
+  scheduleJobRetry: (params) =>
+    scheduleJobRetry({ ...params, prisma } as Parameters<typeof scheduleJobRetry>[0]),
+  markJobFailed: (params) =>
+    markJobFailed({ ...params, prisma } as Parameters<typeof markJobFailed>[0]),
+  recoverExpiredLeases: () =>
+    recoverExpiredJobLeases({
+      organizationId: ORGANIZATION_ID,
+      prisma
+    }),
   pollIntervalMs: POLL_INTERVAL_MS,
   handlers
 });

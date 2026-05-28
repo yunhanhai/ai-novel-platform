@@ -8,6 +8,9 @@ export interface GenerationJob {
   input: unknown;
   targetEntityType?: "PROJECT" | "OUTLINE" | "CHAPTER" | null;
   targetEntityId?: string | null;
+  attemptCount?: number | null;
+  maxAttempts?: number | null;
+  nextRunAt?: Date | string | null;
 }
 
 export type JobHandler = (job: GenerationJob) => Promise<void>;
@@ -21,35 +24,58 @@ export type UpdateStatusFn = (params: {
   errorMessage?: string;
 }) => Promise<unknown>;
 
+type ScheduleJobRetryFn = (params: {
+  jobId: string;
+  attemptCount: number;
+  errorCode: string;
+  errorMessage: string;
+  now?: Date;
+}) => Promise<unknown>;
+
+type MarkJobFailedFn = (params: {
+  jobId: string;
+  errorCode: string;
+  errorMessage: string;
+  now?: Date;
+}) => Promise<unknown>;
+
+type RecoverExpiredLeasesFn = () => Promise<unknown>;
+
 interface PollerDeps {
   claimNext: ClaimFn;
-  updateJobStatus: UpdateStatusFn;
+  updateJobStatus?: UpdateStatusFn;
+  scheduleJobRetry: ScheduleJobRetryFn;
+  markJobFailed: MarkJobFailedFn;
+  recoverExpiredLeases: RecoverExpiredLeasesFn;
+  now?: () => Date;
   pollIntervalMs: number;
   handlers: Map<string, JobHandler>;
 }
 
+type TickResult = "processed" | "no_job" | "no_handler" | "error";
+
 interface Poller {
-  tick: () => Promise<"processed" | "no_job" | "no_handler" | "error">;
-  start: (
-    signal: AbortSignal,
-    onTick?: (result: "processed" | "no_job" | "no_handler" | "error") => void
-  ) => Promise<void>;
+  tick: () => Promise<TickResult>;
+  start: (signal: AbortSignal, onTick?: (result: TickResult) => void) => Promise<void>;
 }
 
 export function createPoller(deps: PollerDeps): Poller {
-  const { claimNext, updateJobStatus, handlers } = deps;
+  const { claimNext, scheduleJobRetry, markJobFailed, recoverExpiredLeases, handlers } = deps;
+  const now = deps.now ?? (() => new Date());
 
-  async function tick(): Promise<"processed" | "no_job" | "no_handler" | "error"> {
+  async function tick(): Promise<TickResult> {
+    await recoverExpiredLeases();
+
     const job = await claimNext();
     if (!job) return "no_job";
 
     const handler = handlers.get(job.jobType);
     if (!handler) {
-      await updateJobStatus({
+      await markJobFailed({
         jobId: job.id,
-        status: "FAILED",
         errorCode: "NO_HANDLER",
-        errorMessage: `未注册 jobType=${job.jobType} 的 handler`
+        errorMessage: `No handler registered for jobType=${job.jobType}`,
+        now: now()
       });
       return "no_handler";
     }
@@ -59,20 +85,32 @@ export function createPoller(deps: PollerDeps): Poller {
       return "processed";
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      await updateJobStatus({
-        jobId: job.id,
-        status: "FAILED",
-        errorCode: "HANDLER_ERROR",
-        errorMessage: message
-      });
+      const attemptCount = job.attemptCount ?? 0;
+      const maxAttempts = job.maxAttempts ?? 1;
+      const failedAt = now();
+
+      if (attemptCount + 1 >= maxAttempts) {
+        await markJobFailed({
+          jobId: job.id,
+          errorCode: "HANDLER_ERROR",
+          errorMessage: message,
+          now: failedAt
+        });
+      } else {
+        await scheduleJobRetry({
+          jobId: job.id,
+          attemptCount,
+          errorCode: "HANDLER_ERROR",
+          errorMessage: message,
+          now: failedAt
+        });
+      }
+
       return "error";
     }
   }
 
-  async function start(
-    signal: AbortSignal,
-    onTick?: (result: "processed" | "no_job" | "no_handler" | "error") => void
-  ) {
+  async function start(signal: AbortSignal, onTick?: (result: TickResult) => void) {
     while (!signal.aborted) {
       const result = await tick();
       onTick?.(result);
