@@ -7,6 +7,7 @@ export interface QueueObservabilityTotals {
   total: number;
   queued: number;
   running: number;
+  retrying: number;
   succeeded: number;
   failed: number;
   cancelled: number;
@@ -23,6 +24,9 @@ export interface QueueJobSummary {
   targetEntityId: string | null;
   errorCode: string | null;
   errorMessage: string | null;
+  attemptCount: number;
+  maxAttempts: number;
+  nextRunAt: string | null;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -30,6 +34,10 @@ export interface QueueJobSummary {
 
 export interface OldestQueuedJob extends QueueJobSummary {
   waitMs: number;
+}
+
+export interface OldestRetryingJob extends QueueJobSummary {
+  retryInMs: number;
 }
 
 export interface QueueHealthSummary {
@@ -69,6 +77,7 @@ export interface QueueObservability {
   health: QueueHealthSummary;
   workers: QueueWorkerSummary;
   oldestQueued: OldestQueuedJob | null;
+  oldestRetrying: OldestRetryingJob | null;
   recentJobs: QueueJobSummary[];
 }
 
@@ -83,15 +92,37 @@ const WORKER_ONLINE_THRESHOLD_MS = 30_000;
 
 export async function getQueueObservability(params: GetQueueObservabilityParams): Promise<QueueObservability> {
   const now = params.now ?? new Date();
-  const [groups, oldestQueuedRow, recentRows, workerRows] = await Promise.all([
+  const retryingWhere = {
+    organizationId: params.organizationId,
+    status: "QUEUED" as const,
+    nextRunAt: { gt: now }
+  };
+  const readyQueuedWhere = {
+    organizationId: params.organizationId,
+    status: "QUEUED" as const,
+    OR: [
+      { nextRunAt: null },
+      { nextRunAt: { lte: now } }
+    ]
+  };
+
+  const [groups, retryingCount, oldestQueuedRow, oldestRetryingRow, recentRows, workerRows] = await Promise.all([
     params.prisma.generationJob.groupBy({
       by: ["status"],
       where: { organizationId: params.organizationId },
       _count: { _all: true }
     }),
+    params.prisma.generationJob.count({
+      where: retryingWhere
+    }),
     params.prisma.generationJob.findFirst({
-      where: { organizationId: params.organizationId, status: "QUEUED" },
+      where: readyQueuedWhere,
       orderBy: { createdAt: "asc" },
+      select: jobSelect()
+    }),
+    params.prisma.generationJob.findFirst({
+      where: retryingWhere,
+      orderBy: { nextRunAt: "asc" },
       select: jobSelect()
     }),
     params.prisma.generationJob.findMany({
@@ -107,17 +138,21 @@ export async function getQueueObservability(params: GetQueueObservabilityParams)
     })
   ]);
 
-  const totals = buildTotals(groups);
+  const totals = buildTotals(groups, retryingCount);
   const oldestQueued = oldestQueuedRow ? { ...toJobSummary(oldestQueuedRow), waitMs: elapsedMs(oldestQueuedRow.createdAt, now) } : null;
+  const oldestRetrying = oldestRetryingRow
+    ? { ...toJobSummary(oldestRetryingRow), retryInMs: retryDelayMs(oldestRetryingRow.nextRunAt, now) }
+    : null;
   const workers = buildWorkerSummary(workerRows, now);
 
   return {
     organizationId: params.organizationId,
     generatedAt: now.toISOString(),
     totals,
-    health: buildHealth(totals, oldestQueued, workers),
+    health: buildHealth(totals, oldestQueued, oldestRetrying, workers),
     workers,
     oldestQueued,
+    oldestRetrying,
     recentJobs: recentRows.map(toJobSummary)
   };
 }
@@ -132,6 +167,9 @@ function jobSelect() {
     targetEntityId: true,
     errorCode: true,
     errorMessage: true,
+    attemptCount: true,
+    maxAttempts: true,
+    nextRunAt: true,
     createdAt: true,
     startedAt: true,
     finishedAt: true,
@@ -139,12 +177,14 @@ function jobSelect() {
   } as const;
 }
 
-function buildTotals(groups: Array<{ status: string; _count: { _all: number } }>): QueueObservabilityTotals {
+function buildTotals(groups: Array<{ status: string; _count: { _all: number } }>, retryingCount: number): QueueObservabilityTotals {
   const counts = new Map(groups.map((group) => [group.status, group._count._all]));
+  const queuedTotal = counts.get("QUEUED") ?? 0;
   const totals = {
     total: 0,
-    queued: counts.get("QUEUED") ?? 0,
+    queued: Math.max(0, queuedTotal - retryingCount),
     running: counts.get("RUNNING") ?? 0,
+    retrying: retryingCount,
     succeeded: counts.get("SUCCEEDED") ?? 0,
     failed: counts.get("FAILED") ?? 0,
     cancelled: counts.get("CANCELLED") ?? 0
@@ -156,6 +196,7 @@ function buildTotals(groups: Array<{ status: string; _count: { _all: number } }>
 function buildHealth(
   totals: QueueObservabilityTotals,
   oldestQueued: OldestQueuedJob | null,
+  oldestRetrying: OldestRetryingJob | null,
   workers: QueueWorkerSummary
 ): QueueHealthSummary {
   if (totals.failed > 0) {
@@ -188,6 +229,15 @@ function buildHealth(
       detail: `${totals.queued} 个任务等待处理`
     };
   }
+  if (totals.retrying > 0) {
+    return {
+      state: "backlog",
+      label: "等待重试",
+      detail: oldestRetrying
+        ? `${totals.retrying} 个任务等待重试，最近一次将在 ${formatMinutes(oldestRetrying.retryInMs)} 后`
+        : `${totals.retrying} 个任务等待重试`
+    };
+  }
   if (totals.running > 0) {
     return {
       state: "active",
@@ -211,6 +261,9 @@ function toJobSummary(row: ReturnType<typeof jobSelect> extends infer _T ? {
   targetEntityId: string | null;
   errorCode: string | null;
   errorMessage: string | null;
+  attemptCount: number;
+  maxAttempts: number;
+  nextRunAt: Date | null;
   createdAt: Date;
   startedAt: Date | null;
   finishedAt: Date | null;
@@ -227,6 +280,9 @@ function toJobSummary(row: ReturnType<typeof jobSelect> extends infer _T ? {
     targetEntityId: row.targetEntityId,
     errorCode: row.errorCode,
     errorMessage: row.errorMessage,
+    attemptCount: row.attemptCount,
+    maxAttempts: row.maxAttempts,
+    nextRunAt: row.nextRunAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null,
     finishedAt: row.finishedAt?.toISOString() ?? null
@@ -280,6 +336,10 @@ function buildWorkerSummary(rows: WorkerHeartbeatRow[], now: Date): QueueWorkerS
 
 function elapsedMs(start: Date, end: Date): number {
   return Math.max(0, end.getTime() - start.getTime());
+}
+
+function retryDelayMs(nextRunAt: Date | null, now: Date): number {
+  return nextRunAt ? Math.max(0, nextRunAt.getTime() - now.getTime()) : 0;
 }
 
 function formatMinutes(ms: number): string {

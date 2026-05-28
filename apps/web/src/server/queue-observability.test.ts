@@ -10,6 +10,9 @@ type JobRow = {
   targetEntityId: string | null;
   errorCode: string | null;
   errorMessage: string | null;
+  attemptCount: number;
+  maxAttempts: number;
+  nextRunAt: Date | null;
   createdAt: Date;
   startedAt: Date | null;
   finishedAt: Date | null;
@@ -38,6 +41,9 @@ function job(overrides: Partial<JobRow> = {}): JobRow {
     targetEntityId: "chapter-1",
     errorCode: null,
     errorMessage: null,
+    attemptCount: 0,
+    maxAttempts: 3,
+    nextRunAt: null,
     createdAt: new Date("2026-05-28T09:58:00.000Z"),
     startedAt: null,
     finishedAt: null,
@@ -64,13 +70,24 @@ function worker(overrides: Partial<WorkerRow> = {}): WorkerRow {
 function mockPrisma(params: {
   groups?: Array<{ status: string; _count: { _all: number } }>;
   oldestQueued?: JobRow | null;
+  oldestRetrying?: JobRow | null;
+  retryingCount?: number;
   recentJobs?: JobRow[];
   workers?: WorkerRow[];
 }) {
+  const findFirst = vi.fn((args: { where?: { nextRunAt?: unknown } }) => {
+    const nextRunAt = args.where?.nextRunAt;
+    if (nextRunAt && typeof nextRunAt === "object" && "gt" in nextRunAt) {
+      return Promise.resolve(params.oldestRetrying ?? null);
+    }
+    return Promise.resolve(params.oldestQueued ?? null);
+  });
+
   return {
     generationJob: {
       groupBy: vi.fn().mockResolvedValue(params.groups ?? []),
-      findFirst: vi.fn().mockResolvedValue(params.oldestQueued ?? null),
+      count: vi.fn().mockResolvedValue(params.retryingCount ?? 0),
+      findFirst,
       findMany: vi.fn().mockResolvedValue(params.recentJobs ?? [])
     },
     workerHeartbeat: {
@@ -93,6 +110,7 @@ describe("getQueueObservability", () => {
       total: 0,
       queued: 0,
       running: 0,
+      retrying: 0,
       succeeded: 0,
       failed: 0,
       cancelled: 0
@@ -131,6 +149,7 @@ describe("getQueueObservability", () => {
       total: 14,
       queued: 3,
       running: 1,
+      retrying: 0,
       succeeded: 8,
       failed: 2,
       cancelled: 0
@@ -191,10 +210,77 @@ describe("getQueueObservability", () => {
       orderBy: { createdAt: "desc" },
       take: 8
     }));
+    expect(prisma.generationJob.count).toHaveBeenCalledWith({
+      where: {
+        organizationId: "org-1",
+        status: "QUEUED",
+        nextRunAt: { gt: new Date("2026-05-28T10:00:00.000Z") }
+      }
+    });
     expect(prisma.workerHeartbeat.findMany).toHaveBeenCalledWith({
       where: { organizationId: "org-1" },
       orderBy: { lastSeenAt: "desc" },
       take: 20
+    });
+  });
+
+  it("separates delayed retry jobs from ready queued jobs", async () => {
+    const retrying = job({
+      id: "retry-job",
+      attemptCount: 1,
+      maxAttempts: 3,
+      nextRunAt: new Date("2026-05-28T10:02:00.000Z")
+    });
+
+    const result = await getQueueObservability({
+      prisma: mockPrisma({
+        groups: [{ status: "QUEUED", _count: { _all: 3 } }],
+        retryingCount: 2,
+        oldestQueued: job({ id: "ready-job" }),
+        oldestRetrying: retrying,
+        recentJobs: [retrying],
+        workers: [worker()]
+      }),
+      organizationId: "org-1",
+      now: new Date("2026-05-28T10:00:00.000Z")
+    });
+
+    expect(result.totals).toMatchObject({
+      total: 3,
+      queued: 1,
+      retrying: 2
+    });
+    expect(result.oldestRetrying).toMatchObject({
+      id: "retry-job",
+      retryInMs: 120_000,
+      attemptCount: 1,
+      maxAttempts: 3,
+      nextRunAt: "2026-05-28T10:02:00.000Z"
+    });
+    expect(result.recentJobs[0]).toMatchObject({
+      id: "retry-job",
+      attemptCount: 1,
+      maxAttempts: 3,
+      nextRunAt: "2026-05-28T10:02:00.000Z"
+    });
+  });
+
+  it("uses retry-focused health when all queued work is delayed", async () => {
+    const result = await getQueueObservability({
+      prisma: mockPrisma({
+        groups: [{ status: "QUEUED", _count: { _all: 2 } }],
+        retryingCount: 2,
+        oldestQueued: null,
+        oldestRetrying: job({ nextRunAt: new Date("2026-05-28T10:01:00.000Z") }),
+        workers: [worker()]
+      }),
+      organizationId: "org-1",
+      now: new Date("2026-05-28T10:00:00.000Z")
+    });
+
+    expect(result.health).toMatchObject({
+      state: "backlog",
+      label: "等待重试"
     });
   });
 
