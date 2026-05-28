@@ -38,11 +38,36 @@ export interface QueueHealthSummary {
   detail: string;
 }
 
+export type WorkerHeartbeatStatus = "online" | "stale";
+
+export interface WorkerHeartbeatSummary {
+  id: string;
+  lockKey: string;
+  pid: number | null;
+  status: WorkerHeartbeatStatus;
+  heartbeatAgeMs: number;
+  startedAt: string;
+  lastSeenAt: string;
+  pollIntervalMs: number;
+  leaseDurationMs: number;
+  lastTickStatus: string | null;
+  lastTickAt: string | null;
+}
+
+export interface QueueWorkerSummary {
+  total: number;
+  online: number;
+  stale: number;
+  latestHeartbeatMs: number | null;
+  items: WorkerHeartbeatSummary[];
+}
+
 export interface QueueObservability {
   organizationId: string;
   generatedAt: string;
   totals: QueueObservabilityTotals;
   health: QueueHealthSummary;
+  workers: QueueWorkerSummary;
   oldestQueued: OldestQueuedJob | null;
   recentJobs: QueueJobSummary[];
 }
@@ -54,10 +79,11 @@ interface GetQueueObservabilityParams {
 }
 
 const STATUSES: QueueJobStatus[] = ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"];
+const WORKER_ONLINE_THRESHOLD_MS = 30_000;
 
 export async function getQueueObservability(params: GetQueueObservabilityParams): Promise<QueueObservability> {
   const now = params.now ?? new Date();
-  const [groups, oldestQueuedRow, recentRows] = await Promise.all([
+  const [groups, oldestQueuedRow, recentRows, workerRows] = await Promise.all([
     params.prisma.generationJob.groupBy({
       by: ["status"],
       where: { organizationId: params.organizationId },
@@ -73,17 +99,24 @@ export async function getQueueObservability(params: GetQueueObservabilityParams)
       orderBy: { createdAt: "desc" },
       take: 8,
       select: jobSelect()
+    }),
+    params.prisma.workerHeartbeat.findMany({
+      where: { organizationId: params.organizationId },
+      orderBy: { lastSeenAt: "desc" },
+      take: 20
     })
   ]);
 
   const totals = buildTotals(groups);
   const oldestQueued = oldestQueuedRow ? { ...toJobSummary(oldestQueuedRow), waitMs: elapsedMs(oldestQueuedRow.createdAt, now) } : null;
+  const workers = buildWorkerSummary(workerRows, now);
 
   return {
     organizationId: params.organizationId,
     generatedAt: now.toISOString(),
     totals,
-    health: buildHealth(totals, oldestQueued),
+    health: buildHealth(totals, oldestQueued, workers),
+    workers,
     oldestQueued,
     recentJobs: recentRows.map(toJobSummary)
   };
@@ -120,12 +153,25 @@ function buildTotals(groups: Array<{ status: string; _count: { _all: number } }>
   return totals;
 }
 
-function buildHealth(totals: QueueObservabilityTotals, oldestQueued: OldestQueuedJob | null): QueueHealthSummary {
+function buildHealth(
+  totals: QueueObservabilityTotals,
+  oldestQueued: OldestQueuedJob | null,
+  workers: QueueWorkerSummary
+): QueueHealthSummary {
   if (totals.failed > 0) {
     return {
       state: "attention",
       label: "需要关注",
       detail: `${totals.failed} 个任务失败，优先查看最近失败记录`
+    };
+  }
+  if (totals.queued > 0 && workers.online === 0) {
+    return {
+      state: "attention",
+      label: "Worker 离线",
+      detail: workers.total > 0
+        ? "存在排队任务，但最近没有在线 Worker 心跳"
+        : "存在排队任务，但尚未发现 Worker 心跳"
     };
   }
   if (oldestQueued && oldestQueued.waitMs >= 5 * 60_000 && totals.running === 0) {
@@ -189,6 +235,47 @@ function toJobSummary(row: ReturnType<typeof jobSelect> extends infer _T ? {
 
 function normalizeStatus(status: string): QueueJobStatus {
   return STATUSES.includes(status as QueueJobStatus) ? status as QueueJobStatus : "QUEUED";
+}
+
+interface WorkerHeartbeatRow {
+  id: string;
+  lockKey: string;
+  pid: number | null;
+  startedAt: Date;
+  lastSeenAt: Date;
+  pollIntervalMs: number;
+  leaseDurationMs: number;
+  lastTickStatus: string | null;
+  lastTickAt: Date | null;
+}
+
+function buildWorkerSummary(rows: WorkerHeartbeatRow[], now: Date): QueueWorkerSummary {
+  const items = rows.map((row) => {
+    const heartbeatAgeMs = elapsedMs(row.lastSeenAt, now);
+    const status: WorkerHeartbeatStatus = heartbeatAgeMs <= WORKER_ONLINE_THRESHOLD_MS ? "online" : "stale";
+    return {
+      id: row.id,
+      lockKey: row.lockKey,
+      pid: row.pid,
+      status,
+      heartbeatAgeMs,
+      startedAt: row.startedAt.toISOString(),
+      lastSeenAt: row.lastSeenAt.toISOString(),
+      pollIntervalMs: row.pollIntervalMs,
+      leaseDurationMs: row.leaseDurationMs,
+      lastTickStatus: row.lastTickStatus,
+      lastTickAt: row.lastTickAt?.toISOString() ?? null
+    };
+  });
+  const online = items.filter((item) => item.status === "online").length;
+
+  return {
+    total: items.length,
+    online,
+    stale: items.length - online,
+    latestHeartbeatMs: items[0]?.heartbeatAgeMs ?? null,
+    items
+  };
 }
 
 function elapsedMs(start: Date, end: Date): number {

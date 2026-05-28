@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { QueueJobSummary, QueueObservability } from "../../server/queue-observability";
 import {
+  formatHeartbeatAge,
   formatQueueWait,
   getHealthToneClass,
   getStatusItems,
+  getWorkerStatusDisplay,
   isQueueEmpty
 } from "./queue-observability-panel-model";
 
@@ -114,6 +116,7 @@ export function QueueObservabilityPanel({ enabled }: Props) {
         <div className="queue-observability-layout">
           <HealthSummary data={data} />
           <StatusBreakdown data={data} />
+          <WorkerHeartbeatSection data={data} />
           <RecentJobs jobs={data.recentJobs} />
         </div>
       )}
@@ -175,6 +178,43 @@ function StatusBreakdown({ data }: { data: QueueObservability }) {
   );
 }
 
+function WorkerHeartbeatSection({ data }: { data: QueueObservability }) {
+  return (
+    <section className="performance-section queue-worker-section" aria-label="Worker 心跳">
+      <div className="performance-section-heading">
+        <h4>Worker 心跳</h4>
+        <span className="muted">{formatHeartbeatAge(data.workers.latestHeartbeatMs)}</span>
+      </div>
+      <div className="queue-worker-summary" aria-label="Worker 在线概览">
+        <Metric label="在线" value={`${data.workers.online}/${data.workers.total}`} />
+        <Metric label="过期" value={String(data.workers.stale)} />
+      </div>
+      {data.workers.items.length === 0 ? (
+        <p className="performance-empty muted">暂无 Worker 心跳</p>
+      ) : (
+        <ol className="queue-worker-list">
+          {data.workers.items.slice(0, 4).map((worker) => {
+            const status = getWorkerStatusDisplay(worker.status);
+            return (
+              <li key={worker.id} className="queue-worker-row">
+                <div>
+                  <strong>{worker.lockKey}</strong>
+                  <span className="muted">
+                    PID {worker.pid ?? "-"} · {worker.pollIntervalMs}ms
+                  </span>
+                </div>
+                <span className={`queue-worker-status queue-worker-${status.tone}`}>{status.label}</span>
+                <span className="muted queue-worker-age">{formatHeartbeatAge(worker.heartbeatAgeMs)}</span>
+                <span className="muted queue-worker-tick">{labelTickStatus(worker.lastTickStatus)}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </section>
+  );
+}
+
 function RecentJobs({ jobs }: { jobs: QueueJobSummary[] }) {
   return (
     <section className="performance-section queue-recent-section" aria-label="最近队列任务">
@@ -200,6 +240,16 @@ function RecentJobs({ jobs }: { jobs: QueueJobSummary[] }) {
       )}
     </section>
   );
+}
+
+function labelTickStatus(status: string | null): string {
+  const labels: Record<string, string> = {
+    processed: "已处理",
+    no_job: "空轮询",
+    no_handler: "无处理器",
+    error: "错误"
+  };
+  return status ? labels[status] ?? status : "未轮询";
 }
 
 function labelJobType(jobType: string): string {

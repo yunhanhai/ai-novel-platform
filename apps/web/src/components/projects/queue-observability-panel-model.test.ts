@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatHeartbeatAge,
   formatQueueWait,
   getHealthToneClass,
   getStatusItems,
+  getWorkerStatusDisplay,
   isQueueEmpty
 } from "./queue-observability-panel-model";
 import type { QueueObservability } from "../../server/queue-observability";
@@ -21,6 +23,13 @@ function data(overrides: Partial<QueueObservability["totals"]> = {}): QueueObser
       ...overrides
     },
     health: { state: "idle", label: "空闲", detail: "" },
+    workers: {
+      total: 0,
+      online: 0,
+      stale: 0,
+      latestHeartbeatMs: null,
+      items: []
+    },
     oldestQueued: null,
     recentJobs: []
   };
@@ -54,5 +63,17 @@ describe("queue observability panel model", () => {
     expect(isQueueEmpty(null)).toBe(false);
     expect(isQueueEmpty(data())).toBe(true);
     expect(isQueueEmpty(data({ total: 1, running: 1 }))).toBe(false);
+  });
+
+  it("formats worker heartbeat age for compact display", () => {
+    expect(formatHeartbeatAge(null)).toBe("无心跳");
+    expect(formatHeartbeatAge(5_000)).toBe("5 秒前");
+    expect(formatHeartbeatAge(95_000)).toBe("2 分钟前");
+    expect(formatHeartbeatAge(2 * 60 * 60_000)).toBe("2 小时前");
+  });
+
+  it("maps worker heartbeat status to readable labels and tones", () => {
+    expect(getWorkerStatusDisplay("online")).toEqual({ label: "在线", tone: "online" });
+    expect(getWorkerStatusDisplay("stale")).toEqual({ label: "过期", tone: "stale" });
   });
 });

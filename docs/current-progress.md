@@ -481,3 +481,10 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - The `/projects` page now shows `队列健康`, including status counts, oldest queued wait time, health state, and recent generation jobs.
 - This phase intentionally avoids a new worker heartbeat table; worker liveness remains a follow-up so the first panel stays DB-schema-free.
 - Smoke e2e now verifies the queue health panel is visible on the projects page.
+
+## 2026-05-28 Worker Heartbeat Observability
+
+- Added `worker_heartbeats` storage and DB helpers so worker liveness is durable instead of inferred from local process state.
+- Worker startup now writes an immediate heartbeat, refreshes it periodically, and records the latest poll tick result.
+- Queue observability now includes online/stale worker counts and marks queued jobs with no online worker as attention.
+- The `/projects` queue health panel now shows a compact `Worker 心跳` section with online count, latest heartbeat age, recent workers, and last tick state.

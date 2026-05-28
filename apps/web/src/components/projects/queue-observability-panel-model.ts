@@ -1,4 +1,9 @@
-import type { QueueHealthState, QueueObservability, QueueObservabilityTotals } from "../../server/queue-observability";
+import type {
+  QueueHealthState,
+  QueueObservability,
+  QueueObservabilityTotals,
+  WorkerHeartbeatStatus
+} from "../../server/queue-observability";
 
 export interface QueueStatusDisplayItem {
   key: keyof Omit<QueueObservabilityTotals, "total">;
@@ -36,6 +41,21 @@ export function formatQueueWait(waitMs: number | null | undefined): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return minutes > 0 ? `${hours} 小时 ${minutes} 分钟` : `${hours} 小时`;
+}
+
+export function formatHeartbeatAge(ageMs: number | null | undefined): string {
+  if (ageMs === null || ageMs === undefined) return "无心跳";
+  if (ageMs < 60_000) return `${Math.max(1, Math.round(ageMs / 1000))} 秒前`;
+  const minutes = Math.max(1, Math.round(ageMs / 60_000));
+  if (minutes < 60) return `${minutes} 分钟前`;
+  return `${Math.max(1, Math.round(minutes / 60))} 小时前`;
+}
+
+export function getWorkerStatusDisplay(status: WorkerHeartbeatStatus): { label: string; tone: string } {
+  if (status === "online") {
+    return { label: "在线", tone: "online" };
+  }
+  return { label: "过期", tone: "stale" };
 }
 
 export function getHealthToneClass(state: QueueHealthState): string {

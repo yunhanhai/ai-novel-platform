@@ -9,4 +9,8 @@ export {
   createStep,
   updateStep
 } from "./generation-jobs";
+export {
+  upsertWorkerHeartbeat,
+  listWorkerHeartbeats
+} from "./worker-heartbeats";
 export { requireOrganizationId, tenantCreateData, tenantWhere } from "./tenant";

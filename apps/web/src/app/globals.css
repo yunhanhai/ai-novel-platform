@@ -445,6 +445,7 @@ select {
 }
 
 .queue-status-list,
+.queue-worker-list,
 .queue-recent-list {
   display: grid;
   gap: 7px;
@@ -491,6 +492,65 @@ select {
 
 .queue-status-cancelled .queue-status-fill {
   background: #7b8494;
+}
+
+.queue-worker-section {
+  display: grid;
+  gap: 10px;
+}
+
+.queue-worker-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.queue-worker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px 64px 64px;
+  gap: 8px;
+  min-height: 38px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.queue-worker-row > div {
+  display: grid;
+  min-width: 0;
+}
+
+.queue-worker-row strong,
+.queue-worker-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-worker-status {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.queue-worker-online {
+  background: #e6f1ee;
+  color: var(--accent-strong);
+}
+
+.queue-worker-stale {
+  background: #fdecea;
+  color: #b3261e;
+}
+
+.queue-worker-age,
+.queue-worker-tick {
+  text-align: right;
+  font-size: 11px;
 }
 
 .queue-recent-row {
@@ -547,6 +607,11 @@ select {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
+  .queue-worker-row {
+    grid-template-columns: minmax(0, 1fr) 52px 64px;
+  }
+
+  .queue-worker-tick,
   .queue-recent-time {
     display: none;
   }

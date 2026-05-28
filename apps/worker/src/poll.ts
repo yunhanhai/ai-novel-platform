@@ -30,7 +30,10 @@ interface PollerDeps {
 
 interface Poller {
   tick: () => Promise<"processed" | "no_job" | "no_handler" | "error">;
-  start: (signal: AbortSignal) => Promise<void>;
+  start: (
+    signal: AbortSignal,
+    onTick?: (result: "processed" | "no_job" | "no_handler" | "error") => void
+  ) => Promise<void>;
 }
 
 export function createPoller(deps: PollerDeps): Poller {
@@ -66,9 +69,13 @@ export function createPoller(deps: PollerDeps): Poller {
     }
   }
 
-  async function start(signal: AbortSignal) {
+  async function start(
+    signal: AbortSignal,
+    onTick?: (result: "processed" | "no_job" | "no_handler" | "error") => void
+  ) {
     while (!signal.aborted) {
-      await tick();
+      const result = await tick();
+      onTick?.(result);
       await sleep(deps.pollIntervalMs, signal);
     }
   }
@@ -79,6 +86,9 @@ export function createPoller(deps: PollerDeps): Poller {
 async function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const timeout = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => clearTimeout(timeout), { once: true });
+    signal.addEventListener("abort", () => {
+      clearTimeout(timeout);
+      resolve();
+    }, { once: true });
   });
 }
