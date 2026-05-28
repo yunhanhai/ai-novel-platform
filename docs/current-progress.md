@@ -474,3 +474,10 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - Insight rules cover no usage data, missing cost data, high project P95 latency, high token consumption, and concentrated project usage.
 - The `/projects` organization performance overview now shows a `需要关注` section above trend and ranking details.
 - Smoke e2e now verifies the organization overview includes both the health insight section and project ranking.
+
+## 2026-05-28 Queue Observability Panel
+
+- Added `GET /api/queue-observability` backed by real `generation_jobs` aggregation for the current organization.
+- The `/projects` page now shows `队列健康`, including status counts, oldest queued wait time, health state, and recent generation jobs.
+- This phase intentionally avoids a new worker heartbeat table; worker liveness remains a follow-up so the first panel stays DB-schema-free.
+- Smoke e2e now verifies the queue health panel is visible on the projects page.

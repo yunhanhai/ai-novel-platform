@@ -333,9 +333,222 @@ select {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.queue-observability-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.queue-observability-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.queue-observability-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.queue-observability-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.queue-observability-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 12px;
+}
+
+.queue-health-summary {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.25fr);
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+}
+
+.queue-health-summary > div:first-child {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  min-width: 0;
+}
+
+.queue-health-summary strong {
+  overflow-wrap: anywhere;
+}
+
+.queue-health-label {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 26px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.queue-health-active .queue-health-label {
+  background: #e6f1ee;
+  color: var(--accent-strong);
+}
+
+.queue-health-backlog .queue-health-label {
+  background: #fff3e0;
+  color: var(--warning);
+}
+
+.queue-health-attention .queue-health-label {
+  background: #fdecea;
+  color: #b3261e;
+}
+
+.queue-health-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.queue-health-metric {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  align-content: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.queue-health-metric span {
+  font-size: 11px;
+}
+
+.queue-health-metric strong {
+  color: var(--accent-strong);
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.queue-status-list,
+.queue-recent-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.queue-status-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 32px;
+  gap: 8px;
+  min-height: 28px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.queue-status-row strong {
+  text-align: right;
+}
+
+.queue-status-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--muted);
+}
+
+.queue-status-queued .queue-status-fill {
+  background: var(--warning);
+}
+
+.queue-status-running .queue-status-fill {
+  background: var(--accent-strong);
+}
+
+.queue-status-failed .queue-status-fill {
+  background: #b3261e;
+}
+
+.queue-status-succeeded .queue-status-fill {
+  background: #1b7e4a;
+}
+
+.queue-status-cancelled .queue-status-fill {
+  background: #7b8494;
+}
+
+.queue-recent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 72px;
+  gap: 8px;
+  min-height: 34px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.queue-recent-row > div {
+  display: grid;
+  min-width: 0;
+}
+
+.queue-recent-row strong,
+.queue-recent-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-recent-time {
+  text-align: right;
+  font-size: 11px;
+}
+
+.queue-observability-skeleton {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 @media (max-width: 760px) {
   .organization-performance-header {
     display: grid;
+  }
+
+  .queue-observability-header {
+    display: grid;
+  }
+
+  .queue-observability-layout,
+  .queue-health-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .queue-health-metrics,
+  .queue-observability-skeleton {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .queue-recent-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .queue-recent-time {
+    display: none;
   }
 
   .organization-performance-header .performance-window-control {

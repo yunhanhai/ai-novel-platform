@@ -4,6 +4,7 @@ import { safeGetOrganizationId } from "../../../server/context";
 import { findProjectsByOrganization } from "../../../server/projects";
 import { ProjectList } from "../../../components/projects/project-list";
 import { OrganizationPerformanceOverview } from "../../../components/projects/organization-performance-overview";
+import { QueueObservabilityPanel } from "../../../components/projects/queue-observability-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export default async function ProjectsPage() {
         <p className="form-error">DEFAULT_ORGANIZATION_ID 未配置，无法读取项目列表。</p>
       )}
       <OrganizationPerformanceOverview enabled={Boolean(organizationId)} />
+      <QueueObservabilityPanel enabled={Boolean(organizationId)} />
       <section>
         <ProjectList projects={items} />
       </section>
