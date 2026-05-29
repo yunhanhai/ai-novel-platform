@@ -88,6 +88,16 @@ interface RecoverExpiredJobLeasesParams {
   prisma: PrismaClient;
 }
 
+interface RetryFailedJobParams {
+  organizationId: string;
+  jobId: string;
+  prisma: PrismaClient;
+}
+
+export type RetryFailedJobResult =
+  | { ok: true; job: Awaited<ReturnType<PrismaClient["generationJob"]["update"]>> }
+  | { ok: false; reason: "not_found" | "invalid_status"; status?: string };
+
 interface RecoverableJob {
   id: string;
   attemptCount: number;
@@ -211,6 +221,42 @@ export async function markJobFailed({
       errorMessage
     }
   });
+}
+
+export async function retryFailedJob({
+  organizationId,
+  jobId,
+  prisma
+}: RetryFailedJobParams): Promise<RetryFailedJobResult> {
+  const existing = await prisma.generationJob.findFirst({
+    where: { id: jobId, organizationId },
+    select: { id: true, status: true }
+  });
+
+  if (!existing) {
+    return { ok: false, reason: "not_found" };
+  }
+
+  if (existing.status !== "FAILED") {
+    return { ok: false, reason: "invalid_status", status: existing.status };
+  }
+
+  const job = await prisma.generationJob.update({
+    where: { id: existing.id },
+    data: {
+      status: "QUEUED",
+      progress: "0",
+      errorCode: null,
+      errorMessage: null,
+      lockKey: null,
+      leaseExpiresAt: null,
+      nextRunAt: null,
+      startedAt: null,
+      finishedAt: null
+    }
+  });
+
+  return { ok: true, job };
 }
 
 export async function recoverExpiredJobLeases({

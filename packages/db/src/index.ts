@@ -11,6 +11,7 @@ export {
   computeRetryDelayMs,
   scheduleJobRetry,
   markJobFailed,
+  retryFailedJob,
   recoverExpiredJobLeases
 } from "./generation-jobs";
 export {

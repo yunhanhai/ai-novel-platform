@@ -9,7 +9,8 @@ import {
   computeRetryDelayMs,
   scheduleJobRetry,
   markJobFailed,
-  recoverExpiredJobLeases
+  recoverExpiredJobLeases,
+  retryFailedJob
 } from "./generation-jobs";
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
@@ -251,6 +252,93 @@ describe("generation-jobs", () => {
           errorMessage: "timeout"
         })
       });
+    });
+
+    it("manually retries a failed job for the same organization", async () => {
+      const failed = {
+        ...job,
+        status: "FAILED",
+        progress: "45",
+        errorCode: "HANDLER_ERROR",
+        errorMessage: "timeout",
+        lockKey: "worker-1",
+        leaseExpiresAt: new Date("2026-05-28T09:59:00.000Z"),
+        nextRunAt: new Date("2026-05-28T10:02:00.000Z"),
+        startedAt: new Date("2026-05-28T09:58:00.000Z"),
+        finishedAt: new Date("2026-05-28T10:00:00.000Z")
+      };
+      const retried = {
+        ...failed,
+        status: "QUEUED",
+        progress: "0",
+        errorCode: null,
+        errorMessage: null,
+        lockKey: null,
+        leaseExpiresAt: null,
+        nextRunAt: null,
+        startedAt: null,
+        finishedAt: null
+      };
+      const findFirst = vi.fn().mockResolvedValue(failed);
+      const update = vi.fn().mockResolvedValue(retried);
+      const prisma = mockPrisma({ generationJob: { findFirst, update } });
+
+      const result = await retryFailedJob({
+        organizationId: "org1",
+        jobId: "j1",
+        prisma
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.ok && result.job.status).toBe("QUEUED");
+      expect(findFirst).toHaveBeenCalledWith({
+        where: { id: "j1", organizationId: "org1" },
+        select: { id: true, status: true }
+      });
+      expect(update).toHaveBeenCalledWith({
+        where: { id: "j1" },
+        data: expect.objectContaining({
+          status: "QUEUED",
+          progress: "0",
+          errorCode: null,
+          errorMessage: null,
+          lockKey: null,
+          leaseExpiresAt: null,
+          nextRunAt: null,
+          startedAt: null,
+          finishedAt: null
+        })
+      });
+    });
+
+    it("does not retry jobs outside the organization", async () => {
+      const findFirst = vi.fn().mockResolvedValue(null);
+      const update = vi.fn();
+      const prisma = mockPrisma({ generationJob: { findFirst, update } });
+
+      const result = await retryFailedJob({
+        organizationId: "org1",
+        jobId: "j-other",
+        prisma
+      });
+
+      expect(result).toEqual({ ok: false, reason: "not_found" });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("does not retry jobs that are not failed", async () => {
+      const findFirst = vi.fn().mockResolvedValue({ id: "j1", status: "RUNNING" });
+      const update = vi.fn();
+      const prisma = mockPrisma({ generationJob: { findFirst, update } });
+
+      const result = await retryFailedJob({
+        organizationId: "org1",
+        jobId: "j1",
+        prisma
+      });
+
+      expect(result).toEqual({ ok: false, reason: "invalid_status", status: "RUNNING" });
+      expect(update).not.toHaveBeenCalled();
     });
 
     it("recovers expired running leases back to delayed queued jobs", async () => {
