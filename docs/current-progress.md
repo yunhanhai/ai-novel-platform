@@ -488,3 +488,13 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - Worker startup now writes an immediate heartbeat, refreshes it periodically, and records the latest poll tick result.
 - Queue observability now includes online/stale worker counts and marks queued jobs with no online worker as attention.
 - The `/projects` queue health panel now shows a compact `Worker 心跳` section with online count, latest heartbeat age, recent workers, and last tick state.
+
+## 2026-05-29 Queue Retry And Lease Recovery
+
+- Added retry metadata to `generation_jobs`: `attemptCount`, `maxAttempts`, and `nextRunAt`, with defaults of `0`, `3`, and `null`.
+- Kept the existing job status enum; delayed retries are represented as `QUEUED + nextRunAt > now`, so ready queued work and waiting retries stay distinguishable without a new status.
+- Added DB helpers for retry delay calculation, retry scheduling, terminal failure marking, and expired running lease recovery.
+- Worker polling now recovers expired leases before claiming work, retries transient handler failures while attempts remain, and keeps missing handlers as terminal `NO_HANDLER` failures.
+- Queue observability now exposes retrying counts, oldest retrying job, retry wait time, and attempt metadata for recent jobs.
+- The `/projects` queue health panel now shows `等待重试`, `最近重试`, retry status distribution, and recent job attempt counts in the existing compact operational dashboard.
+- Migration note: use normal Prisma migration flow for new environments; if a long-lived local DB reports drift during `pnpm db:migrate`, do not reset it without explicit approval. Use Prisma migrate deploy to apply pending committed migrations for verification.
