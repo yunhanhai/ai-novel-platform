@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const retryFailedJobMock = vi.hoisted(() => vi.fn());
+const recordAuditLogMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@ai-novel/db", () => ({
   retryFailedJob: retryFailedJobMock,
@@ -12,7 +13,12 @@ vi.mock("@ai-novel/db", () => ({
 }));
 
 vi.mock("../../../../server/context", () => ({
-  getOrganizationId: () => "org-1"
+  getOrganizationId: () => "org-1",
+  getUserId: () => "user-1"
+}));
+
+vi.mock("../../../../server/audit-log", () => ({
+  recordAuditLog: recordAuditLogMock
 }));
 
 import { GET, POST } from "./route";
@@ -101,6 +107,17 @@ describe("POST /api/generation-jobs/[id]", () => {
       jobId: "job-1",
       prisma
     });
+    expect(recordAuditLogMock).toHaveBeenCalledWith({
+      prisma,
+      organizationId: "org-1",
+      actorUserId: "user-1",
+      action: "generation_job.retry",
+      entityType: "generation_job",
+      entityId: "job-1",
+      metadata: {
+        resultingStatus: "QUEUED"
+      }
+    });
   });
 
   it("returns 404 when retry target is not found in the organization", async () => {
@@ -111,6 +128,7 @@ describe("POST /api/generation-jobs/[id]", () => {
 
     expect(res.status).toBe(404);
     expect(body.success).toBe(false);
+    expect(recordAuditLogMock).not.toHaveBeenCalled();
   });
 
   it("returns 409 when retry target is not failed", async () => {
@@ -122,6 +140,7 @@ describe("POST /api/generation-jobs/[id]", () => {
     expect(res.status).toBe(409);
     expect(body.success).toBe(false);
     expect(body.error).toContain("RUNNING");
+    expect(recordAuditLogMock).not.toHaveBeenCalled();
   });
 
   it("rejects unknown actions", async () => {

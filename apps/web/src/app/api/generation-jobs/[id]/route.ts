@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma, retryFailedJob } from "@ai-novel/db";
-import { getOrganizationId } from "../../../../server/context";
+import { getOrganizationId, getUserId } from "../../../../server/context";
+import { recordAuditLog } from "../../../../server/audit-log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -81,6 +82,18 @@ export async function POST(request: Request, context: RouteContext) {
         { status: 409 }
       );
     }
+
+    await recordAuditLog({
+      prisma,
+      organizationId,
+      actorUserId: getUserId(),
+      action: "generation_job.retry",
+      entityType: "generation_job",
+      entityId: id,
+      metadata: {
+        resultingStatus: result.job.status
+      }
+    });
 
     return NextResponse.json({ success: true, data: result.job });
   } catch (error: unknown) {

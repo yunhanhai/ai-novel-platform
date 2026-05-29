@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const getOrganizationIdMock = vi.hoisted(() => vi.fn());
 const getQueueObservabilityMock = vi.hoisted(() => vi.fn());
 const recoverExpiredJobLeasesMock = vi.hoisted(() => vi.fn());
+const recordAuditLogMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@ai-novel/db", () => ({
   recoverExpiredJobLeases: recoverExpiredJobLeasesMock,
@@ -10,7 +11,12 @@ vi.mock("@ai-novel/db", () => ({
 }));
 
 vi.mock("../../../server/context", () => ({
-  getOrganizationId: getOrganizationIdMock
+  getOrganizationId: getOrganizationIdMock,
+  getUserId: () => "user-1"
+}));
+
+vi.mock("../../../server/audit-log", () => ({
+  recordAuditLog: recordAuditLogMock
 }));
 
 vi.mock("../../../server/queue-observability", async (importOriginal) => {
@@ -102,6 +108,17 @@ describe("POST /api/queue-observability", () => {
       prisma,
       organizationId: "org-1"
     });
+    expect(recordAuditLogMock).toHaveBeenCalledWith({
+      prisma,
+      organizationId: "org-1",
+      actorUserId: "user-1",
+      action: "queue.recover_expired_leases",
+      entityType: "queue",
+      metadata: {
+        recovered: 2,
+        failed: 1
+      }
+    });
   });
 
   it("rejects unknown actions", async () => {
@@ -111,6 +128,7 @@ describe("POST /api/queue-observability", () => {
     expect(res.status).toBe(400);
     expect(body.success).toBe(false);
     expect(recoverExpiredJobLeasesMock).not.toHaveBeenCalled();
+    expect(recordAuditLogMock).not.toHaveBeenCalled();
   });
 
   it("returns a structured error when recovery fails", async () => {

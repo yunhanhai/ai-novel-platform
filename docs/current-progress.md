@@ -506,3 +506,11 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - Added `POST /api/queue-observability` with `{ action: "recover-expired-leases" }` to manually trigger the existing expired lease recovery helper.
 - The `/projects` queue health panel now includes a compact `回收过期租约` control and row-level `重试` controls for failed recent jobs.
 - The UI keeps recovery actions non-destructive: no delete, cancel, force-success, or arbitrary status edit was added in this phase.
+
+## 2026-05-29 Queue Recovery Audit Logging
+
+- Added a small web-side `recordAuditLog` helper that writes to the existing `audit_logs` table.
+- Successful manual failed-job retries now create `generation_job.retry` audit records with organization, actor, target job, and resulting status.
+- Successful manual expired-lease recovery now creates `queue.recover_expired_leases` audit records with recovered/failed counts.
+- Not-found, conflict, and unknown-action branches intentionally do not write audit entries.
+- Audit metadata is limited to operational summaries; prompts, model outputs, request bodies, API keys, and other sensitive content are not logged.
