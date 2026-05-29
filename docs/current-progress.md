@@ -514,3 +514,10 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - Successful manual expired-lease recovery now creates `queue.recover_expired_leases` audit records with recovered/failed counts.
 - Not-found, conflict, and unknown-action branches intentionally do not write audit entries.
 - Audit metadata is limited to operational summaries; prompts, model outputs, request bodies, API keys, and other sensitive content are not logged.
+
+## 2026-05-29 Project Recovery Audit List
+
+- Added `GET /api/audit-logs/recovery-actions` to return recent organization-scoped recovery audit records from the existing `audit_logs` table.
+- The queue health panel now includes a compact `恢复记录` list with action type, summary, actor, target, time, loading, error, empty, and refresh states.
+- The list only exposes operational summaries for `generation_job.retry` and `queue.recover_expired_leases`; sensitive prompt/model/request content remains excluded.
+- Smoke e2e now verifies the recovery audit section is visible on the projects page.

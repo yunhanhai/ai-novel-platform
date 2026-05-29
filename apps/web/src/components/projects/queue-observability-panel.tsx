@@ -15,6 +15,7 @@ import {
   getWorkerStatusDisplay,
   isQueueEmpty
 } from "./queue-observability-panel-model";
+import { RecoveryAuditList } from "./recovery-audit-list";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -189,6 +190,7 @@ export function QueueObservabilityPanel({ enabled }: Props) {
           <HealthSummary data={data} />
           <StatusBreakdown data={data} />
           <WorkerHeartbeatSection data={data} />
+          <RecoveryAuditList enabled={enabled} />
           <RecentJobs
             jobs={data.recentJobs}
             operationKey={operationKey}
