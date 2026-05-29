@@ -29,6 +29,13 @@ function mockPrisma(overrides: Record<string, unknown> = {}) {
   } as unknown as Parameters<typeof createJob>[0]["prisma"];
 }
 
+type ClaimTxStub = {
+  generationJob: {
+    findFirst: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
+};
+
 const job = {
   id: "j1", organizationId: "org1", projectId: "p1", userId: "u1",
   modelProfileId: null, jobType: "GENERATE_CHAPTER",
@@ -141,14 +148,14 @@ describe("generation-jobs", () => {
 
     it("does not claim queued jobs scheduled for a future retry", async () => {
       const findFirst = vi.fn().mockResolvedValue(null);
-      const tx = {
+      const tx: ClaimTxStub = {
         generationJob: {
           findFirst,
           update: vi.fn()
         }
       };
       const prisma = mockPrisma({
-        $transaction: vi.fn((cb: (tx: typeof tx) => Promise<unknown>) => cb(tx))
+        $transaction: vi.fn((cb: (tx: ClaimTxStub) => Promise<unknown>) => cb(tx))
       });
       const now = new Date("2026-05-28T10:00:00.000Z");
 
