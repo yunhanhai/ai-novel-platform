@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const retryFailedJobMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@ai-novel/db", () => ({
+  retryFailedJob: retryFailedJobMock,
   prisma: {
     generationJob: {
       findFirst: vi.fn()
@@ -12,11 +15,17 @@ vi.mock("../../../../server/context", () => ({
   getOrganizationId: () => "org-1"
 }));
 
-import { GET } from "./route";
+import { GET, POST } from "./route";
 import { prisma } from "@ai-novel/db";
 
 function p() { return prisma as unknown as { generationJob: { findFirst: ReturnType<typeof vi.fn> } }; }
 function routeCtx(id: string) { return { params: Promise.resolve({ id }) }; }
+function req(body: unknown) {
+  return new Request("http://localhost/api/generation-jobs/job-1", {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
+}
 
 describe("GET /api/generation-jobs/[id]", () => {
   beforeEach(() => { vi.clearAllMocks(); });
@@ -69,5 +78,58 @@ describe("GET /api/generation-jobs/[id]", () => {
     p().generationJob.findFirst.mockRejectedValue(new Error("db error"));
     const res = await GET(new Request("http://localhost/api/generation-jobs/job-1"), routeCtx("job-1"));
     expect(res.status).toBe(500);
+  });
+});
+
+describe("POST /api/generation-jobs/[id]", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("retries a failed job in the current organization", async () => {
+    retryFailedJobMock.mockResolvedValue({
+      ok: true,
+      job: { id: "job-1", status: "QUEUED" }
+    });
+
+    const res = await POST(req({ action: "retry" }), routeCtx("job-1"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data).toMatchObject({ id: "job-1", status: "QUEUED" });
+    expect(retryFailedJobMock).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      jobId: "job-1",
+      prisma
+    });
+  });
+
+  it("returns 404 when retry target is not found in the organization", async () => {
+    retryFailedJobMock.mockResolvedValue({ ok: false, reason: "not_found" });
+
+    const res = await POST(req({ action: "retry" }), routeCtx("missing-job"));
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body.success).toBe(false);
+  });
+
+  it("returns 409 when retry target is not failed", async () => {
+    retryFailedJobMock.mockResolvedValue({ ok: false, reason: "invalid_status", status: "RUNNING" });
+
+    const res = await POST(req({ action: "retry" }), routeCtx("job-1"));
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain("RUNNING");
+  });
+
+  it("rejects unknown actions", async () => {
+    const res = await POST(req({ action: "cancel" }), routeCtx("job-1"));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(retryFailedJobMock).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@ai-novel/db";
+import { prisma, retryFailedJob } from "@ai-novel/db";
 import { getOrganizationId } from "../../../../server/context";
 
 interface RouteContext {
@@ -55,6 +55,34 @@ export async function GET(_request: Request, context: RouteContext) {
         diagnosticSummary: output.diagnosticSummary
       }
     });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "服务异常";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request, context: RouteContext) {
+  const { id } = await context.params;
+  try {
+    const body = await request.json().catch(() => ({}));
+    if (!isRecord(body) || body.action !== "retry") {
+      return NextResponse.json({ success: false, error: "Unsupported generation job action" }, { status: 400 });
+    }
+
+    const organizationId = getOrganizationId();
+    const result = await retryFailedJob({ organizationId, jobId: id, prisma });
+
+    if (!result.ok) {
+      if (result.reason === "not_found") {
+        return NextResponse.json({ success: false, error: "任务不存在" }, { status: 404 });
+      }
+      return NextResponse.json(
+        { success: false, error: `任务当前状态 ${result.status ?? "unknown"} 不能重试` },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json({ success: true, data: result.job });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "服务异常";
     return NextResponse.json({ success: false, error: message }, { status: 500 });

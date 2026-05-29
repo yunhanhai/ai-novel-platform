@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getOrganizationIdMock = vi.hoisted(() => vi.fn());
 const getQueueObservabilityMock = vi.hoisted(() => vi.fn());
+const recoverExpiredJobLeasesMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@ai-novel/db", () => ({
+  recoverExpiredJobLeases: recoverExpiredJobLeasesMock,
   prisma: {}
 }));
 
@@ -20,7 +22,14 @@ vi.mock("../../../server/queue-observability", async (importOriginal) => {
 });
 
 import { prisma } from "@ai-novel/db";
-import { GET } from "./route";
+import { GET, POST } from "./route";
+
+function req(body: unknown) {
+  return new Request("http://localhost/api/queue-observability", {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
+}
 
 describe("GET /api/queue-observability", () => {
   beforeEach(() => {
@@ -67,6 +76,47 @@ describe("GET /api/queue-observability", () => {
     getQueueObservabilityMock.mockRejectedValue(new Error("db unavailable"));
 
     const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("db unavailable");
+  });
+});
+
+describe("POST /api/queue-observability", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getOrganizationIdMock.mockReturnValue("org-1");
+    recoverExpiredJobLeasesMock.mockResolvedValue({ recovered: 2, failed: 1 });
+  });
+
+  it("recovers expired leases for the current organization", async () => {
+    const res = await POST(req({ action: "recover-expired-leases" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data).toEqual({ recovered: 2, failed: 1 });
+    expect(recoverExpiredJobLeasesMock).toHaveBeenCalledWith({
+      prisma,
+      organizationId: "org-1"
+    });
+  });
+
+  it("rejects unknown actions", async () => {
+    const res = await POST(req({ action: "retry" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(recoverExpiredJobLeasesMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a structured error when recovery fails", async () => {
+    recoverExpiredJobLeasesMock.mockRejectedValue(new Error("db unavailable"));
+
+    const res = await POST(req({ action: "recover-expired-leases" }));
     const body = await res.json();
 
     expect(res.status).toBe(500);
