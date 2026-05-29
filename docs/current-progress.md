@@ -498,3 +498,11 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - Queue observability now exposes retrying counts, oldest retrying job, retry wait time, and attempt metadata for recent jobs.
 - The `/projects` queue health panel now shows `等待重试`, `最近重试`, retry status distribution, and recent job attempt counts in the existing compact operational dashboard.
 - Migration note: use normal Prisma migration flow for new environments; if a long-lived local DB reports drift during `pnpm db:migrate`, do not reset it without explicit approval. Use Prisma migrate deploy to apply pending committed migrations for verification.
+
+## 2026-05-29 Queue Recovery Actions
+
+- Added `retryFailedJob` in `packages/db` so failed generation jobs can be moved back to ready `QUEUED` state within the current organization.
+- Added `POST /api/generation-jobs/[id]` with `{ action: "retry" }`, returning 404 for cross-organization/not-found jobs and 409 for jobs that are not failed.
+- Added `POST /api/queue-observability` with `{ action: "recover-expired-leases" }` to manually trigger the existing expired lease recovery helper.
+- The `/projects` queue health panel now includes a compact `回收过期租约` control and row-level `重试` controls for failed recent jobs.
+- The UI keeps recovery actions non-destructive: no delete, cancel, force-success, or arbitrary status edit was added in this phase.
