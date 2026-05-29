@@ -1,4 +1,5 @@
 import type {
+  QueueJobSummary,
   QueueHealthState,
   QueueObservability,
   QueueObservabilityTotals,
@@ -15,6 +16,7 @@ export interface QueueStatusDisplayItem {
 
 const STATUS_CONFIG: Array<{ key: QueueStatusDisplayItem["key"]; label: string; tone: string }> = [
   { key: "queued", label: "排队", tone: "queued" },
+  { key: "retrying", label: "等待重试", tone: "retrying" },
   { key: "running", label: "运行", tone: "running" },
   { key: "failed", label: "失败", tone: "failed" },
   { key: "succeeded", label: "成功", tone: "succeeded" },
@@ -35,6 +37,15 @@ export function getStatusItems(data: QueueObservability): QueueStatusDisplayItem
 
 export function formatQueueWait(waitMs: number | null | undefined): string {
   if (waitMs === null || waitMs === undefined) return "无排队";
+  return formatDuration(waitMs);
+}
+
+export function formatRetryWait(waitMs: number | null | undefined): string {
+  if (waitMs === null || waitMs === undefined) return "无重试";
+  return formatDuration(waitMs);
+}
+
+function formatDuration(waitMs: number): string {
   if (waitMs < 60_000) return "<1 分钟";
   const totalMinutes = Math.max(1, Math.round(waitMs / 60_000));
   if (totalMinutes < 60) return `${totalMinutes} 分钟`;
@@ -56,6 +67,18 @@ export function getWorkerStatusDisplay(status: WorkerHeartbeatStatus): { label: 
     return { label: "在线", tone: "online" };
   }
   return { label: "过期", tone: "stale" };
+}
+
+export function getJobStatusDisplay(job: QueueJobSummary): { label: string; tone: string } {
+  if (job.status === "QUEUED" && job.nextRunAt) {
+    return { label: "等待重试", tone: "retrying" };
+  }
+  return { label: job.status, tone: job.status.toLowerCase() };
+}
+
+export function formatJobAttempt(job: Pick<QueueJobSummary, "attemptCount" | "maxAttempts">): string {
+  if (job.attemptCount <= 0) return "首次";
+  return `尝试 ${job.attemptCount}/${job.maxAttempts}`;
 }
 
 export function getHealthToneClass(state: QueueHealthState): string {

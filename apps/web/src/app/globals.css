@@ -419,7 +419,7 @@ select {
 
 .queue-health-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -456,7 +456,7 @@ select {
 
 .queue-status-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 32px;
+  grid-template-columns: 64px minmax(0, 1fr) 32px;
   gap: 8px;
   min-height: 28px;
   align-items: center;
@@ -476,6 +476,10 @@ select {
 
 .queue-status-queued .queue-status-fill {
   background: var(--warning);
+}
+
+.queue-status-retrying .queue-status-fill {
+  background: #8f6b11;
 }
 
 .queue-status-running .queue-status-fill {
@@ -555,7 +559,7 @@ select {
 
 .queue-recent-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 72px;
+  grid-template-columns: minmax(0, 1fr) auto 64px 72px;
   gap: 8px;
   min-height: 34px;
   align-items: center;
@@ -575,6 +579,7 @@ select {
   white-space: nowrap;
 }
 
+.queue-recent-attempt,
 .queue-recent-time {
   text-align: right;
   font-size: 11px;
@@ -604,7 +609,7 @@ select {
   }
 
   .queue-recent-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto 58px;
   }
 
   .queue-worker-row {

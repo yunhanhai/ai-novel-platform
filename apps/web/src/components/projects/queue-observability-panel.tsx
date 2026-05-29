@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { QueueJobSummary, QueueObservability } from "../../server/queue-observability";
 import {
+  formatJobAttempt,
   formatHeartbeatAge,
   formatQueueWait,
+  formatRetryWait,
+  getJobStatusDisplay,
   getHealthToneClass,
   getStatusItems,
   getWorkerStatusDisplay,
@@ -130,6 +133,7 @@ export function QueueObservabilityPanel({ enabled }: Props) {
 
 function HealthSummary({ data }: { data: QueueObservability }) {
   const wait = formatQueueWait(data.oldestQueued?.waitMs ?? null);
+  const retryWait = formatRetryWait(data.oldestRetrying?.retryInMs ?? null);
 
   return (
     <div className={`queue-health-summary ${getHealthToneClass(data.health.state)}`}>
@@ -140,8 +144,10 @@ function HealthSummary({ data }: { data: QueueObservability }) {
       <div className="queue-health-metrics">
         <Metric label="总任务" value={String(data.totals.total)} />
         <Metric label="排队" value={String(data.totals.queued)} />
+        <Metric label="等待重试" value={String(data.totals.retrying)} />
         <Metric label="运行" value={String(data.totals.running)} />
         <Metric label="最老等待" value={wait} />
+        <Metric label="最近重试" value={retryWait} />
       </div>
     </div>
   );
@@ -227,18 +233,27 @@ function RecentJobs({ jobs }: { jobs: QueueJobSummary[] }) {
       ) : (
         <ol className="queue-recent-list">
           {jobs.map((job) => (
-            <li key={job.id} className="queue-recent-row">
-              <div>
-                <strong>{labelJobType(job.jobType)}</strong>
-                <span className="muted">{job.projectTitle}</span>
-              </div>
-              <span className={`tag tag-job tag-job-${job.status.toLowerCase()}`}>{job.status}</span>
-              <span className="muted queue-recent-time">{formatJobTime(job)}</span>
-            </li>
+            <RecentJobRow key={job.id} job={job} />
           ))}
         </ol>
       )}
     </section>
+  );
+}
+
+function RecentJobRow({ job }: { job: QueueJobSummary }) {
+  const status = getJobStatusDisplay(job);
+
+  return (
+    <li className="queue-recent-row">
+      <div>
+        <strong>{labelJobType(job.jobType)}</strong>
+        <span className="muted">{job.projectTitle}</span>
+      </div>
+      <span className={`tag tag-job tag-job-${status.tone}`}>{status.label}</span>
+      <span className="muted queue-recent-attempt">{formatJobAttempt(job)}</span>
+      <span className="muted queue-recent-time">{formatJobTime(job)}</span>
+    </li>
   );
 }
 

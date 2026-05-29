@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   formatHeartbeatAge,
+  formatJobAttempt,
   formatQueueWait,
+  formatRetryWait,
+  getJobStatusDisplay,
   getHealthToneClass,
   getStatusItems,
   getWorkerStatusDisplay,
   isQueueEmpty
 } from "./queue-observability-panel-model";
-import type { QueueObservability } from "../../server/queue-observability";
+import type { QueueJobSummary, QueueObservability } from "../../server/queue-observability";
 
 function data(overrides: Partial<QueueObservability["totals"]> = {}): QueueObservability {
   return {
@@ -17,6 +20,7 @@ function data(overrides: Partial<QueueObservability["totals"]> = {}): QueueObser
       total: 0,
       queued: 0,
       running: 0,
+      retrying: 0,
       succeeded: 0,
       failed: 0,
       cancelled: 0,
@@ -31,18 +35,42 @@ function data(overrides: Partial<QueueObservability["totals"]> = {}): QueueObser
       items: []
     },
     oldestQueued: null,
+    oldestRetrying: null,
     recentJobs: []
+  };
+}
+
+function job(overrides: Partial<QueueJobSummary> = {}): QueueJobSummary {
+  return {
+    id: "job-1",
+    jobType: "GENERATE_CHAPTER",
+    status: "QUEUED",
+    projectId: "project-1",
+    projectTitle: "Project One",
+    projectSlug: "project-one",
+    targetEntityType: "CHAPTER",
+    targetEntityId: "chapter-1",
+    errorCode: null,
+    errorMessage: null,
+    attemptCount: 0,
+    maxAttempts: 3,
+    nextRunAt: null,
+    createdAt: "2026-05-28T09:58:00.000Z",
+    startedAt: null,
+    finishedAt: null,
+    ...overrides
   };
 }
 
 describe("queue observability panel model", () => {
   it("maps status counts in operational priority order", () => {
-    const items = getStatusItems(data({ total: 9, queued: 3, running: 1, failed: 2, succeeded: 3 }));
+    const items = getStatusItems(data({ total: 11, queued: 3, retrying: 2, running: 1, failed: 2, succeeded: 3 }));
 
-    expect(items.map((item) => item.key)).toEqual(["queued", "running", "failed", "succeeded", "cancelled"]);
+    expect(items.map((item) => item.key)).toEqual(["queued", "retrying", "running", "failed", "succeeded", "cancelled"]);
     expect(items[0]).toMatchObject({ label: "排队", value: 3, tone: "queued", width: "100%" });
-    expect(items[1]).toMatchObject({ label: "运行", value: 1, tone: "running", width: "33%" });
-    expect(items[4]).toMatchObject({ label: "取消", value: 0, tone: "cancelled", width: "0%" });
+    expect(items[1]).toMatchObject({ label: "等待重试", value: 2, tone: "retrying", width: "67%" });
+    expect(items[2]).toMatchObject({ label: "运行", value: 1, tone: "running", width: "33%" });
+    expect(items[5]).toMatchObject({ label: "取消", value: 0, tone: "cancelled", width: "0%" });
   });
 
   it("formats queued wait duration for compact display", () => {
@@ -70,6 +98,23 @@ describe("queue observability panel model", () => {
     expect(formatHeartbeatAge(5_000)).toBe("5 秒前");
     expect(formatHeartbeatAge(95_000)).toBe("2 分钟前");
     expect(formatHeartbeatAge(2 * 60 * 60_000)).toBe("2 小时前");
+  });
+
+  it("formats retry wait duration for compact display", () => {
+    expect(formatRetryWait(null)).toBe("无重试");
+    expect(formatRetryWait(30_000)).toBe("<1 分钟");
+    expect(formatRetryWait(5 * 60_000)).toBe("5 分钟");
+    expect(formatRetryWait(95 * 60_000)).toBe("1 小时 35 分钟");
+  });
+
+  it("labels retrying jobs and attempt counts for recent rows", () => {
+    expect(getJobStatusDisplay(job({ status: "QUEUED", nextRunAt: "2026-05-28T10:02:00.000Z" }))).toEqual({
+      label: "等待重试",
+      tone: "retrying"
+    });
+    expect(getJobStatusDisplay(job({ status: "RUNNING" }))).toEqual({ label: "RUNNING", tone: "running" });
+    expect(formatJobAttempt(job({ attemptCount: 0, maxAttempts: 3 }))).toBe("首次");
+    expect(formatJobAttempt(job({ attemptCount: 2, maxAttempts: 3 }))).toBe("尝试 2/3");
   });
 
   it("maps worker heartbeat status to readable labels and tones", () => {
