@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  canRetryJob,
   formatHeartbeatAge,
   formatJobAttempt,
   formatQueueWait,
   formatRetryWait,
+  getQueueActionCopy,
   getJobStatusDisplay,
   getHealthToneClass,
   getStatusItems,
@@ -115,6 +117,24 @@ describe("queue observability panel model", () => {
     expect(getJobStatusDisplay(job({ status: "RUNNING" }))).toEqual({ label: "RUNNING", tone: "running" });
     expect(formatJobAttempt(job({ attemptCount: 0, maxAttempts: 3 }))).toBe("首次");
     expect(formatJobAttempt(job({ attemptCount: 2, maxAttempts: 3 }))).toBe("尝试 2/3");
+  });
+
+  it("allows manual retry only for failed recent jobs", () => {
+    expect(canRetryJob(job({ status: "FAILED" }))).toBe(true);
+    expect(canRetryJob(job({ status: "QUEUED" }))).toBe(false);
+    expect(canRetryJob(job({ status: "RUNNING" }))).toBe(false);
+    expect(canRetryJob(job({ status: "SUCCEEDED" }))).toBe(false);
+  });
+
+  it("returns stable copy for queue recovery actions", () => {
+    expect(getQueueActionCopy("recover-expired-leases")).toEqual({
+      label: "回收过期租约",
+      busyLabel: "回收中"
+    });
+    expect(getQueueActionCopy("retry-failed-job")).toEqual({
+      label: "重试",
+      busyLabel: "重试中"
+    });
   });
 
   it("maps worker heartbeat status to readable labels and tones", () => {

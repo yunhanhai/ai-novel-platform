@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { QueueJobSummary, QueueObservability } from "../../server/queue-observability";
 import {
+  canRetryJob,
   formatJobAttempt,
   formatHeartbeatAge,
   formatQueueWait,
   formatRetryWait,
+  getQueueActionCopy,
   getJobStatusDisplay,
   getHealthToneClass,
   getStatusItems,
@@ -24,10 +26,14 @@ interface Props {
   enabled: boolean;
 }
 
+type QueueOperationKey = "recover-expired-leases" | `retry:${string}`;
+
 export function QueueObservabilityPanel({ enabled }: Props) {
   const [data, setData] = useState<QueueObservability | null>(null);
   const [isLoading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [operationKey, setOperationKey] = useState<QueueOperationKey | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!enabled) {
@@ -50,6 +56,53 @@ export function QueueObservabilityPanel({ enabled }: Props) {
       setLoading(false);
     }
   }, [enabled]);
+
+  const recoverCopy = getQueueActionCopy("recover-expired-leases");
+  const retryCopy = getQueueActionCopy("retry-failed-job");
+
+  const recoverExpiredLeases = useCallback(async () => {
+    if (!enabled) return;
+    setOperationKey("recover-expired-leases");
+    setOperationError(null);
+    try {
+      const res = await fetch("/api/queue-observability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "recover-expired-leases" })
+      });
+      const json = (await res.json()) as ApiEnvelope<{ recovered: number; failed: number }>;
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? `回收过期租约失败 (${res.status})`);
+      }
+      await load();
+    } catch (err: unknown) {
+      setOperationError(err instanceof Error ? err.message : "回收过期租约失败");
+    } finally {
+      setOperationKey(null);
+    }
+  }, [enabled, load]);
+
+  const retryFailedJob = useCallback(async (jobId: string) => {
+    if (!enabled) return;
+    setOperationKey(`retry:${jobId}`);
+    setOperationError(null);
+    try {
+      const res = await fetch(`/api/generation-jobs/${jobId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "retry" })
+      });
+      const json = (await res.json()) as ApiEnvelope<QueueJobSummary>;
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? `重试任务失败 (${res.status})`);
+      }
+      await load();
+    } catch (err: unknown) {
+      setOperationError(err instanceof Error ? err.message : "重试任务失败");
+    } finally {
+      setOperationKey(null);
+    }
+  }, [enabled, load]);
 
   useEffect(() => {
     let active = true;
@@ -90,9 +143,19 @@ export function QueueObservabilityPanel({ enabled }: Props) {
           <h2>队列健康</h2>
           <p className="muted">生成任务状态、排队等待与最近任务</p>
         </div>
-        <button type="button" className="btn-ghost" onClick={() => void load()} disabled={!enabled || isLoading}>
-          {isLoading ? "刷新中" : "刷新"}
-        </button>
+        <div className="queue-observability-actions">
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => void recoverExpiredLeases()}
+            disabled={!enabled || isLoading || operationKey !== null}
+          >
+            {operationKey === "recover-expired-leases" ? recoverCopy.busyLabel : recoverCopy.label}
+          </button>
+          <button type="button" className="btn-ghost" onClick={() => void load()} disabled={!enabled || isLoading}>
+            {isLoading ? "刷新中" : "刷新"}
+          </button>
+        </div>
       </div>
 
       {!enabled && <p className="performance-empty muted">配置默认组织后可查看队列健康。</p>}
@@ -115,12 +178,23 @@ export function QueueObservabilityPanel({ enabled }: Props) {
         </div>
       )}
 
+      {enabled && operationError && (
+        <div className="performance-error queue-operation-error">
+          <p className="form-error">{operationError}</p>
+        </div>
+      )}
+
       {data && !error && (
         <div className="queue-observability-layout">
           <HealthSummary data={data} />
           <StatusBreakdown data={data} />
           <WorkerHeartbeatSection data={data} />
-          <RecentJobs jobs={data.recentJobs} />
+          <RecentJobs
+            jobs={data.recentJobs}
+            operationKey={operationKey}
+            retryCopy={retryCopy}
+            onRetry={retryFailedJob}
+          />
         </div>
       )}
 
@@ -221,7 +295,17 @@ function WorkerHeartbeatSection({ data }: { data: QueueObservability }) {
   );
 }
 
-function RecentJobs({ jobs }: { jobs: QueueJobSummary[] }) {
+function RecentJobs({
+  jobs,
+  operationKey,
+  retryCopy,
+  onRetry
+}: {
+  jobs: QueueJobSummary[];
+  operationKey: QueueOperationKey | null;
+  retryCopy: { label: string; busyLabel: string };
+  onRetry: (jobId: string) => void;
+}) {
   return (
     <section className="performance-section queue-recent-section" aria-label="最近队列任务">
       <div className="performance-section-heading">
@@ -233,7 +317,13 @@ function RecentJobs({ jobs }: { jobs: QueueJobSummary[] }) {
       ) : (
         <ol className="queue-recent-list">
           {jobs.map((job) => (
-            <RecentJobRow key={job.id} job={job} />
+            <RecentJobRow
+              key={job.id}
+              job={job}
+              isRetrying={operationKey === `retry:${job.id}`}
+              retryCopy={retryCopy}
+              onRetry={onRetry}
+            />
           ))}
         </ol>
       )}
@@ -241,8 +331,19 @@ function RecentJobs({ jobs }: { jobs: QueueJobSummary[] }) {
   );
 }
 
-function RecentJobRow({ job }: { job: QueueJobSummary }) {
+function RecentJobRow({
+  job,
+  isRetrying,
+  retryCopy,
+  onRetry
+}: {
+  job: QueueJobSummary;
+  isRetrying: boolean;
+  retryCopy: { label: string; busyLabel: string };
+  onRetry: (jobId: string) => void;
+}) {
   const status = getJobStatusDisplay(job);
+  const canRetry = canRetryJob(job);
 
   return (
     <li className="queue-recent-row">
@@ -253,6 +354,18 @@ function RecentJobRow({ job }: { job: QueueJobSummary }) {
       <span className={`tag tag-job tag-job-${status.tone}`}>{status.label}</span>
       <span className="muted queue-recent-attempt">{formatJobAttempt(job)}</span>
       <span className="muted queue-recent-time">{formatJobTime(job)}</span>
+      <span className="queue-recent-action">
+        {canRetry && (
+          <button
+            type="button"
+            className="btn-ghost btn-small"
+            onClick={() => onRetry(job.id)}
+            disabled={isRetrying}
+          >
+            {isRetrying ? retryCopy.busyLabel : retryCopy.label}
+          </button>
+        )}
+      </span>
     </li>
   );
 }

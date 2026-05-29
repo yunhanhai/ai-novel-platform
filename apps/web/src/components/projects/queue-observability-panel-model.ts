@@ -14,6 +14,8 @@ export interface QueueStatusDisplayItem {
   width: string;
 }
 
+export type QueueActionKind = "recover-expired-leases" | "retry-failed-job";
+
 const STATUS_CONFIG: Array<{ key: QueueStatusDisplayItem["key"]; label: string; tone: string }> = [
   { key: "queued", label: "排队", tone: "queued" },
   { key: "retrying", label: "等待重试", tone: "retrying" },
@@ -79,6 +81,17 @@ export function getJobStatusDisplay(job: QueueJobSummary): { label: string; tone
 export function formatJobAttempt(job: Pick<QueueJobSummary, "attemptCount" | "maxAttempts">): string {
   if (job.attemptCount <= 0) return "首次";
   return `尝试 ${job.attemptCount}/${job.maxAttempts}`;
+}
+
+export function canRetryJob(job: Pick<QueueJobSummary, "status">): boolean {
+  return job.status === "FAILED";
+}
+
+export function getQueueActionCopy(action: QueueActionKind): { label: string; busyLabel: string } {
+  if (action === "recover-expired-leases") {
+    return { label: "回收过期租约", busyLabel: "回收中" };
+  }
+  return { label: "重试", busyLabel: "重试中" };
 }
 
 export function getHealthToneClass(state: QueueHealthState): string {
