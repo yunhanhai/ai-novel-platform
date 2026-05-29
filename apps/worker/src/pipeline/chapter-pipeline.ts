@@ -1,4 +1,4 @@
-import type { ActivationReport } from "../context/keyword-activation";
+﻿import type { ActivationReport } from "../context/keyword-activation";
 import type { StyleGuide, MethodologyGuide } from "../context/build-context-packet";
 
 interface PipelineJob {
@@ -72,6 +72,7 @@ export interface PipelineDeps {
     inputTokens: number;
     outputTokens: number;
     latencyMs: number;
+    promptSnapshot?: string;
   }) => Promise<unknown>;
 }
 
@@ -106,7 +107,8 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
       outputPreview: preview,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
-      latencyMs: elapsed
+      latencyMs: elapsed,
+      promptSnapshot: promptText.slice(0, 4000)
     });
 
     steps.push({
@@ -121,23 +123,21 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
     return result.text;
   }
 
-  // Step 1: plan
   const methodologyHint = context.methodologyGuide
-    ? `\n\n[方法论对齐] 请按「${context.methodologyGuide.name}」的结构提示组织 sceneBeats 与 hookAgenda。`
+    ? `\n\n[Methodology alignment] Follow "${context.methodologyGuide.name}" when organizing sceneBeats and hookAgenda.\n${context.methodologyGuide.guideText}`
     : "";
 
-  const planPrompt = `你是一位专业的小说策划。根据以下上下文，为本章节制定写作计划。以 JSON 格式输出。
-
+  const planPrompt = `You are a professional fiction planner. Build a chapter writing plan from the context below. Return valid JSON only.
 ${context.prompt}${methodologyHint}
 
-输出格式：
+Output schema:
 {
-  "chapterGoal": "本章核心目标",
-  "sceneBeats": [{"description": "场景描述", "goal": "场景目标"}],
-  "charactersInScene": ["角色名"],
-  "mustIncludeFacts": ["必须包含的事实"],
-  "hookAgenda": ["钩子安排"],
-  "forbiddenMoves": ["禁止操作"]
+  "chapterGoal": "core goal of this chapter",
+  "sceneBeats": [{"description": "scene description", "goal": "scene goal"}],
+  "charactersInScene": ["character name"],
+  "mustIncludeFacts": ["facts that must appear"],
+  "hookAgenda": ["hooks to plant or pay off"],
+  "forbiddenMoves": ["moves to avoid"]
 }`;
 
   const planText = await execStep("plan", planPrompt);
@@ -145,43 +145,39 @@ ${context.prompt}${methodologyHint}
     chapterGoal: "", sceneBeats: [], charactersInScene: []
   });
 
-  // Step 2: draft
-  const draftPrompt = `你是一位小说作家。根据写作计划和上下文，撰写本章正文。
-
-写作计划：
+  const draftPrompt = `You are a fiction writer. Draft the chapter from the writing plan and context.
+Writing plan:
 ${JSON.stringify(plan, null, 2)}
 
 ${context.prompt}
 
-直接输出正文内容，不需要解释。`;
+Return the chapter prose only, without explanation.`;
 
   let draftText = await execStep("draft", draftPrompt, { previewLen: 500 });
 
-  // Step 3: review
   const reviewExtras: string[] = [];
   if (context.styleGuide?.banned && context.styleGuide.banned.length > 0) {
-    reviewExtras.push(`必须扫描禁用词：${context.styleGuide.banned.join("、")}（命中视为 style_drift 错误）`);
+    reviewExtras.push(`Scan for banned words: ${context.styleGuide.banned.join(", ")} (mark hits as style_drift).`);
   }
   if (context.methodologyGuide?.reviewCriteria && context.methodologyGuide.reviewCriteria.length > 0) {
-    reviewExtras.push(`方法论必查项：${context.methodologyGuide.reviewCriteria.join("；")}（违反视为 methodology_violation）`);
+    reviewExtras.push(`Methodology review criteria: ${context.methodologyGuide.reviewCriteria.join("; ")} (mark violations as methodology_violation).`);
   }
-  const reviewExtraText = reviewExtras.length > 0 ? `\n\n[必查项]\n${reviewExtras.map((e) => `- ${e}`).join("\n")}` : "";
+  const reviewExtraText = reviewExtras.length > 0 ? `\n\n[Required checks]\n${reviewExtras.map((e) => `- ${e}`).join("\n")}` : "";
 
-  const reviewPrompt = `你是一位严格的小说审稿人。检查以下正文是否存在问题。
-
-正文：
+  const reviewPrompt = `You are a strict fiction editor. Review the chapter for continuity, world logic, pacing, style, and methodology issues.
+Chapter:
 ${draftText}
 
-上下文：
+Context:
 ${context.prompt}${reviewExtraText}
 
-以 JSON 格式输出审计结果：
+Return valid JSON only:
 {
   "issues": [
     {
       "type": "consistency|world_conflict|foreshadowing|timeline|knowledge_boundary|ai_slop|pacing|style_drift|methodology_violation",
-      "detail": "问题描述",
-      "suggestion": "建议修改",
+      "detail": "issue description",
+      "suggestion": "suggested fix",
       "severity": "info|warning|error"
     }
   ],
@@ -191,17 +187,15 @@ ${context.prompt}${reviewExtraText}
   const reviewText = await execStep("review", reviewPrompt);
   const review = safeJson<ReviewOutput>(reviewText, { issues: [], passed: true });
 
-  // Step 4: revise (only if review has issues)
   if (review.issues.length > 0) {
-    const revisePrompt = `根据审稿意见修改以下正文。只输出修改后的正文，不需要解释。
-
-审稿意见：
+    const revisePrompt = `Revise the chapter according to the review notes. Return only the revised prose, without explanation.
+Review notes:
 ${JSON.stringify(review.issues, null, 2)}
 
-原文：
+Original chapter:
 ${draftText}
 
-修改后正文：`;
+Revised chapter:`;
 
     draftText = await execStep("revise", revisePrompt, { previewLen: 500 });
   } else {
@@ -215,7 +209,6 @@ ${draftText}
     });
   }
 
-  // Step 5: persist_version
   {
     const step = await createStep({ stepKey: "persist_version" });
     const started = Date.now();
@@ -246,28 +239,26 @@ ${draftText}
     });
   }
 
-  // Step 6: extract_memory
-  const extractPrompt = `你是小说记忆抽取器。分析本章正文，提取需要记录的信息。以 JSON 格式输出。
-
-正文：
+  const extractPrompt = `You are a fiction memory extractor. Analyze the final chapter and extract durable story state. Return valid JSON only.
+Chapter:
 ${draftText}
 
-上下文：
+Context:
 ${context.prompt}
 
-输出格式：
+Output schema:
 {
-  "characterChanges": [{"characterId": "", "characterName": "角色名", "change": "变化描述"}],
-  "worldFacts": [{"fact": "新发现的世界事实", "worldItemId": ""}],
-  "newHooks": [{"hook": "新埋设的伏笔", "threadId": ""}],
-  "summary": "一句话总结本章",
-  "chapterSummary": "详细章节摘要（200字以内）"
+  "characterChanges": [{"characterId": "", "characterName": "character name", "change": "change description"}],
+  "worldFacts": [{"fact": "new world fact", "worldItemId": ""}],
+  "newHooks": [{"hook": "new foreshadowing hook", "threadId": ""}],
+  "summary": "one sentence chapter summary",
+  "chapterSummary": "detailed chapter summary within 300 characters"
 }`;
 
   const extractText = await execStep("extract_memory", extractPrompt);
   const extracted = safeJson<ExtractOutput>(extractText, {
     characterChanges: [], worldFacts: [], newHooks: [],
-    summary: "", chapterSummary: "待抽取"
+    summary: "", chapterSummary: "pending extraction"
   });
 
   return {
@@ -279,7 +270,6 @@ ${context.prompt}
 
 function safeJson<T>(text: string, fallback: T): T {
   try {
-    // 提取第一个 JSON 对象
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return fallback;
     return JSON.parse(match[0]) as T;

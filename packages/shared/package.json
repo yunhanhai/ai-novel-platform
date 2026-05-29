@@ -4,7 +4,12 @@
   "type": "module",
   "exports": {
     "./auth/password": "./src/auth/password.ts",
+    "./context-composer/build-context-packet": "./src/context-composer/build-context-packet.ts",
+    "./context-composer/keyword-activation": "./src/context-composer/keyword-activation.ts",
     "./crypto/encryption": "./src/crypto/encryption.ts",
+    "./context-composer/options": "./src/context-composer/options.ts",
+    "./context-composer/token-budget": "./src/context-composer/token-budget.ts",
+    "./context-composer/types": "./src/context-composer/types.ts",
     "./deslop/scanner": "./src/deslop/scanner.ts",
     "./env": "./src/env.ts",
     "./generation/state": "./src/generation/state.ts",

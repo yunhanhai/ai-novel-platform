@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { getOrganizationId } from "../../../../server/context";
 
@@ -32,6 +32,7 @@ export async function GET(_request: Request, context: RouteContext) {
             stepKey: true,
             status: true,
             outputPreview: true,
+            promptSnapshot: true,
             inputTokens: true,
             outputTokens: true,
             latencyMs: true,
@@ -43,11 +44,11 @@ export async function GET(_request: Request, context: RouteContext) {
       }
     });
     if (!job) {
-      return NextResponse.json({ success: false, error: "任务不存在" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Job not found" }, { status: 404 });
     }
     return NextResponse.json({ success: true, data: job });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "服务异常";
+    const message = error instanceof Error ? error.message : "Service error";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import { useParams } from "next/navigation";
 import { AssetSidebar } from "../../../../../components/workspace/asset-sidebar";
 import { EditorPane } from "../../../../../components/workspace/editor-pane";
@@ -42,10 +43,10 @@ export default function WorkspacePage() {
     setActiveChapterId(id);
   }
 
-  async function handleGenerate() {
+  async function handleGenerate(contextOptions?: ContextOptions) {
     if (!activeChapterId) return;
     await flush();
-    await startJob(activeChapterId, "GENERATE_CHAPTER");
+    await startJob(activeChapterId, "GENERATE_CHAPTER", contextOptions);
   }
 
   async function handleDeslop() {

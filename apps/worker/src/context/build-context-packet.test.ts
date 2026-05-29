@@ -150,4 +150,44 @@ describe("build-context-packet", () => {
 
     expect(prompt).toContain("仿佛");
   });
+  it("reports included and trimmed assets", () => {
+    const result = buildContextPacket({
+      ...baseInput,
+      recentMemories: [
+        ...baseInput.recentMemories,
+        {
+          memoryType: "chapter_summary",
+          content: "long memory ".repeat(80),
+          scopeType: "chapter",
+          sourceChapterId: "c3"
+        }
+      ],
+      tokenBudget: 200
+    });
+
+    expect(result.assets.included.length).toBeGreaterThan(0);
+    expect(result.assets.trimmed.length).toBeGreaterThan(0);
+  });
+
+  it("excludes optional assets by id", () => {
+    const result = buildContextPacket({
+      ...baseInput,
+      contextOptions: { budgetPreset: "standard", excludedAssetIds: ["ch2"], forcedAssetIds: [] }
+    });
+
+    expect(result.prompt).not.toContain(baseInput.characters[1]!.name);
+    expect(result.assets.excluded.map((a) => a.id)).toContain("ch2");
+  });
+
+  it("forces available assets into context", () => {
+    const result = buildContextPacket({
+      ...baseInput,
+      currentChapter: { ...baseInput.currentChapter, title: "solo", outlineSummary: "solo" },
+      recentMemories: [],
+      contextOptions: { budgetPreset: "standard", excludedAssetIds: [], forcedAssetIds: ["w1"] }
+    });
+
+    expect(result.prompt).toContain(baseInput.worldItems[0]!.name);
+    expect(result.assets.forced.map((a) => a.id)).toContain("w1");
+  });
 });

@@ -71,4 +71,30 @@ describe("POST /api/generation-jobs", () => {
     const res = await POST(req({ chapterId: "ch-1", jobType: "GENERATE_CHAPTER" }));
     expect(res.status).toBe(201);
   });
+
+  it("stores contextOptions in job input", async () => {
+    p().chapter.findFirst.mockResolvedValue({ id: "ch-1", projectId: "proj-1" });
+    cj().mockResolvedValue({
+      id: "job-1", jobType: "GENERATE_CHAPTER", status: "QUEUED", projectId: "proj-1"
+    });
+
+    const res = await POST(req({
+      chapterId: "ch-1",
+      jobType: "GENERATE_CHAPTER",
+      input: { draftMode: "chapter" },
+      contextOptions: { budgetPreset: "compact", excludedAssetIds: ["ch2"], forcedAssetIds: ["w1"] }
+    }));
+
+    expect(res.status).toBe(201);
+    expect(cj()).toHaveBeenCalledWith(expect.objectContaining({
+      input: expect.objectContaining({
+        draftMode: "chapter",
+        contextOptions: expect.objectContaining({
+          budgetPreset: "compact",
+          excludedAssetIds: ["ch2"],
+          forcedAssetIds: ["w1"]
+        })
+      })
+    }));
+  });
 });

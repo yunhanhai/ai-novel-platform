@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma, createJob } from "@ai-novel/db";
+import { normalizeContextOptions } from "@ai-novel/shared/context-composer/options";
+import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import { getOrganizationId, getUserId } from "../../../server/context";
 
 type JobType =
@@ -18,6 +20,7 @@ interface CreateJobBody {
   jobType?: JobType;
   modelProfileId?: string;
   input?: Record<string, unknown>;
+  contextOptions?: ContextOptions;
 }
 
 const ALLOWED_JOB_TYPES: JobType[] = [
@@ -121,12 +124,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "无法解析 projectId" }, { status: 400 });
     }
 
+    const input = {
+      ...(body.input ?? {}),
+      ...(body.contextOptions ? { contextOptions: normalizeContextOptions(body.contextOptions) } : {})
+    };
+
     const job = await createJob({
       organizationId,
       projectId,
       userId,
       jobType,
-      input: (body.input ?? {}) as Parameters<typeof createJob>[0]["input"],
+      input: input as Parameters<typeof createJob>[0]["input"],
       ...(body.modelProfileId ? { modelProfileId: body.modelProfileId } : {}),
       ...(targetEntityType ? { targetEntityType } : {}),
       ...(targetEntityId ? { targetEntityId } : {}),

@@ -1,5 +1,8 @@
-import type { PrismaClient } from "@ai-novel/db";
+﻿import type { PrismaClient } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
+import { buildContextPacket } from "@ai-novel/shared/context-composer/build-context-packet";
+import { normalizeContextOptions, resolveTokenBudget } from "@ai-novel/shared/context-composer/options";
+import type { ContextOptions, NormalizedContextOptions } from "@ai-novel/shared/context-composer/types";
 import { getMethodologyTemplate, type MethodType, type MethodologyTemplate } from "@ai-novel/shared/methodology/templates";
 import { createFakeModel } from "./fake-model";
 import { runChapterPipeline } from "./chapter-pipeline";
@@ -48,44 +51,49 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
   return async function handle(job: GenerationJob): Promise<void> {
     const chapterId = resolveChapterId(job);
     if (!chapterId) {
-      await fail(job.id, ERROR_CODES.CHAPTER_NOT_FOUND, "无法从 job target 或 input 解析 chapterId");
+      await fail(job.id, ERROR_CODES.CHAPTER_NOT_FOUND, "Unable to resolve chapterId from job target or input");
       return;
     }
 
     const chapter = await loadChapter(prisma, chapterId, job);
     if (!chapter) {
-      await fail(job.id, ERROR_CODES.CHAPTER_NOT_FOUND, `章节 ${chapterId} 不存在或与 job projectId 不一致`);
+      await fail(job.id, ERROR_CODES.CHAPTER_NOT_FOUND, `Chapter ${chapterId} not found or does not belong to the job project`);
       return;
     }
 
-    // 模型解析：优先 resolveModel，其次 injected model，最后失败
     let model = builtinModel;
     if (resolveModel) {
       const resolved = await resolveModel(job);
       if (resolved) {
         model = resolved;
       } else if (!deps.model) {
-        // resolveModel 返回 null 且没有注入 fallback model → 无可用模型
-        await fail(job.id, ERROR_CODES.NO_MODEL_PROFILE, "无法解析 ModelProfile 且未启用兜底模型");
+        await fail(job.id, ERROR_CODES.NO_MODEL_PROFILE, "Unable to resolve ModelProfile and no fallback model is configured");
         return;
       }
     }
 
-    let finalContent: string;
+    let pipelineResult: PipelineRunResult;
     try {
-      finalContent = await runPipelineForContent({ prisma, job, model, chapterId });
+      pipelineResult = await runPipelineForContentWithContext({ prisma, job, model, chapterId });
     } catch (error: unknown) {
       await fail(job.id, ERROR_CODES.HANDLER_ERROR, errorMessage(error, "pipeline failed"));
       return;
     }
 
-    if (!finalContent) {
-      await fail(job.id, ERROR_CODES.HANDLER_ERROR, "pipeline 未产出最终正文");
+    if (!pipelineResult.content) {
+      await fail(job.id, ERROR_CODES.HANDLER_ERROR, "pipeline did not produce final content");
       return;
     }
 
     try {
-      await commitFinalize({ prisma, job, chapter, finalContent, wordCount: computeWordCount(finalContent) });
+      await commitFinalize({
+        prisma,
+        job,
+        chapter,
+        finalContent: pipelineResult.content,
+        wordCount: computeWordCount(pipelineResult.content),
+        contextSummary: pipelineResult.contextSummary
+      });
     } catch (error: unknown) {
       await fail(job.id, ERROR_CODES.FINALIZE_FAILED, errorMessage(error, "finalize transaction failed"));
     }
@@ -113,6 +121,20 @@ interface PipelineRunParams {
   job: GenerationJob;
   model: FakeModel;
   chapterId: string;
+}
+
+interface PipelineRunResult {
+  content: string;
+  contextSummary: ContextSummary;
+}
+
+interface ContextSummary {
+  [key: string]: string | number;
+  budgetPreset: NormalizedContextOptions["budgetPreset"];
+  includedCount: number;
+  trimmedCount: number;
+  forcedCount: number;
+  excludedCount: number;
 }
 
 interface MethodologyGuide {
@@ -144,7 +166,7 @@ async function loadActiveMethodology(
   try {
     template = getMethodologyTemplate(record.methodType as MethodType);
   } catch {
-    // custom 类型没有模板，使用 DB 记录自身的 reviewCriteria
+    // custom 绫诲瀷娌℃湁妯℃澘锛屼娇鐢?DB 璁板綍鑷韩鐨?reviewCriteria
   }
 
   const nodes = template?.outlineMetadata?.nodes ?? [];
@@ -164,13 +186,141 @@ async function loadActiveMethodology(
   };
 }
 
-// runChapterPipeline 当前会调用 persistVersion 写入 ContentVersion，但本 handler 要求最终
-// 正文与 version 必须在最终事务内提交。因此把 persistVersion 退化为只回传内容的 passthrough，
-// 由 commitFinalize 在事务内创建真正的 ContentVersion。pipeline 返回的 v-final 占位一律忽略。
+async function runPipelineForContentWithContext(params: PipelineRunParams): Promise<PipelineRunResult> {
+  const { prisma, job, model, chapterId } = params;
+  const methodologyGuide = await loadActiveMethodology(prisma, job.projectId);
+  const contextOptions = normalizeContextOptions(readContextOptions(job));
+  const context = await buildWorkerContextPacket({ prisma, job, chapterId, methodologyGuide, contextOptions });
+
+  let finalContent = "";
+  await runChapterPipeline({
+    job,
+    model,
+    buildContext: () => context,
+    persistVersion: async ({ content }) => {
+      finalContent = content;
+      return { id: "pending", versionNo: 0 };
+    },
+    createStep: ({ stepKey }) =>
+      prisma.generationStep.create({
+        data: { organizationId: job.organizationId, jobId: job.id, stepKey, status: "PENDING" },
+        select: { id: true }
+      }),
+    updateStep: async (update) => {
+      await prisma.generationStep.update({
+        where: { id: update.stepId },
+        data: {
+          status: update.status,
+          finishedAt: new Date(),
+          outputPreview: update.outputPreview,
+          promptSnapshot: update.promptSnapshot,
+          inputTokens: update.inputTokens,
+          outputTokens: update.outputTokens,
+          latencyMs: update.latencyMs
+        }
+      });
+    }
+  });
+
+  return {
+    content: finalContent,
+    contextSummary: {
+      budgetPreset: contextOptions.budgetPreset,
+      includedCount: context.assets.included.length,
+      trimmedCount: context.assets.trimmed.length,
+      forcedCount: context.assets.forced.length,
+      excludedCount: context.assets.excluded.length
+    }
+  };
+}
+
+function readContextOptions(job: GenerationJob): ContextOptions | undefined {
+  const input = job.input as { contextOptions?: ContextOptions } | null | undefined;
+  return input?.contextOptions;
+}
+
+async function buildWorkerContextPacket(params: {
+  prisma: PrismaClient;
+  job: GenerationJob;
+  chapterId: string;
+  methodologyGuide?: MethodologyGuide;
+  contextOptions: NormalizedContextOptions;
+}) {
+  const { prisma, job, chapterId, methodologyGuide, contextOptions } = params;
+  const chapter = await prisma.chapter.findFirst({
+    where: { id: chapterId, organizationId: job.organizationId, deletedAt: null },
+    select: {
+      id: true,
+      chapterNo: true,
+      title: true,
+      outlineSummary: true,
+      project: { select: { title: true, styleBrief: true } }
+    }
+  }) as WorkerChapter | null;
+
+  const delegates = prisma as unknown as WorkerAssetDelegates;
+  const [characters, worldItems, plotThreads, memories, styleProfile] = await Promise.all([
+    delegates.character?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, status: "active", deletedAt: null }, orderBy: { createdAt: "asc" } }) ?? Promise.resolve([]),
+    delegates.worldItem?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, status: "active", deletedAt: null }, orderBy: [{ priority: "desc" }, { createdAt: "asc" }] }) ?? Promise.resolve([]),
+    delegates.plotThread?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, deletedAt: null, status: { in: ["planted", "progressing", "deferred"] } }, orderBy: [{ priority: "desc" }, { createdAt: "asc" }] }) ?? Promise.resolve([]),
+    delegates.projectMemory?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, status: "accepted" }, orderBy: { createdAt: "desc" }, take: 20 }) ?? Promise.resolve([]),
+    delegates.styleProfile?.findFirst({ where: { organizationId: job.organizationId, projectId: job.projectId, isActive: true }, orderBy: { updatedAt: "desc" } }) ?? Promise.resolve(null)
+  ]);
+
+  return buildContextPacket({
+    projectId: job.projectId,
+    projectTitle: chapter?.project?.title ?? job.projectId,
+    styleBrief: chapter?.project?.styleBrief ?? undefined,
+    currentChapter: {
+      id: chapter?.id ?? chapterId,
+      chapterNo: chapter?.chapterNo ?? 0,
+      title: chapter?.title ?? chapterId,
+      outlineSummary: chapter?.outlineSummary ?? undefined
+    },
+    characters: characters.map((character) => ({
+      id: character.id,
+      name: character.name,
+      roleType: character.roleType,
+      personality: character.personality ?? undefined,
+      speechPattern: character.speechPattern ?? undefined,
+      content: compactLines([character.motivation ?? "", character.appearance ?? "", character.arc ?? "", character.constraints ?? ""])
+    })),
+    worldItems: worldItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      itemType: item.itemType,
+      content: compactLines([item.summary ?? "", item.detail ?? "", item.constraints ?? ""]),
+      activationKeywords: asStringArray(item.activationKeywords, [item.name])
+    })),
+    plotThreads: plotThreads.map((thread) => ({
+      id: thread.id,
+      threadType: thread.threadType,
+      title: thread.title,
+      content: thread.description ?? "",
+      status: thread.status
+    })),
+    recentMemories: memories.map((memory) => ({
+      memoryType: memory.memoryType,
+      content: memory.content,
+      scopeType: memory.scopeType,
+      sourceChapterId: memory.sourceChapterId
+    })),
+    tokenBudget: resolveTokenBudget(contextOptions.budgetPreset),
+    styleGuide: styleProfile ? {
+      brief: styleProfile.styleBrief ?? undefined,
+      banned: asStringArray(styleProfile.bannedWords),
+      preferred: asStringArray(styleProfile.preferredWords),
+      sentenceTarget: parseSentenceTarget(styleProfile.sentenceLengthProfile)
+    } : undefined,
+    ...(methodologyGuide ? { methodologyGuide } : {}),
+    contextOptions
+  });
+}
+
 async function runPipelineForContent(params: PipelineRunParams): Promise<string> {
   const { prisma, job, model, chapterId } = params;
 
-  // 提前查询方法论，以便同步注入 buildContext
+  // 鎻愬墠鏌ヨ鏂规硶璁猴紝浠ヤ究鍚屾娉ㄥ叆 buildContext
   const methodologyGuide = await loadActiveMethodology(prisma, job.projectId);
 
   let finalContent = "";
@@ -178,7 +328,7 @@ async function runPipelineForContent(params: PipelineRunParams): Promise<string>
     job,
     model,
     buildContext: () => ({
-      prompt: `章节生成上下文（chapterId=${chapterId}）`,
+      prompt: `Chapter generation context (chapterId=${chapterId})`,
       activationReport: { activated: [], totalSourcesChecked: 0, triggeredBy: "" },
       ...(methodologyGuide ? { methodologyGuide } : {})
     }),
@@ -198,6 +348,7 @@ async function runPipelineForContent(params: PipelineRunParams): Promise<string>
           status: update.status,
           finishedAt: new Date(),
           outputPreview: update.outputPreview,
+          promptSnapshot: update.promptSnapshot,
           inputTokens: update.inputTokens,
           outputTokens: update.outputTokens,
           latencyMs: update.latencyMs
@@ -206,6 +357,47 @@ async function runPipelineForContent(params: PipelineRunParams): Promise<string>
     }
   });
   return finalContent;
+}
+
+interface WorkerChapter {
+  id: string;
+  chapterNo: number;
+  title: string;
+  outlineSummary: string | null;
+  project?: { title: string; styleBrief: string | null };
+}
+
+interface WorkerAssetDelegates {
+  character?: { findMany(args: unknown): Promise<WorkerCharacter[]> };
+  worldItem?: { findMany(args: unknown): Promise<WorkerWorldItem[]> };
+  plotThread?: { findMany(args: unknown): Promise<WorkerPlotThread[]> };
+  projectMemory?: { findMany(args: unknown): Promise<WorkerMemory[]> };
+  styleProfile?: { findFirst(args: unknown): Promise<WorkerStyleProfile | null> };
+}
+
+interface WorkerCharacter { id: string; name: string; roleType: string; personality: string | null; speechPattern: string | null; motivation: string | null; appearance: string | null; arc: string | null; constraints: string | null; }
+interface WorkerWorldItem { id: string; name: string; itemType: string; summary: string | null; detail: string | null; constraints: string | null; activationKeywords: unknown; }
+interface WorkerPlotThread { id: string; threadType: string; title: string; description: string | null; status: string; }
+interface WorkerMemory { memoryType: string; content: string; scopeType: string; sourceChapterId: string | null; }
+interface WorkerStyleProfile { styleBrief: string | null; bannedWords: unknown; preferredWords: unknown; sentenceLengthProfile: unknown; }
+
+function compactLines(values: string[]): string {
+  return values.filter((value) => value.trim().length > 0).join("\n");
+}
+
+function asStringArray(value: unknown, fallback: string[] = []): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : fallback;
+}
+
+function parseSentenceTarget(value: unknown): { avg: number; min: number; max: number } | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.avg !== "number") return undefined;
+  return {
+    avg: record.avg,
+    min: typeof record.min === "number" ? record.min : record.avg,
+    max: typeof record.max === "number" ? record.max : record.avg
+  };
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -218,6 +410,7 @@ interface CommitParams {
   chapter: ChapterRef;
   finalContent: string;
   wordCount: number;
+  contextSummary?: ContextSummary;
 }
 
 interface FinalOutput {
@@ -225,10 +418,11 @@ interface FinalOutput {
   versionId: string;
   versionNo: number;
   wordCount: number;
+  contextSummary?: ContextSummary;
 }
 
 export async function commitFinalize(params: CommitParams): Promise<FinalOutput> {
-  const { prisma, job, chapter, finalContent, wordCount } = params;
+  const { prisma, job, chapter, finalContent, wordCount, contextSummary } = params;
 
   return prisma.$transaction(async (tx: Tx) => {
     await assertChapterStillValid(tx, chapter, job);
@@ -264,7 +458,8 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       chapterId: chapter.id,
       versionId: version.id,
       versionNo: version.versionNo,
-      wordCount
+      wordCount,
+      ...(contextSummary ? { contextSummary } : {})
     };
 
     await tx.generationStep.create({
@@ -293,7 +488,7 @@ async function assertChapterStillValid(tx: Tx, chapter: ChapterRef, job: Generat
     select: { id: true, projectId: true }
   });
   if (!reread || reread.projectId !== job.projectId) {
-    throw new Error("chapter 在事务内重新校验失败");
+    throw new Error("chapter 鍦ㄤ簨鍔″唴閲嶆柊鏍￠獙澶辫触");
   }
 }
 

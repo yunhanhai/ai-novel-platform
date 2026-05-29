@@ -1,5 +1,6 @@
-"use client";
+﻿"use client";
 
+import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 interface ApiEnvelope<T> {
@@ -41,7 +42,7 @@ export function useChapters(projectId: string | null): UseChaptersResult {
       if (!res.ok || !json.success) throw new Error(json.error ?? `请求失败 (${res.status})`);
       setChapters(json.data ?? []);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "加载章节失败");
+      setError(err instanceof Error ? err.message : "章节加载失败");
     } finally {
       setLoading(false);
     }
@@ -81,7 +82,6 @@ interface UseChapterContentResult {
   reload: () => Promise<void>;
 }
 
-// 章节正文：进入时拉取一次；编辑后 debounce 1.5s 自动保存（PATCH）
 export function useChapterContent(
   chapterId: string | null,
   options: { debounceMs?: number } = {}
@@ -105,13 +105,12 @@ export function useChapterContent(
         setSaveStatus("idle");
       }
     } catch {
-      /* 忽略 */
+      // Ignore one-off load failures; the editor can retry on reload.
     } finally {
       if (activeIdRef.current === id) setLoadingContent(false);
     }
   }, []);
 
-  // 切章节：拉取最新正文
   useEffect(() => {
     activeIdRef.current = chapterId;
     if (!chapterId) {
@@ -170,7 +169,6 @@ export function useChapterContent(
     if (chapterId) await fetchContent(chapterId);
   }, [chapterId, fetchContent]);
 
-  // 卸载或切章节前 flush
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -186,6 +184,15 @@ export interface JobSummary {
   status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
   progress: string | number;
   errorMessage: string | null;
+  output?: {
+    contextSummary?: {
+      budgetPreset: string;
+      includedCount: number;
+      trimmedCount: number;
+      forcedCount: number;
+      excludedCount: number;
+    };
+  } | null;
   startedAt: string | null;
   finishedAt: string | null;
   steps?: Array<{
@@ -193,6 +200,7 @@ export interface JobSummary {
     stepKey: string;
     status: string;
     outputPreview: string | null;
+    promptSnapshot: string | null;
     inputTokens: number | null;
     outputTokens: number | null;
     latencyMs: number | null;
@@ -202,12 +210,11 @@ export interface JobSummary {
 
 interface UseJobPollingResult {
   job: JobSummary | null;
-  startJob: (chapterId: string, jobType?: string) => Promise<JobSummary | null>;
+  startJob: (chapterId: string, jobType?: string, contextOptions?: ContextOptions) => Promise<JobSummary | null>;
   isStarting: boolean;
   error: string | null;
 }
 
-// 创建生成任务并以 1.5s 轮询，直到 SUCCEEDED / FAILED / CANCELLED
 export function useJobPolling(): UseJobPollingResult {
   const [job, setJob] = useState<JobSummary | null>(null);
   const [isStarting, setStarting] = useState(false);
@@ -230,7 +237,7 @@ export function useJobPolling(): UseJobPollingResult {
           if (["SUCCEEDED", "FAILED", "CANCELLED"].includes(json.data.status)) return;
         }
       } catch {
-        /* 单次失败忽略，下一轮继续 */
+        // Ignore one polling failure and retry on the next tick.
       }
       poll(jobId);
     }, 1500);
@@ -239,18 +246,23 @@ export function useJobPolling(): UseJobPollingResult {
   useEffect(() => stopPolling, [stopPolling]);
 
   const startJob = useCallback(
-    async (chapterId: string, jobType: string = "GENERATE_CHAPTER"): Promise<JobSummary | null> => {
+    async (chapterId: string, jobType: string = "GENERATE_CHAPTER", contextOptions?: ContextOptions): Promise<JobSummary | null> => {
       setStarting(true);
       setError(null);
       try {
+        const body = {
+          chapterId,
+          jobType,
+          ...(jobType === "GENERATE_CHAPTER" && contextOptions ? { contextOptions } : {})
+        };
         const res = await fetch("/api/generation-jobs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chapterId, jobType })
+          body: JSON.stringify(body)
         });
         const json = (await res.json()) as ApiEnvelope<{ id: string; jobType: string; status: JobSummary["status"] }>;
         if (!res.ok || !json.success || !json.data) {
-          throw new Error(json.error ?? `创建任务失败 (${res.status})`);
+          throw new Error(json.error ?? `创建生成任务失败 (${res.status})`);
         }
         const initial: JobSummary = {
           id: json.data.id,
@@ -265,7 +277,7 @@ export function useJobPolling(): UseJobPollingResult {
         poll(initial.id);
         return initial;
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "创建任务失败");
+        setError(err instanceof Error ? err.message : "创建生成任务失败");
         return null;
       } finally {
         setStarting(false);

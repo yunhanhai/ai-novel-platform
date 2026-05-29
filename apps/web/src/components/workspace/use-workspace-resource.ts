@@ -22,9 +22,11 @@ export interface ResourceState<T> {
 export function useWorkspaceResource<T>(params: {
   endpoint: string;          // 例如 "/api/style-profiles"
   projectId: string | null;
+  listQuery?: Record<string, string | undefined>;
   enabled?: boolean;         // 默认 true
 }): ResourceState<T> {
-  const { endpoint, projectId, enabled = true } = params;
+  const { endpoint, projectId, enabled = true, listQuery } = params;
+  const listQueryKey = JSON.stringify(listQuery ?? {});
   const [items, setItems] = useState<T[]>([]);
   const [isLoading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,12 @@ export function useWorkspaceResource<T>(params: {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${endpoint}?projectId=${encodeURIComponent(projectId)}`);
+      const searchParams = new URLSearchParams({ projectId });
+      const extraQuery = JSON.parse(listQueryKey) as Record<string, string | undefined>;
+      for (const [key, value] of Object.entries(extraQuery)) {
+        if (value) searchParams.set(key, value);
+      }
+      const res = await fetch(`${endpoint}?${searchParams.toString()}`);
       const json = (await res.json()) as ApiEnvelope<T[]>;
       if (!res.ok || !json.success) {
         throw new Error(json.error ?? `请求失败 (${res.status})`);
@@ -45,7 +52,7 @@ export function useWorkspaceResource<T>(params: {
     } finally {
       setLoading(false);
     }
-  }, [endpoint, projectId, enabled]);
+  }, [endpoint, projectId, enabled, listQueryKey]);
 
   useEffect(() => {
     void fetchList();
