@@ -519,5 +519,6 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 
 - Added `GET /api/audit-logs/recovery-actions` to return recent organization-scoped recovery audit records from the existing `audit_logs` table.
 - The queue health panel now includes a compact `恢复记录` list with action type, summary, actor, target, time, loading, error, empty, and refresh states.
+- The recovery audit list automatically refreshes after manual lease recovery or failed-job retry, so operators can see the audit trail immediately after acting.
 - The list only exposes operational summaries for `generation_job.retry` and `queue.recover_expired_leases`; sensitive prompt/model/request content remains excluded.
 - Smoke e2e now verifies the recovery audit section is visible on the projects page.

@@ -35,6 +35,7 @@ export function QueueObservabilityPanel({ enabled }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [operationKey, setOperationKey] = useState<QueueOperationKey | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [auditRefreshKey, setAuditRefreshKey] = useState(0);
 
   const load = useCallback(async () => {
     if (!enabled) {
@@ -75,6 +76,7 @@ export function QueueObservabilityPanel({ enabled }: Props) {
       if (!res.ok || !json.success) {
         throw new Error(json.error ?? `回收过期租约失败 (${res.status})`);
       }
+      setAuditRefreshKey((key) => key + 1);
       await load();
     } catch (err: unknown) {
       setOperationError(err instanceof Error ? err.message : "回收过期租约失败");
@@ -97,6 +99,7 @@ export function QueueObservabilityPanel({ enabled }: Props) {
       if (!res.ok || !json.success) {
         throw new Error(json.error ?? `重试任务失败 (${res.status})`);
       }
+      setAuditRefreshKey((key) => key + 1);
       await load();
     } catch (err: unknown) {
       setOperationError(err instanceof Error ? err.message : "重试任务失败");
@@ -190,7 +193,7 @@ export function QueueObservabilityPanel({ enabled }: Props) {
           <HealthSummary data={data} />
           <StatusBreakdown data={data} />
           <WorkerHeartbeatSection data={data} />
-          <RecoveryAuditList enabled={enabled} />
+          <RecoveryAuditList enabled={enabled} refreshKey={auditRefreshKey} />
           <RecentJobs
             jobs={data.recentJobs}
             operationKey={operationKey}

@@ -18,9 +18,10 @@ interface ApiEnvelope<T> {
 
 interface Props {
   enabled: boolean;
+  refreshKey?: number;
 }
 
-export function RecoveryAuditList({ enabled }: Props) {
+export function RecoveryAuditList({ enabled, refreshKey = 0 }: Props) {
   const [data, setData] = useState<RecoveryAuditList | null>(null);
   const [isLoading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export function RecoveryAuditList({ enabled }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, refreshKey]);
 
   useEffect(() => {
     let active = true;
@@ -77,7 +78,7 @@ export function RecoveryAuditList({ enabled }: Props) {
     return () => {
       active = false;
     };
-  }, [enabled]);
+  }, [enabled, refreshKey]);
 
   return (
     <section className="performance-section recovery-audit-section" aria-label="恢复记录">

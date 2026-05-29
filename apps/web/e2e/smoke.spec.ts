@@ -21,6 +21,16 @@ const PROJECT_SLUG = `e2e-${STAMP}`;
 const CHAPTER_TITLE = "首章 · 故事开端";
 
 test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) => {
+  let recoveryAuditRequestCount = 0;
+  page.on("response", (response) => {
+    if (
+      response.url().includes("/api/audit-logs/recovery-actions") &&
+      response.request().method() === "GET"
+    ) {
+      recoveryAuditRequestCount += 1;
+    }
+  });
+
   // 1. 注册
   await page.goto("/register");
   await page.waitForLoadState("networkidle");
@@ -41,6 +51,17 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(page.getByRole("heading", { name: "项目排行" })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("heading", { name: "队列健康" })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("heading", { name: "恢复记录" })).toBeVisible({ timeout: 10_000 });
+  await expect.poll(() => recoveryAuditRequestCount).toBeGreaterThan(0);
+  const initialRecoveryAuditRequestCount = recoveryAuditRequestCount;
+  const auditRefreshAfterRecovery = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/audit-logs/recovery-actions") &&
+      response.request().method() === "GET",
+    { timeout: 10_000 }
+  );
+  await page.getByRole("button", { name: "回收过期租约" }).click();
+  await auditRefreshAfterRecovery;
+  expect(recoveryAuditRequestCount).toBeGreaterThan(initialRecoveryAuditRequestCount);
 
   // 3. 新建项目（向导：Step 1 基础信息 → Step 2 题材风格 → 创建）
   await page.getByRole("link", { name: "新建作品" }).click();
