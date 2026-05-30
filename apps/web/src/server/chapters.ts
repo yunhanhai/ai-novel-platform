@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import type { PrismaClient } from "@ai-novel/db";
+import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 
 interface CreateVolumeParams {
   organizationId: string;
@@ -38,6 +40,20 @@ interface SaveVersionParams {
   generationJobId?: string;
   prisma: PrismaClient;
 }
+
+interface ApplyDeslopEditParams {
+  organizationId: string;
+  chapterId: string;
+  nextContent: string;
+  baseContentHash?: string;
+  updatedById: string;
+  matchedText?: string;
+  category?: string;
+  prisma: PrismaClient;
+}
+
+const CONTENT_STALE_ERROR = "CHAPTER_CONTENT_STALE";
+const VERSION_TITLE_MAX_LENGTH = 200;
 
 export async function createVolume({ organizationId, projectId, title, orderIndex, summary, prisma }: CreateVolumeParams) {
   return prisma.volume.create({
@@ -80,6 +96,89 @@ export async function saveContentVersion({ organizationId, projectId, chapterId,
       versionNo: nextVersionNo, content, source, createdById, generationJobId
     }
   });
+}
+
+export async function applyDeslopEdit({
+  organizationId,
+  chapterId,
+  nextContent,
+  baseContentHash,
+  updatedById,
+  matchedText,
+  category,
+  prisma
+}: ApplyDeslopEditParams) {
+  return prisma.$transaction(async (tx) => {
+    const chapter = await tx.chapter.findFirst({
+      where: { id: chapterId, organizationId, deletedAt: null }
+    });
+    if (!chapter) throw new Error("章节不存在");
+
+    if (baseContentHash && sha256Hex(chapter.content ?? "") !== baseContentHash) {
+      throw new Error(CONTENT_STALE_ERROR);
+    }
+
+    const latest = await tx.contentVersion.findFirst({
+      where: { entityType: "CHAPTER", entityId: chapterId },
+      orderBy: { versionNo: "desc" },
+      select: { versionNo: true, content: true }
+    });
+    let nextVersionNo = (latest?.versionNo ?? 0) + 1;
+
+    if (chapter.content && chapter.content.trim().length > 0 && latest?.content !== chapter.content) {
+      await tx.contentVersion.create({
+        data: {
+          organizationId,
+          projectId: chapter.projectId,
+          entityType: "CHAPTER",
+          entityId: chapterId,
+          versionNo: nextVersionNo,
+          content: chapter.content,
+          source: "MANUAL",
+          title: "Before DESLOP apply",
+          createdById: updatedById
+        }
+      });
+      nextVersionNo += 1;
+    }
+
+    const updatedChapter = await tx.chapter.update({
+      where: { id: chapterId },
+      data: {
+        content: nextContent,
+        wordCount: computeWordCount(nextContent),
+        updatedById
+      }
+    });
+
+    const detail = [category, matchedText].filter(Boolean).join(" / ");
+    const title = truncateVersionTitle(detail ? `DESLOP apply: ${detail}` : "DESLOP apply");
+    const version = await tx.contentVersion.create({
+      data: {
+        organizationId,
+        projectId: chapter.projectId,
+        entityType: "CHAPTER",
+        entityId: chapterId,
+        versionNo: nextVersionNo,
+        content: nextContent,
+        source: "AI",
+        title,
+        createdById: updatedById
+      },
+      select: { id: true, versionNo: true }
+    });
+
+    return { chapter: updatedChapter, version };
+  });
+}
+
+function sha256Hex(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+function truncateVersionTitle(title: string): string {
+  if (title.length <= VERSION_TITLE_MAX_LENGTH) return title;
+  return `${title.slice(0, VERSION_TITLE_MAX_LENGTH - 3)}...`;
 }
 
 export async function findChaptersByProject(organizationId: string, projectId: string, prisma: PrismaClient) {

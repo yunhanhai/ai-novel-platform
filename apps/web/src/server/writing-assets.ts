@@ -282,7 +282,7 @@ export async function createProjectMemory(params: CreateProjectMemoryParams) {
       ...(rest.contentJson !== undefined ? { contentJson: rest.contentJson } : {}),
       ...(rest.sourceChapterId ? { sourceChapterId: rest.sourceChapterId } : {}),
       ...(rest.sourceJobId ? { sourceJobId: rest.sourceJobId } : {}),
-      ...(rest.confidence ? { confidence: rest.confidence } : {})
+      ...(rest.confidence !== undefined ? { confidence: rest.confidence } : {})
     }
   });
 }

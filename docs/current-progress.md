@@ -465,3 +465,47 @@ pnpm --filter @ai-novel/web typecheck
 - 预算 dashboard 读取 `usage_events`；如果 worker 的真实模型调用路径没有持续写入 `UsageEvent`，图表会显示 0 或仅显示已有记录。下一步应补齐 worker 生成完成后的 UsageEvent 写入闭环，并纳入 pipeline 测试。
 - `/settings/budget` 页面目前已实现但未加入顶部导航入口；若希望用户可发现，需要在设置导航或全局 layout 增加入口。
 - 当前工作区仍有大量无关脏文件；预算治理提交时应精确 stage 本轮文件，避免混入已有模型设置、工作台、apply-deslop、worktree 残留等变更。
+
+---
+
+## 2026-05-30 — Git 改动审查后修复收尾
+
+承接本轮 git diff 审查，按发现的问题完成针对性修复，并确认临时 worktree 残留不会再进入未跟踪文件列表。
+
+### 交付内容
+
+- **DESLOP 应用安全加固**：新增 `POST /api/chapters/[chapterId]/apply-deslop` 的 `baseContentHash` 必填校验；服务端在事务内用当前章节正文 SHA-256 对比扫描时正文，若不一致返回 409，提示重新扫描，避免旧扫描 position 覆盖新正文。
+- **DESLOP 版本一致性**：`applyDeslopEdit` 继续在单事务内保存修改前快照、更新章节正文、创建修改后版本；新增版本标题截断，保证 `content_versions.title` 不超过 200 字符。
+- **DESLOP 前端交互修复**：应用成功后清空旧扫描报告，避免连续应用旧 position；loading 状态从分组内 `idx` 改为唯一 `issueKey`；前端使用 Web Crypto 计算 `baseContentHash`。
+- **项目记忆小修**：`createProjectMemory` 改为 `confidence !== undefined` 判断，保留 `confidence: 0`。
+- **临时/生成文件处理**：`.gitignore` 新增 `.claude/worktrees/`，避免 agent worktree 残留进入未跟踪列表；`apps/web/next-env.d.ts` 还原到原 dev routes 引用，不提交 Next 自动生成差异。
+- **E2E 注释修正**：`smoke.spec.ts` 前置条件改为 worker 由 Playwright `globalSetup` 自动启动，与实际配置一致。
+
+### 验证证据
+
+```text
+pnpm --filter @ai-novel/web test -- src/server/chapters.test.ts src/app/api/chapters/[chapterId]/apply-deslop/route.test.ts src/server/writing-assets.test.ts
+  3 test files passed, 23 tests passed
+
+pnpm typecheck
+  5 workspace projects passed
+
+pnpm test
+  5 workspace projects passed
+  packages/db 12 + packages/shared 25 + packages/model-adapters 36 + apps/worker 99 + apps/web 361 = 533 tests passed
+
+pnpm build
+  Next.js production build passed
+
+git diff --check
+  exit 0; only Windows LF -> CRLF warnings
+
+ReadLints on edited files
+  0 diagnostics
+```
+
+### 当前风险与下一步
+
+- `apply-deslop` 新路由与本轮既有中文化/工作台改动同处 dirty worktree；提交时应精确 stage，避免混入不想提交的文件。
+- `apps/web/next-env.d.ts` 已还原，但 `git status` 仍可能显示它为 modified（行尾/生成文件扰动）；提交前建议再次确认是否应排除。
+- 尚未运行 `pnpm test:e2e`；若准备发布/提交，建议补跑 Playwright 全量 e2e。

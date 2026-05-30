@@ -1,0 +1,60 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@ai-novel/db";
+import { applyDeslopEdit } from "../../../../../server/chapters";
+import { getOrganizationId, getUserId } from "../../../../../server/context";
+
+interface RouteContext {
+  params: Promise<{ chapterId: string }>;
+}
+
+interface ApplyDeslopBody {
+  nextContent?: string;
+  baseContentHash?: string;
+  matchedText?: string;
+  category?: string;
+}
+
+const HASH_RE = /^[0-9a-f]{64}$/i;
+
+export async function POST(request: Request, context: RouteContext) {
+  const { chapterId } = await context.params;
+  const body = (await request.json()) as ApplyDeslopBody;
+
+  if (typeof body.nextContent !== "string") {
+    return NextResponse.json(
+      { success: false, error: "nextContent is required" },
+      { status: 400 }
+    );
+  }
+  if (typeof body.baseContentHash !== "string" || !HASH_RE.test(body.baseContentHash)) {
+    return NextResponse.json(
+      { success: false, error: "baseContentHash is required" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const result = await applyDeslopEdit({
+      organizationId: getOrganizationId(),
+      chapterId,
+      nextContent: body.nextContent,
+      baseContentHash: body.baseContentHash,
+      updatedById: getUserId(),
+      matchedText: typeof body.matchedText === "string" ? body.matchedText : undefined,
+      category: typeof body.category === "string" ? body.category : undefined,
+      prisma
+    });
+
+    return NextResponse.json({ success: true, data: result });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Server error";
+    if (message.includes("CHAPTER_CONTENT_STALE")) {
+      return NextResponse.json(
+        { success: false, error: "章节内容已变化，请重新扫描后再应用" },
+        { status: 409 }
+      );
+    }
+    const status = message.includes("not found") || message.includes("不存在") ? 404 : 500;
+    return NextResponse.json({ success: false, error: message }, { status });
+  }
+}

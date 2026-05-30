@@ -146,3 +146,37 @@ pnpm --filter @ai-novel/web typecheck
 - [x] Add focused unit tests for budget service and API routes.
 - [x] Record budget governance progress and verification evidence in `docs/current-progress.md`.
 - [x] Re-run budget-focused tests, Prisma validation/generation, and web typecheck before committing.
+
+## Task 8: 2026-05-30 Git Diff Review Fixes
+
+**Files:**
+- Modify: `.gitignore`
+- Modify: `apps/web/src/server/chapters.ts`
+- Modify: `apps/web/src/server/chapters.test.ts`
+- Create: `apps/web/src/app/api/chapters/[chapterId]/apply-deslop/route.ts`
+- Create: `apps/web/src/app/api/chapters/[chapterId]/apply-deslop/route.test.ts`
+- Modify: `apps/web/src/components/workspace/deslop-panel.tsx`
+- Modify: `apps/web/src/server/writing-assets.ts`
+- Modify: `apps/web/src/server/writing-assets.test.ts`
+- Modify: `apps/web/e2e/smoke.spec.ts`
+- Modify: `docs/current-progress.md`
+
+**Commands:**
+
+```bash
+pnpm --filter @ai-novel/web test -- src/server/chapters.test.ts src/app/api/chapters/[chapterId]/apply-deslop/route.test.ts src/server/writing-assets.test.ts
+pnpm typecheck
+pnpm test
+pnpm build
+git diff --check
+```
+
+- [x] Add stale-content guard for DESLOP apply using `baseContentHash`.
+- [x] Clear stale DESLOP scan results after an apply succeeds.
+- [x] Use unique issue keys for DESLOP apply loading state.
+- [x] Truncate DESLOP version titles to fit the database column limit.
+- [x] Preserve `confidence: 0` when creating project memories.
+- [x] Ignore `.claude/worktrees/` residual agent worktrees.
+- [x] Restore `apps/web/next-env.d.ts` generated route reference to the prior dev form.
+- [x] Update smoke e2e comments to match Playwright `globalSetup` worker startup.
+- [x] Run focused tests, typecheck, full tests, build, diff check, and IDE lints.

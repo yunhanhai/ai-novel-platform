@@ -106,6 +106,21 @@ describe("writing-assets", () => {
       expect(result.status).toBe("proposed");
     });
 
+    it("preserves zero confidence when creating a memory", async () => {
+      const create = vi.fn().mockResolvedValue({ id: "pm1", confidence: 0 });
+      const prisma = mockPrisma({ projectMemory: { create } });
+
+      await createProjectMemory({
+        organizationId: "org1", projectId: "p1",
+        memoryType: "world_fact", scopeType: "project",
+        content: "待确认事实", confidence: 0, prisma
+      });
+
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ confidence: 0 })
+      }));
+    });
+
     it("lists accepted memories of a given type", async () => {
       const prisma = mockPrisma({
         projectMemory: { findMany: vi.fn().mockResolvedValue([{ id: "pm1", status: "accepted" }]) }

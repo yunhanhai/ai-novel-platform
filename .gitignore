@@ -10,6 +10,7 @@ coverage/
 *.tsbuildinfo
 packages/db/src/generated/
 .worktrees/
+.claude/worktrees/
 
 # Playwright
 playwright-report/

@@ -71,11 +71,17 @@ const RULE_DRAFT_FIELDS: ReadonlyArray<FieldSpec<DeslopRuleDraft>> = [
   { key: "suggestion", label: "建议", control: "textarea", rows: 2 }
 ];
 
-function applyReplacement(originalText: string, issue: DeslopIssue): string {
+function replaceIssueText(originalText: string, issue: DeslopIssue, replacement: string): string {
   const { start, end } = issue.position;
-  // suggestion 非空 → 替换；为空 → 删除
-  const replacement = issue.suggestion || "";
   return originalText.slice(0, start) + replacement + originalText.slice(end);
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 interface Props {
@@ -99,8 +105,9 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
   const [severity, setSeverity] = useState<"info" | "warning" | "error">("warning");
   const [suggestion, setSuggestion] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
+  const [applyingKey, setApplyingKey] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [pendingApply, setPendingApply] = useState<{ key: string; issue: DeslopIssue; replacement: string } | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
 
   const reloadRules = useCallback(async () => {
@@ -124,6 +131,8 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
     }
     setScanning(true);
     setError(null);
+    setApplyError(null);
+    setPendingApply(null);
     if (!rulesLoaded) await reloadRules();
     try {
       const res = await fetch("/api/deslop-rules/scan", {
@@ -173,30 +182,38 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
     }
   }
 
-  async function handleApply(idx: number, issue: DeslopIssue) {
+  async function handleApply(key: string, issue: DeslopIssue) {
+    setPendingApply({ key, issue, replacement: "" });
+    setApplyError(null);
+  }
+
+  async function handleConfirmApply(key: string) {
+    if (!pendingApply) return;
     if (!chapterId || !currentText) return;
-    setApplyingIdx(idx);
+    setApplyingKey(key);
     setApplyError(null);
     try {
-      const newText = applyReplacement(currentText, issue);
-      // 1. 先快照当前正文为 content version
-      await fetch("/api/content-versions", {
+      const newText = replaceIssueText(currentText, pendingApply.issue, pendingApply.replacement);
+      const baseContentHash = await sha256Hex(currentText);
+      const res = await fetch(`/api/chapters/${chapterId}/apply-deslop`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chapterId, content: currentText, source: "MANUAL" })
+        body: JSON.stringify({
+          nextContent: newText,
+          baseContentHash,
+          matchedText: pendingApply.issue.matched,
+          category: pendingApply.issue.category
+        })
       });
-      // 2. 更新章节正文
-      const res = await fetch(`/api/chapters/${chapterId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: newText })
-      });
-      if (!res.ok) throw new Error("更新失败");
+      const json = (await res.json()) as ApiEnvelope<unknown>;
+      if (!res.ok || !json.success) throw new Error(json.error ?? "更新失败");
+      setPendingApply(null);
+      setReport(null);
       onApplied?.();
     } catch (err: unknown) {
       setApplyError(err instanceof Error ? err.message : "应用失败");
     } finally {
-      setApplyingIdx(null);
+      setApplyingKey(null);
     }
   }
 
@@ -258,8 +275,11 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
                   <div key={sev} className={`deslop-issue-group deslop-issue-${sev}`}>
                     <h4>{labelOfSeverity(sev)} ({list.length})</h4>
                     <ul>
-                      {list.map((issue, idx) => (
-                        <li key={`${sev}-${idx}`}>
+                      {list.map((issue, idx) => {
+                        const issueKey = `${sev}-${idx}`;
+                        const isPending = pendingApply?.key === issueKey;
+                        return (
+                        <li key={issueKey}>
                           <span className="tag tag-method">{labelOfCategory(issue.category)}</span>
                           <code>{issue.matched}</code>
                           <span className="muted deslop-issue-suggestion">{issue.suggestion}</span>
@@ -268,14 +288,40 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
                             <button
                               type="button"
                               className="btn-ghost btn-small"
-                              disabled={applyingIdx !== null}
-                              onClick={() => void handleApply(idx, issue)}
+                              disabled={applyingKey !== null}
+                              onClick={() => void handleApply(issueKey, issue)}
                             >
-                              {applyingIdx === idx ? "应用..." : "应用"}
+                              {isPending ? "编辑中" : "应用"}
                             </button>
                           )}
+                          {isPending && (
+                            <div className="deslop-apply-editor">
+                              <label>
+                                <span>替换为</span>
+                                <input
+                                  value={pendingApply.replacement}
+                                  onChange={(e) => setPendingApply({ ...pendingApply, replacement: e.target.value })}
+                                  placeholder="留空表示删除"
+                                />
+                              </label>
+                              <div className="resource-card-actions">
+                                <button type="button" className="btn-ghost btn-small" onClick={() => setPendingApply(null)}>
+                                  取消
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-primary btn-small"
+                                  disabled={applyingKey !== null}
+                                  onClick={() => void handleConfirmApply(issueKey)}
+                                >
+                                  {applyingKey === issueKey ? "应用..." : "确认应用"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </li>
-                      ))}
+                      );
+                      })}
                     </ul>
                   </div>
                 );

@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
  *   1. PostgreSQL 跑在 127.0.0.1:5432
  *   2. apps/web/.env.local 含 SESSION_SECRET (>= 32 chars)
  *   3. .env 含 USE_FAKE_MODEL="true"
- *   4. apps/worker 已在另一个终端跑（spec 不会启动 worker）
+ *   4. apps/worker 由 Playwright globalSetup 自动启动
  *   5. pnpm db:migrate + pnpm db:seed 已执行过
  */
 
