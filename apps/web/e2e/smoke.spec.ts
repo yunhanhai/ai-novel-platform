@@ -76,12 +76,12 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(page.getByRole("heading", { name: "AI 助手" })).toBeVisible();
   await page.getByRole("button", { name: "生成章节" }).click();
 
-  // 7. 等待 job 类型显示为 GENERATE_CHAPTER 且状态达到 SUCCEEDED
+  // 7. 等待 job 类型显示为“生成章节”且状态达到“已完成”
   //    （先等 type 切换，避免抓到上一轮残留状态）
   const jobTypeCell = page.locator(".job-status-card .job-status-row:has(.muted:text(\"类型\")) > span:not(.muted)");
   const jobStatusTag = page.locator(".tag-job").first();
-  await expect(jobTypeCell).toHaveText("GENERATE_CHAPTER", { timeout: 10_000 });
-  await expect(jobStatusTag).toHaveText("SUCCEEDED", { timeout: 30_000 });
+  await expect(jobTypeCell).toHaveText("生成章节", { timeout: 10_000 });
+  await expect(jobStatusTag).toHaveText("已完成", { timeout: 30_000 });
 
   // 8. 章节正文应已经被 worker 写回（fake-model 输出 > 0 字符）
   const editor = page.locator("textarea").first();
@@ -91,15 +91,15 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   const deslopBtn = page.getByRole("button", { name: "去 AI 味" });
   await expect(deslopBtn).toBeEnabled({ timeout: 15_000 });
   await deslopBtn.click();
-  await expect(jobTypeCell).toHaveText("DESLOP", { timeout: 10_000 });
-  await expect(jobStatusTag).toHaveText("SUCCEEDED", { timeout: 30_000 });
+  await expect(jobTypeCell).toHaveText("去 AI 味", { timeout: 10_000 });
+  await expect(jobStatusTag).toHaveText("已完成", { timeout: 30_000 });
 
   // 10. 触发 EXTRACT_MEMORY
   const extractBtn = page.getByRole("button", { name: "抽取记忆" });
   await expect(extractBtn).toBeEnabled({ timeout: 15_000 });
   await extractBtn.click();
-  await expect(jobTypeCell).toHaveText("EXTRACT_MEMORY", { timeout: 10_000 });
-  await expect(jobStatusTag).toHaveText("SUCCEEDED", { timeout: 30_000 });
+  await expect(jobTypeCell).toHaveText("抽取记忆", { timeout: 10_000 });
+  await expect(jobStatusTag).toHaveText("已完成", { timeout: 30_000 });
 
   console.log(`✓ smoke 通过: 用户=${EMAIL} 项目=${PROJECT_TITLE}`);
 });

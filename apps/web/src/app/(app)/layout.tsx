@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <header className="top-bar">
           <Link href="/projects" className="brand">
             <span className="brand-mark">AI</span>
-            <span>AI Novel Platform</span>
+            <span>AI 小说创作平台</span>
           </Link>
           <div className="top-bar-right">
             <Link href="/settings/models" className="btn-ghost btn-small">设置</Link>

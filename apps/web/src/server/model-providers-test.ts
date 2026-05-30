@@ -43,17 +43,17 @@ export async function pingProvider(deps: PingDeps): Promise<PingResult> {
     where: { id: deps.providerId, organizationId: deps.organizationId }
   });
   if (!provider) {
-    return { ok: false, error: "Provider 不存在" };
+    return { ok: false, error: "模型供应商不存在" };
   }
   if (provider.status !== "ACTIVE") {
-    return { ok: false, error: `Provider 状态为 ${provider.status}，无法测试` };
+    return { ok: false, error: `模型供应商状态为 ${provider.status}，无法测试` };
   }
 
   const modelName = await pickModelNameForProvider(deps.prisma, provider.id);
   if (!modelName) {
     return {
       ok: false,
-      error: "该 Provider 没有可用 Profile，请先创建一个 Profile 再测试连通"
+      error: "该模型供应商没有可用模型档案，请先创建一个模型档案再测试连通"
     };
   }
 
@@ -118,10 +118,10 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 function classifyError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message === "PING_TIMEOUT") return `测试请求 ${PING_TIMEOUT_MS / 1000}s 超时`;
-  if (/API_KEY_NOT_RESOLVED/.test(message)) return "API Key 未配置或解密失败";
-  if (/UNSUPPORTED_PROVIDER/.test(message)) return "暂不支持此 Provider 类型";
-  if (/401|403|unauthorized|invalid.*api.*key/i.test(message)) return "认证失败，请检查 API Key";
-  if (/429|rate.?limit/i.test(message)) return "Provider 限流，请稍后再试";
-  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|fetch failed/i.test(message)) return "网络不可达，请检查 baseUrl";
+  if (/API_KEY_NOT_RESOLVED/.test(message)) return "API 密钥未配置或解密失败";
+  if (/UNSUPPORTED_PROVIDER/.test(message)) return "暂不支持此模型供应商类型";
+  if (/401|403|unauthorized|invalid.*api.*key/i.test(message)) return "认证失败，请检查 API 密钥";
+  if (/429|rate.?limit/i.test(message)) return "模型供应商限流，请稍后再试";
+  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|fetch failed/i.test(message)) return "网络不可达，请检查服务地址";
   return `测试失败：${message}`;
 }

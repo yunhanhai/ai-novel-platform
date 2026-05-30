@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ProviderForm, type ProviderFormValues } from "./provider-form";
+import { labelForProviderStatus } from "../../lib/display-labels";
 
 interface ProviderItem {
   id: string;
@@ -79,7 +80,7 @@ export function ProvidersList({ encryptionKeyConfigured }: ProvidersListProps) {
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm("确定停用此 Provider？此操作会把状态置为 DISABLED。")) return;
+    if (!window.confirm("确定停用此模型供应商？此操作会把状态置为“已停用”。")) return;
     const res = await fetch(`/api/model-providers/${id}`, { method: "DELETE" });
     const json = (await res.json()) as { success: boolean; error?: string };
     if (!res.ok || !json.success) {
@@ -112,13 +113,13 @@ export function ProvidersList({ encryptionKeyConfigured }: ProvidersListProps) {
   return (
     <section className="settings-card">
       <header className="settings-card-header">
-        <h2>模型 Provider</h2>
+        <h2>模型供应商</h2>
         <button
           type="button"
           className="btn-primary btn-small"
           onClick={() => setDialog({ mode: "create" })}
         >
-          + 新建 Provider
+          + 新建供应商
         </button>
       </header>
 
@@ -128,7 +129,7 @@ export function ProvidersList({ encryptionKeyConfigured }: ProvidersListProps) {
         <p className="muted">加载中...</p>
       ) : items.length === 0 ? (
         <div className="empty-state">
-          <p>还没有 Provider，新建一个连接到 OpenAI / Anthropic 等供应商。</p>
+          <p>还没有模型供应商，新建一个连接到 OpenAI / Anthropic 等服务。</p>
         </div>
       ) : (
         <ul className="settings-list">
@@ -142,7 +143,7 @@ export function ProvidersList({ encryptionKeyConfigured }: ProvidersListProps) {
                 <div className="settings-list-meta">
                   <span>{p.providerType}</span>
                   {p.baseUrl && <span>{p.baseUrl}</span>}
-                  <span>状态：{p.status}</span>
+                  <span>状态：{labelForProviderStatus(p.status)}</span>
                 </div>
                 {testResult[p.id] && (
                   <p className={`settings-list-test ${testResult[p.id]!.ok ? "ok" : "err"}`}>

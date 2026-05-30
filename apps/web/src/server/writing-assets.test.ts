@@ -7,7 +7,8 @@ import {
   createPlotThread,
   findPlotThreadsByProject,
   createProjectMemory,
-  findMemoriesByProject
+  findMemoriesByProject,
+  setMemoryStatus
 } from "./writing-assets";
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
@@ -16,7 +17,7 @@ function mockPrisma(overrides: Record<string, unknown> = {}) {
     characterRelationship: { create: vi.fn(), findMany: vi.fn() },
     worldItem: { create: vi.fn(), findMany: vi.fn() },
     plotThread: { create: vi.fn(), findMany: vi.fn() },
-    projectMemory: { create: vi.fn(), findMany: vi.fn() },
+    projectMemory: { create: vi.fn(), findMany: vi.fn(), update: vi.fn() },
     ...overrides
   } as unknown as Parameters<typeof createCharacter>[0]["prisma"];
 }
@@ -129,6 +130,27 @@ describe("writing-assets", () => {
       const result = await findMemoriesByProject("org1", "p1", { status: "accepted" }, prisma);
 
       expect(result).toHaveLength(1);
+    });
+
+    it("sets acceptedAt when accepting and clears it for non-accepted statuses", async () => {
+      const update = vi.fn().mockResolvedValue({ id: "pm1", status: "accepted" });
+      const prisma = mockPrisma({ projectMemory: { update } });
+
+      await setMemoryStatus("org1", "pm1", "accepted", prisma);
+      await setMemoryStatus("org1", "pm1", "rejected", prisma);
+
+      expect(update).toHaveBeenNthCalledWith(1, expect.objectContaining({
+        data: expect.objectContaining({
+          status: "accepted",
+          acceptedAt: expect.any(Date)
+        })
+      }));
+      expect(update).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        data: {
+          status: "rejected",
+          acceptedAt: null
+        }
+      }));
     });
   });
 });

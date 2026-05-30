@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { labelForProjectStatus } from "../../lib/display-labels";
 
 interface ProjectItem {
   id: string;
@@ -27,7 +28,9 @@ export function ProjectList({ projects }: { projects: ProjectItem[] }) {
           <Link href={`/projects/${p.id}/workspace`} className="project-card">
             <div className="project-card-header">
               <h3>{p.title}</h3>
-              <span className={`status-pill status-${p.status.toLowerCase()}`}>{p.status}</span>
+              <span className={`status-pill status-${p.status.toLowerCase()}`}>
+                {labelForProjectStatus(p.status)}
+              </span>
             </div>
             <div className="project-card-meta">
               <span>{p.type === "LONG_NOVEL" ? "长篇小说" : "短篇故事"}</span>

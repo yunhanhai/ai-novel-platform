@@ -59,7 +59,7 @@ function errorResponse(error: unknown): NextResponse {
   const message = error instanceof Error ? error.message : "服务异常";
   const isNotFound = /P2025|不存在/.test(message);
   return NextResponse.json(
-    { success: false, error: isNotFound ? "Profile 不存在" : message },
+    { success: false, error: isNotFound ? "模型档案不存在" : message },
     { status: isNotFound ? 404 : 500 }
   );
 }

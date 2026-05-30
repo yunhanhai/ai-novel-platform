@@ -311,6 +311,9 @@ export async function setMemoryStatus(
 ) {
   return prisma.projectMemory.update({
     where: { id: memoryId, organizationId },
-    data: { status }
+    data: {
+      status,
+      acceptedAt: status === "accepted" ? new Date() : null
+    }
   });
 }

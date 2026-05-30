@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { labelForTaskType } from "../../lib/display-labels";
 
 export const TASK_TYPES = [
   "default",
@@ -63,7 +64,7 @@ export function ProfileForm({ mode, initial, providers, onSubmit, onCancel }: Pr
   async function handleSubmit() {
     setError(null);
     if (!values.providerId) {
-      setError("请先选择一个 Provider");
+      setError("请先选择一个模型供应商");
       return;
     }
     if (!values.name.trim() || !values.modelName.trim()) {
@@ -83,13 +84,13 @@ export function ProfileForm({ mode, initial, providers, onSubmit, onCancel }: Pr
   return (
     <div className="settings-form">
       <label className="wizard-field">
-        <span>Provider</span>
+        <span>模型供应商</span>
         <select
           value={values.providerId}
           onChange={(e) => patch({ providerId: e.target.value })}
           disabled={mode === "edit"}
         >
-          {providers.length === 0 && <option value="">（请先创建 Provider）</option>}
+          {providers.length === 0 && <option value="">（请先创建模型供应商）</option>}
           {providers.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
@@ -123,14 +124,14 @@ export function ProfileForm({ mode, initial, providers, onSubmit, onCancel }: Pr
           onChange={(e) => patch({ taskType: e.target.value as TaskType })}
         >
           {TASK_TYPES.map((t) => (
-            <option key={t} value={t}>{t}</option>
+            <option key={t} value={t}>{labelForTaskType(t)}</option>
           ))}
         </select>
       </label>
 
       <div className="wizard-inline-row">
         <label className="wizard-field">
-          <span>Temperature（0-1，可空）</span>
+          <span>随机性（0-1，可空）</span>
           <input
             type="number"
             step="0.1"
@@ -141,7 +142,7 @@ export function ProfileForm({ mode, initial, providers, onSubmit, onCancel }: Pr
           />
         </label>
         <label className="wizard-field">
-          <span>Max Output Tokens（可空）</span>
+          <span>最大输出长度（可空）</span>
           <input
             type="number"
             min="1"

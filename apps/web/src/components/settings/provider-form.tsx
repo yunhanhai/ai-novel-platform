@@ -55,7 +55,7 @@ export function ProviderForm({ mode, initial, encryptionKeyConfigured, onSubmit,
       return;
     }
     if (mode === "create" && !values.apiKey.trim()) {
-      setError("API key 必填");
+      setError("API 密钥必填");
       return;
     }
     setSubmitting(true);
@@ -98,7 +98,7 @@ export function ProviderForm({ mode, initial, encryptionKeyConfigured, onSubmit,
       </label>
 
       <label className="wizard-field">
-        <span>Base URL（可选）</span>
+        <span>服务地址（可选）</span>
         <input
           type="text"
           value={values.baseUrl}
@@ -108,7 +108,7 @@ export function ProviderForm({ mode, initial, encryptionKeyConfigured, onSubmit,
       </label>
 
       <label className="wizard-field">
-        <span>API Key{mode === "edit" ? "（编辑时不可修改，需删除后重建）" : ""}</span>
+        <span>API 密钥{mode === "edit" ? "（编辑时不可修改，需删除后重建）" : ""}</span>
         <input
           type="password"
           value={values.apiKey}
@@ -117,7 +117,7 @@ export function ProviderForm({ mode, initial, encryptionKeyConfigured, onSubmit,
           disabled={apiKeyDisabled}
         />
         {!encryptionKeyConfigured && mode === "create" && (
-          <span className="form-hint warn">需先在 .env 配置 ENCRYPTION_KEY 才能保存 API key</span>
+          <span className="form-hint warn">需先在 .env 配置 ENCRYPTION_KEY 才能保存 API 密钥</span>
         )}
       </label>
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ProfileForm, type ProfileFormValues, TASK_TYPES, type TaskType } from "./profile-form";
+import { labelForTaskType } from "../../lib/display-labels";
 
 interface ProfileItem {
   id: string;
@@ -113,7 +114,7 @@ export function ProfilesList() {
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm("确定删除此 Profile？")) return;
+    if (!window.confirm("确定删除此模型档案？")) return;
     const res = await fetch(`/api/model-profiles/${id}`, { method: "DELETE" });
     const json = (await res.json()) as { success: boolean; error?: string };
     if (!res.ok || !json.success) {
@@ -124,33 +125,33 @@ export function ProfilesList() {
   }
 
   function providerName(id: string): string {
-    return providers.find((p) => p.id === id)?.name ?? "（未知 Provider）";
+    return providers.find((p) => p.id === id)?.name ?? "（未知供应商）";
   }
 
   return (
     <section className="settings-card">
       <header className="settings-card-header">
-        <h2>模型档案（Profile）</h2>
+        <h2>模型档案</h2>
         <button
           type="button"
           className="btn-primary btn-small"
           disabled={providers.length === 0}
           onClick={() => setDialog({ mode: "create" })}
         >
-          + 新建 Profile
+          + 新建档案
         </button>
       </header>
 
       {error && <p className="form-error">{error}</p>}
       {providers.length === 0 && (
-        <p className="muted">请先创建 Provider，才能新增 Profile。</p>
+        <p className="muted">请先创建模型供应商，才能新增模型档案。</p>
       )}
 
       {items === null ? (
         <p className="muted">加载中...</p>
       ) : items.length === 0 ? (
         <div className="empty-state">
-          <p>没有 Profile。Worker 会回退到 default 档案；建议至少创建一个 taskType=default 的档案。</p>
+          <p>没有模型档案。后台任务会回退到默认档案；建议至少创建一个任务类型为“默认”的档案。</p>
         </div>
       ) : (
         <ul className="settings-list">
@@ -159,12 +160,12 @@ export function ProfilesList() {
               <div className="settings-list-main">
                 <div className="settings-list-title">{p.name}</div>
                 <div className="settings-list-meta">
-                  <span>Provider: {providerName(p.providerId)}</span>
+                  <span>供应商：{providerName(p.providerId)}</span>
                   <span>模型: {p.modelName}</span>
-                  <span>任务: {p.taskType}</span>
+                  <span>任务：{labelForTaskType(p.taskType)}</span>
                   {p.projectId && <span>项目专用</span>}
-                  {p.temperature !== null && <span>T={String(p.temperature)}</span>}
-                  {p.maxOutputTokens !== null && <span>maxTok={p.maxOutputTokens}</span>}
+                  {p.temperature !== null && <span>随机性：{String(p.temperature)}</span>}
+                  {p.maxOutputTokens !== null && <span>最大输出：{p.maxOutputTokens}</span>}
                 </div>
               </div>
               <div className="settings-list-actions">

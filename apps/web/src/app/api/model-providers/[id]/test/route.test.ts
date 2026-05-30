@@ -36,7 +36,7 @@ describe("POST /api/model-providers/[id]/test", () => {
   });
 
   it("forwards ok=false from helper as HTTP 200", async () => {
-    pp().mockResolvedValue({ ok: false, error: "Provider 不存在" });
+    pp().mockResolvedValue({ ok: false, error: "模型供应商不存在" });
     const res = await POST(
       new Request("http://localhost/api/model-providers/x/test", { method: "POST" }),
       ctx("x")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useWorkspaceResource } from "./use-workspace-resource";
 
 export interface MemoryItem {
@@ -27,17 +27,11 @@ const STATUS_FILTERS = [
 
 export function MemoriesPanel({ projectId }: { projectId: string | null }) {
   const [filter, setFilter] = useState<"proposed" | "accepted" | "rejected" | "all">("proposed");
-  // 直接用 fetch 而不是 useWorkspaceResource：这里 list 受 status 影响
   const { items, isLoading, error, patch, reload } = useWorkspaceResource<MemoryItem>({
-    endpoint: filter === "all" ? ENDPOINT : `${ENDPOINT}`,
-    projectId
+    endpoint: ENDPOINT,
+    projectId,
+    listQuery: { status: filter === "all" ? undefined : filter }
   });
-
-  // 客户端过滤（API 也支持 status 查询，这里简化为客户端过滤）
-  const visible = useMemo(() => {
-    if (filter === "all") return items;
-    return items.filter((m) => m.status === filter);
-  }, [items, filter]);
 
   if (!projectId) return <p className="muted">请先选择一个项目</p>;
 
@@ -64,12 +58,12 @@ export function MemoriesPanel({ projectId }: { projectId: string | null }) {
 
       {isLoading && <p className="muted">加载中...</p>}
       {error && <p className="form-error">{error}</p>}
-      {!isLoading && !error && visible.length === 0 && (
+      {!isLoading && !error && items.length === 0 && (
         <p className="muted">没有匹配的记忆条目</p>
       )}
 
       <ul className="resource-cards">
-        {visible.map((m) => (
+        {items.map((m) => (
           <MemoryCard
             key={m.id}
             item={m}

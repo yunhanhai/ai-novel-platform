@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Novel Platform",
-  description: "Structured AI-assisted novel creation workspace"
+  title: "AI 小说创作平台",
+  description: "结构化的 AI 辅助小说创作工作台"
 };
 
 export default function RootLayout({

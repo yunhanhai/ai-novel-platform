@@ -12,6 +12,7 @@ import { VersionsPanel } from "./versions-panel";
 import { DeslopPanel } from "./deslop-panel";
 import { OutlinePanel } from "./outline-panel";
 import type { JobSummary } from "./use-workspace-data";
+import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 
 type TabKey =
   | "ai" | "characters" | "world" | "threads" | "memories"
@@ -34,7 +35,7 @@ interface Props {
   projectId: string | null;
   chapterId: string | null;
   currentChapterText: string;
-  onGenerate: () => void;
+  onGenerate: (contextOptions?: ContextOptions) => void;
   onDeslop: () => void;
   onExtractMemory: () => void;
   isStarting: boolean;
@@ -85,6 +86,7 @@ export function WorkspaceSideTabs({
             job={job}
             error={jobError}
             canGenerate={canGenerate}
+            chapterId={chapterId}
           />
         )}
         {active === "versions" && (

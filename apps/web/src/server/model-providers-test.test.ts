@@ -91,7 +91,7 @@ describe("pingProvider", () => {
       })
     });
     expect(res.ok).toBe(false);
-    expect(res.error).toContain("Profile");
+    expect(res.error).toContain("模型档案");
   });
 
   it("returns ok=true mode=real on adapter success", async () => {

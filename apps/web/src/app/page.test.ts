@@ -1,12 +1,15 @@
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import Page from "./page";
 
-describe("landing page", () => {
-  it("renders the product name", () => {
-    const renderedText = renderToStaticMarkup(createElement(Page));
+const redirect = vi.hoisted(() => vi.fn((url: string) => {
+  throw new Error(`NEXT_REDIRECT:${url}`);
+}));
 
-    expect(renderedText).toContain("AI Novel Platform");
+vi.mock("next/navigation", () => ({ redirect }));
+
+describe("home page", () => {
+  it("redirects to the project list instead of rendering the placeholder", () => {
+    expect(() => Page()).toThrow("NEXT_REDIRECT:/projects");
+    expect(redirect).toHaveBeenCalledWith("/projects");
   });
 });

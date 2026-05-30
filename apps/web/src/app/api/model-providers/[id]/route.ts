@@ -23,7 +23,7 @@ export async function GET(_request: Request, context: RouteContext) {
     const organizationId = getOrganizationId();
     const provider = await findProviderById(organizationId, id, prisma);
     if (!provider) {
-      return NextResponse.json({ success: false, error: "Provider 不存在" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "模型供应商不存在" }, { status: 404 });
     }
     return NextResponse.json({ success: true, data: provider });
   } catch (error: unknown) {
@@ -68,7 +68,7 @@ function errorResponse(error: unknown): NextResponse {
   const message = error instanceof Error ? error.message : "服务异常";
   const isNotFound = /P2025|不存在/.test(message);
   return NextResponse.json(
-    { success: false, error: isNotFound ? "Provider 不存在" : message },
+    { success: false, error: isNotFound ? "模型供应商不存在" : message },
     { status: isNotFound ? 404 : 500 }
   );
 }

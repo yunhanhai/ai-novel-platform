@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { labelForChapterStatus } from "../../lib/display-labels";
 
 interface ChapterItem {
   id: string;
@@ -99,7 +100,7 @@ export function AssetSidebar({
               >
                 <span className="chapter-no">第{ch.chapterNo}章</span>
                 <span className="chapter-title">{ch.title}</span>
-                <span className="chapter-status">{ch.status}</span>
+                <span className="chapter-status">{labelForChapterStatus(ch.status)}</span>
               </button>
             </li>
           ))}
