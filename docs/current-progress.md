@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-05-19
+> Last updated: 2026-05-30
 
 ## Completed
 
@@ -428,3 +428,40 @@ ce1098d feat(web): AI drafting for world items, outline nodes, plot threads
 - 真实模式整链路尚未端到端跑过(因为本地无 `ENCRYPTION_KEY` + 真实 API key)。fake 模式已 100% 覆盖,真实模式靠单测保证(单测 mock 了 createAdapter)。
 - 6 类资产 AI 草稿暴露了一个 prompt task type 数组:`draft_character / draft_world_item / draft_outline / draft_plot_thread / draft_style_profile / draft_deslop_rule`。未来若想给某类资产配专属(更便宜)模型,在 Settings → Profile 里新建对应 taskType 即可,无需改代码。
 - Dialog 组件本身可继续抽通用化用于其他场景(prompt 复用、记忆抽取等),目前仅供 6 个 asset draft 用。
+
+---
+
+## 2026-05-30 — 预算治理 API、面板、通知与测试
+
+承接“持久化预算体系”后续，本轮新增组织/项目预算治理能力，并保持 Windows 本地 fake-model 开发路径可验证。
+
+### 交付内容
+
+- **数据库模型与迁移**：`packages/db/prisma/schema.prisma` 新增 `OrganizationBudgetPolicy` 与 `BudgetNotification`，并给 `Organization` / `Project` 增加预算策略与通知关系；新增迁移 `202605300001_add_budget_governance`，包含预算策略表、通知表、范围索引、通知 dedupe 唯一索引、active policy partial unique index 与额度/周期/status check 约束。
+- **预算服务层**：新增 `apps/web/src/server/budgets.ts`，实现预算周期计算、月度费用额度、月度 Token 额度、阈值归一化、`UsageEvent` 日聚合、预算 dashboard、超阈值通知 upsert 去重、通知列表与 acknowledge。
+- **API**：新增 `GET/PATCH /api/settings/budget`、`GET /api/usage/budget-summary`、`GET/PATCH /api/budget-notifications`。
+- **前端治理面板**：新增 `/settings/budget` 页面与 `BudgetGovernancePanel` 客户端组件，展示周期、费用/Token 使用率、KPI、CSS 使用率条、每日费用趋势、可访问明细表、预算策略表单与超预算通知确认。
+- **UI 风格**：按 UI 技能方向采用克制的 SaaS/FinOps 仪表盘风格，不引入图表依赖；预算 CSS 已追加到现有设置页样式后面。
+- **单测**：新增预算服务与 3 条 API route 单测，覆盖周期跨月、阈值清洗、policy create/update、用量聚合、通知生成/确认、API 参数校验与错误映射。
+
+### 验证证据
+
+```text
+pnpm --filter @ai-novel/web test -- src/server/budgets.test.ts src/app/api/settings/budget/route.test.ts src/app/api/budget-notifications/route.test.ts src/app/api/usage/budget-summary/route.test.ts
+  4 test files passed, 25 tests passed
+
+pnpm --filter @ai-novel/db db:validate
+  Prisma schema is valid
+
+pnpm --filter @ai-novel/db db:generate
+  Prisma Client 7.8.0 generated to packages/db/src/generated
+
+pnpm --filter @ai-novel/web typecheck
+  tsc --noEmit passed
+```
+
+### 当前风险与下一步
+
+- 预算 dashboard 读取 `usage_events`；如果 worker 的真实模型调用路径没有持续写入 `UsageEvent`，图表会显示 0 或仅显示已有记录。下一步应补齐 worker 生成完成后的 UsageEvent 写入闭环，并纳入 pipeline 测试。
+- `/settings/budget` 页面目前已实现但未加入顶部导航入口；若希望用户可发现，需要在设置导航或全局 layout 增加入口。
+- 当前工作区仍有大量无关脏文件；预算治理提交时应精确 stage 本轮文件，避免混入已有模型设置、工作台、apply-deslop、worktree 残留等变更。

@@ -283,6 +283,8 @@ model Organization {
   generationJobs  GenerationJob[]
   generationSteps       GenerationStep[]
   usageEvents           UsageEvent[]
+  budgetPolicies        OrganizationBudgetPolicy[]
+  budgetNotifications   BudgetNotification[]
   auditLogs             AuditLog[]
   characters            Character[]
   characterRelationships CharacterRelationship[]
@@ -363,6 +365,8 @@ model Project {
   promptTemplates       PromptTemplate[]
   generationJobs        GenerationJob[]
   usageEvents           UsageEvent[]
+  budgetPolicies        OrganizationBudgetPolicy[]
+  budgetNotifications   BudgetNotification[]
   characters            Character[]
   characterRelationships CharacterRelationship[]
   worldItems            WorldItem[]
@@ -652,6 +656,51 @@ model UsageEvent {
   @@index([organizationId, createdAt], map: "idx_usage_org_time")
   @@index([projectId, createdAt], map: "idx_usage_project_time")
   @@map("usage_events")
+}
+
+model OrganizationBudgetPolicy {
+  id                 String               @id @default(uuid()) @db.Uuid
+  organizationId     String               @map("organization_id") @db.Uuid
+  projectId          String?              @map("project_id") @db.Uuid
+  monthlyBudgetCents Int                  @default(0) @map("monthly_budget_cents")
+  monthlyTokenQuota  Int                  @default(0) @map("monthly_token_quota")
+  cycleAnchorDay     Int                  @default(1) @map("cycle_anchor_day")
+  thresholdPercents  Json?                @map("threshold_percents")
+  isActive           Boolean              @default(true) @map("is_active")
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project            Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  notifications      BudgetNotification[]
+
+  @@index([organizationId, projectId, isActive], map: "idx_budget_policies_scope")
+  @@map("organization_budget_policies")
+}
+
+model BudgetNotification {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  organizationId     String                    @map("organization_id") @db.Uuid
+  projectId          String?                   @map("project_id") @db.Uuid
+  budgetPolicyId     String?                   @map("budget_policy_id") @db.Uuid
+  dedupeKey          String                    @unique @map("dedupe_key") @db.VarChar(220)
+  periodStart        DateTime                  @map("period_start") @db.Date
+  periodEnd          DateTime                  @map("period_end") @db.Date
+  thresholdPercent   Int                       @map("threshold_percent")
+  actualCostCents    Int                       @default(0) @map("actual_cost_cents")
+  budgetCents        Int                       @default(0) @map("budget_cents")
+  actualTokens       Int                       @default(0) @map("actual_tokens")
+  tokenQuota         Int                       @default(0) @map("token_quota")
+  status             String                    @default("open") @db.VarChar(20)
+  message            String?                   @db.Text
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  acknowledgedAt     DateTime?                 @map("acknowledged_at") @db.Timestamptz(6)
+  organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project            Project?                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  budgetPolicy       OrganizationBudgetPolicy? @relation(fields: [budgetPolicyId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, createdAt], map: "idx_budget_notifications_org_status")
+  @@index([organizationId, periodStart], map: "idx_budget_notifications_period")
+  @@map("budget_notifications")
 }
 
 model AuditLog {

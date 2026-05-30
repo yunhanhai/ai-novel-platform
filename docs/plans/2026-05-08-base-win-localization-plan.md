@@ -110,3 +110,39 @@ pnpm dev:web
 - [x] Update `docs/current-progress.md` with current Windows runtime facts.
 - [x] After command verification, append new evidence to `docs/current-progress.md`.
 - [x] Record the next recommended task before ending each session.
+
+## Task 7: 2026-05-30 Budget Governance Closeout
+
+**Files:**
+- Modify: `packages/db/prisma/schema.prisma`
+- Create: `packages/db/prisma/migrations/202605300001_add_budget_governance/migration.sql`
+- Create: `apps/web/src/server/budgets.ts`
+- Create: `apps/web/src/server/budgets.test.ts`
+- Create: `apps/web/src/app/api/settings/budget/route.ts`
+- Create: `apps/web/src/app/api/settings/budget/route.test.ts`
+- Create: `apps/web/src/app/api/usage/budget-summary/route.ts`
+- Create: `apps/web/src/app/api/usage/budget-summary/route.test.ts`
+- Create: `apps/web/src/app/api/budget-notifications/route.ts`
+- Create: `apps/web/src/app/api/budget-notifications/route.test.ts`
+- Create: `apps/web/src/app/(app)/settings/budget/page.tsx`
+- Create: `apps/web/src/components/settings/budget-governance-panel.tsx`
+- Modify: `apps/web/src/app/globals.css`
+- Modify: `docs/current-progress.md`
+
+**Commands:**
+
+```bash
+pnpm --filter @ai-novel/db db:generate
+pnpm --filter @ai-novel/web test -- src/server/budgets.test.ts src/app/api/settings/budget/route.test.ts src/app/api/budget-notifications/route.test.ts src/app/api/usage/budget-summary/route.test.ts
+pnpm --filter @ai-novel/db db:validate
+pnpm --filter @ai-novel/web typecheck
+```
+
+- [x] Add persistent budget policy and notification schema/migration.
+- [x] Add budget cycle, monthly quota, usage aggregation, and notification services.
+- [x] Add budget settings, usage summary, and notification APIs.
+- [x] Add budget governance settings page and panel.
+- [x] Append budget CSS after the existing settings page styles.
+- [x] Add focused unit tests for budget service and API routes.
+- [x] Record budget governance progress and verification evidence in `docs/current-progress.md`.
+- [x] Re-run budget-focused tests, Prisma validation/generation, and web typecheck before committing.
