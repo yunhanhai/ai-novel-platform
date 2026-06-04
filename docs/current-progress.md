@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-05-30
+> Last updated: 2026-06-04
 
 ## Completed
 
@@ -509,3 +509,30 @@ ReadLints on edited files
 - `apply-deslop` 新路由与本轮既有中文化/工作台改动同处 dirty worktree；提交时应精确 stage，避免混入不想提交的文件。
 - `apps/web/next-env.d.ts` 已还原，但 `git status` 仍可能显示它为 modified（行尾/生成文件扰动）；提交前建议再次确认是否应排除。
 - 尚未运行 `pnpm test:e2e`；若准备发布/提交，建议补跑 Playwright 全量 e2e。
+
+---
+
+## 2026-06-04 — 进度审计与记录补登
+
+本轮先做了一次全量计划审计（对照 16 份计划文档 + git 历史 + 代码实际产物），补登此前已交付但漏记的工作，并提交了一笔已完成、测试全绿的重构。
+
+### 补登：此前已交付但本文档漏记的工作
+
+- **上下文组装器**（计划 `docs/plans/2026-05-21-context-composer-implementation-plan.md`，提交 `b6cb032`）已落地：
+  - `packages/shared/src/context-composer/{types,options}.ts` 共享契约（budgetPreset compact/standard/rich + 资产归一化）。
+  - `apps/web/src/server/context-preview.ts` + `GET/POST /api/chapters/[chapterId]/context-preview` 预览端点。
+  - `apps/worker/src/context/{build-context-packet,keyword-activation,token-budget}.ts` 上下文组装 + 关键词激活 + token 预算裁剪。
+  - 工作台 `apps/web/src/components/workspace/context-composer.tsx` 生成前上下文预览与调整。
+- **生成诊断**（计划 `docs/plans/2026-05-21-generation-diagnostics-implementation-plan.md`）已落地：`promptSnapshot` 在 `chapter-pipeline.ts` / `generate-chapter-handler.ts` 落库，`pipeline-timeline.tsx` 以「查看 prompt 快照」details 渲染。
+- **UI 文案本地化与首页流程**（提交 `94e5f17`）。
+
+### 本轮提交
+
+- `857ae0b refactor(worker): extract job model resolver into model-runtime`：把 `resolveModel` / `getEncryptionKey` 从 `apps/worker/src/index.ts` 抽到可测试的 `apps/worker/src/model-runtime.ts`（`createJobModelResolver`）；`adapter-factory` 的 `encryptionKey` 改为可选，仅 `USER_KEY` 鉴权模式强制要求，使 `PLATFORM_KEY` provider 在无本地 `ENCRYPTION_KEY` 时也能工作；`wizard-drafts` fallback 同步该守卫。测试：model-adapters 37 / worker 103 / web 362 全绿。
+
+### 审计发现的未完成项（本轮后续处理）
+
+- ❌ **生成性能架构计划**（`docs/plans/2026-05-21-generation-performance-architecture-implementation-plan.md`）此前仅有设计提交（`32a923c`），代码零实现：无 `performance.ts`、无 `qualityMode`、无 `DIAGNOSE_CHAPTER` 诊断 job 类型、无 `diagnose-chapter-handler`。
+- ❌ Worker 未写回 `UsageEvent` → 预算仪表盘读不到真实用量。
+- ❌ `/settings/budget` 无顶部导航入口（页面已实现但用户进不去）。
+- ⏳ 会话安全加固（`/api/auth/me`、`/api` 401 边界、`SESSION_SECRET` 强值）、队列健壮性、真实 LLM 端到端验证仍未做。
