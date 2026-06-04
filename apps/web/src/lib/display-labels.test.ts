@@ -13,6 +13,7 @@ describe("display labels", () => {
     expect(labelForChapterStatus("PLANNED")).toBe("待写");
     expect(labelForProviderStatus("DISABLED")).toBe("已停用");
     expect(labelForGenerationJobType("GENERATE_CHAPTER")).toBe("生成章节");
+    expect(labelForGenerationJobType("DIAGNOSE_CHAPTER")).toBe("质量诊断");
     expect(labelForGenerationJobStatus("SUCCEEDED")).toBe("已完成");
     expect(labelForTaskType("extract_memory")).toBe("抽取记忆");
     expect(labelForPipelineStep("persist_version")).toBe("保存版本");

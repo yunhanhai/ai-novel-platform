@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma, createJob } from "@ai-novel/db";
 import { normalizeContextOptions } from "@ai-novel/shared/context-composer/options";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
+import { normalizeQualityMode, normalizePerformanceBudget } from "@ai-novel/shared/generation/performance";
+import type { PerformanceBudgetInput } from "@ai-novel/shared/generation/performance";
 import { getOrganizationId, getUserId } from "../../../server/context";
 
 type JobType =
@@ -12,7 +14,11 @@ type JobType =
   | "POLISH"
   | "DESLOP"
   | "REVIEW"
-  | "EXTRACT_MEMORY";
+  | "EXTRACT_MEMORY"
+  | "DIAGNOSE_CHAPTER"
+  | "READER_SIMULATION"
+  | "STYLE_DRIFT_CHECK"
+  | "CONTINUITY_CHECK";
 
 interface CreateJobBody {
   chapterId?: string;
@@ -21,6 +27,8 @@ interface CreateJobBody {
   modelProfileId?: string;
   input?: Record<string, unknown>;
   contextOptions?: ContextOptions;
+  qualityMode?: unknown;
+  performanceBudget?: PerformanceBudgetInput;
 }
 
 const ALLOWED_JOB_TYPES: JobType[] = [
@@ -31,8 +39,23 @@ const ALLOWED_JOB_TYPES: JobType[] = [
   "POLISH",
   "DESLOP",
   "REVIEW",
-  "EXTRACT_MEMORY"
+  "EXTRACT_MEMORY",
+  "DIAGNOSE_CHAPTER",
+  "READER_SIMULATION",
+  "STYLE_DRIFT_CHECK",
+  "CONTINUITY_CHECK"
 ];
+
+const DIAGNOSTIC_JOB_TYPES: JobType[] = [
+  "DIAGNOSE_CHAPTER",
+  "READER_SIMULATION",
+  "STYLE_DRIFT_CHECK",
+  "CONTINUITY_CHECK"
+];
+
+function isQualityMode(value: unknown): boolean {
+  return value === "fast" || value === "balanced" || value === "deep";
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -89,6 +112,18 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  if (body.qualityMode !== undefined && !isQualityMode(body.qualityMode)) {
+    return NextResponse.json(
+      { success: false, error: "qualityMode 必须为 fast / balanced / deep 之一" },
+      { status: 400 }
+    );
+  }
+  if (DIAGNOSTIC_JOB_TYPES.includes(jobType) && !chapterId) {
+    return NextResponse.json(
+      { success: false, error: "诊断类任务必须指定 chapterId" },
+      { status: 400 }
+    );
+  }
   if (!chapterId && !body.projectId) {
     return NextResponse.json(
       { success: false, error: "chapterId 或 projectId 必填" },
@@ -124,8 +159,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "无法解析 projectId" }, { status: 400 });
     }
 
+    const qualityMode = normalizeQualityMode(body.qualityMode);
     const input = {
       ...(body.input ?? {}),
+      qualityMode,
+      performanceBudget: normalizePerformanceBudget(qualityMode, body.performanceBudget),
       ...(body.contextOptions ? { contextOptions: normalizeContextOptions(body.contextOptions) } : {})
     };
 
@@ -134,7 +172,7 @@ export async function POST(request: Request) {
       projectId,
       userId,
       jobType,
-      input: input as Parameters<typeof createJob>[0]["input"],
+      input: input as unknown as Parameters<typeof createJob>[0]["input"],
       ...(body.modelProfileId ? { modelProfileId: body.modelProfileId } : {}),
       ...(targetEntityType ? { targetEntityType } : {}),
       ...(targetEntityId ? { targetEntityId } : {}),
