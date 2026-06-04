@@ -43,7 +43,11 @@ test("模型设置：banner / 测试连接 / 编辑供应商 / 档案 CRUD", asy
 
   // 4. seed 默认供应商应在列表里
   await expect(page.getByRole("heading", { name: "模型供应商" })).toBeVisible();
-  const providersList = page.locator(".settings-card").filter({ hasText: "模型供应商" });
+  // 用标题锚定供应商卡：档案卡空状态提示「请先创建模型供应商…」含同名子串，
+  // 若按整卡文本过滤会命中两张卡，触发 Playwright strict-mode 违例。
+  const providersList = page
+    .locator(".settings-card")
+    .filter({ has: page.getByRole("heading", { name: "模型供应商" }) });
   await expect(providersList).not.toContainText("加载中");
   await expect(providersList.locator(".settings-list-item").first()).toBeVisible({ timeout: 10_000 });
 
