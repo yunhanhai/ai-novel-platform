@@ -2361,3 +2361,132 @@ select {
   background: #eef2ff;
   color: #3730a3;
 }
+
+/* 生成质量模式分段控件 */
+.quality-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.quality-mode-label {
+  font-size: 12px;
+}
+
+.quality-mode-options {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.quality-mode-option {
+  padding: 4px 12px;
+  font-size: 12px;
+  border: none;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  border-left: 1px solid var(--border);
+}
+
+.quality-mode-option:first-child {
+  border-left: none;
+}
+
+.quality-mode-option.active {
+  background: var(--accent-strong);
+  color: #fff;
+}
+
+.quality-mode-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* 流水线面板：性能摘要 + 诊断结果 + 步骤 */
+.pipeline-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.perf-summary,
+.diagnostic-summary {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.perf-summary-head,
+.diagnostic-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.perf-summary-metrics,
+.diagnostic-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.perf-skipped,
+.diagnostic-suggestions,
+.diagnostic-issues {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 3px;
+}
+
+.tag-quality {
+  font-size: 11px;
+  color: var(--accent-strong);
+  background: #e6f1ee;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.tag-warning {
+  font-size: 11px;
+  color: #92400e;
+  background: #fef3c7;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.tag-risk {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.tag-risk-low {
+  color: #1b7e4a;
+  background: #e6f4ed;
+}
+
+.tag-risk-medium {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.tag-risk-high {
+  color: #b3261e;
+  background: #fdecea;
+}
+
+.diagnostic-issue-error .diagnostic-issue-detail {
+  color: #b3261e;
+}
+
+.diagnostic-issue-warning .diagnostic-issue-detail {
+  color: #92400e;
+}

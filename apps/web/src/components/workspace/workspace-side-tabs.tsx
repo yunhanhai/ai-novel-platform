@@ -13,6 +13,7 @@ import { DeslopPanel } from "./deslop-panel";
 import { OutlinePanel } from "./outline-panel";
 import type { JobSummary } from "./use-workspace-data";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
+import type { QualityMode } from "@ai-novel/shared/generation/performance";
 
 type TabKey =
   | "ai" | "characters" | "world" | "threads" | "memories"
@@ -35,7 +36,8 @@ interface Props {
   projectId: string | null;
   chapterId: string | null;
   currentChapterText: string;
-  onGenerate: (contextOptions?: ContextOptions) => void;
+  onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions) => void;
+  onDiagnose: (qualityMode: QualityMode) => void;
   onDeslop: () => void;
   onExtractMemory: () => void;
   isStarting: boolean;
@@ -50,6 +52,7 @@ export function WorkspaceSideTabs({
   chapterId,
   currentChapterText,
   onGenerate,
+  onDiagnose,
   onDeslop,
   onExtractMemory,
   isStarting,
@@ -80,6 +83,7 @@ export function WorkspaceSideTabs({
         {active === "ai" && (
           <AiPanel
             onGenerate={onGenerate}
+            onDiagnose={onDiagnose}
             onDeslop={onDeslop}
             onExtractMemory={onExtractMemory}
             isStarting={isStarting}

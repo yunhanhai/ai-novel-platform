@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
+import type { QualityMode } from "@ai-novel/shared/generation/performance";
 import { useParams } from "next/navigation";
 import { AssetSidebar } from "../../../../../components/workspace/asset-sidebar";
 import { EditorPane } from "../../../../../components/workspace/editor-pane";
@@ -43,10 +44,16 @@ export default function WorkspacePage() {
     setActiveChapterId(id);
   }
 
-  async function handleGenerate(contextOptions?: ContextOptions) {
+  async function handleGenerate(qualityMode: QualityMode, contextOptions?: ContextOptions) {
     if (!activeChapterId) return;
     await flush();
-    await startJob(activeChapterId, "GENERATE_CHAPTER", contextOptions);
+    await startJob(activeChapterId, "GENERATE_CHAPTER", { qualityMode, contextOptions });
+  }
+
+  async function handleDiagnose(qualityMode: QualityMode) {
+    if (!activeChapterId) return;
+    await flush();
+    await startJob(activeChapterId, "DIAGNOSE_CHAPTER", { qualityMode });
   }
 
   async function handleDeslop() {
@@ -86,6 +93,7 @@ export default function WorkspacePage() {
         chapterId={activeChapterId}
         currentChapterText={content}
         onGenerate={handleGenerate}
+        onDiagnose={handleDiagnose}
         onDeslop={handleDeslop}
         onExtractMemory={handleExtractMemory}
         isStarting={isStarting}

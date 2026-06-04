@@ -1,7 +1,9 @@
 ﻿"use client";
 
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
+import type { QualityMode } from "@ai-novel/shared/generation/performance";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { buildGenerationRequestBody } from "./job-request";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -178,6 +180,25 @@ export function useChapterContent(
   return { content, setContent, saveStatus, isLoadingContent, flush, reload };
 }
 
+export interface PerformanceSummaryView {
+  qualityMode: string;
+  modelCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  skippedSteps?: Array<{ stepKey: string; reason: string }>;
+}
+
+export interface DiagnosticSummaryView {
+  readerScore: number;
+  abandonRisk: string;
+  hookStrength: number;
+  pacingScore: number;
+  styleDrift: number;
+  continuityIssues?: Array<{ severity: string; detail: string; suggestion: string }>;
+  suggestions?: string[];
+}
+
 export interface JobSummary {
   id: string;
   jobType: string;
@@ -192,6 +213,9 @@ export interface JobSummary {
       forcedCount: number;
       excludedCount: number;
     };
+    performanceSummary?: PerformanceSummaryView;
+    diagnosticSummary?: DiagnosticSummaryView;
+    diagnosticDegraded?: boolean;
   } | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -210,9 +234,14 @@ export interface JobSummary {
 
 interface UseJobPollingResult {
   job: JobSummary | null;
-  startJob: (chapterId: string, jobType?: string, contextOptions?: ContextOptions) => Promise<JobSummary | null>;
+  startJob: (chapterId: string, jobType?: string, options?: StartJobOptions) => Promise<JobSummary | null>;
   isStarting: boolean;
   error: string | null;
+}
+
+interface StartJobOptions {
+  contextOptions?: ContextOptions;
+  qualityMode?: QualityMode;
 }
 
 export function useJobPolling(): UseJobPollingResult {
@@ -246,15 +275,16 @@ export function useJobPolling(): UseJobPollingResult {
   useEffect(() => stopPolling, [stopPolling]);
 
   const startJob = useCallback(
-    async (chapterId: string, jobType: string = "GENERATE_CHAPTER", contextOptions?: ContextOptions): Promise<JobSummary | null> => {
+    async (chapterId: string, jobType: string = "GENERATE_CHAPTER", options?: StartJobOptions): Promise<JobSummary | null> => {
       setStarting(true);
       setError(null);
       try {
-        const body = {
+        const body = buildGenerationRequestBody({
           chapterId,
           jobType,
-          ...(jobType === "GENERATE_CHAPTER" && contextOptions ? { contextOptions } : {})
-        };
+          qualityMode: options?.qualityMode,
+          contextOptions: options?.contextOptions
+        });
         const res = await fetch("/api/generation-jobs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

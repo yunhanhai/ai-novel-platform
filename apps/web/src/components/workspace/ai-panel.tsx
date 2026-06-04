@@ -3,13 +3,16 @@ import { PipelineTimeline } from "./pipeline-timeline";
 import { useState } from "react";
 import { ContextComposer } from "./context-composer";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
+import type { QualityMode } from "@ai-novel/shared/generation/performance";
 import {
   labelForGenerationJobStatus,
-  labelForGenerationJobType
+  labelForGenerationJobType,
+  labelForQualityMode
 } from "../../lib/display-labels";
 
 interface AiPanelProps {
-  onGenerate: (contextOptions?: ContextOptions) => void;
+  onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions) => void;
+  onDiagnose: (qualityMode: QualityMode) => void;
   onDeslop: () => void;
   onExtractMemory: () => void;
   isStarting: boolean;
@@ -19,39 +22,76 @@ interface AiPanelProps {
   chapterId: string | null;
 }
 
-export function AiPanel({ onGenerate, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId }: AiPanelProps) {
+const QUALITY_MODES: QualityMode[] = ["fast", "balanced", "deep"];
+
+export function AiPanel({ onGenerate, onDiagnose, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId }: AiPanelProps) {
   const isRunning = job ? ["QUEUED", "RUNNING"].includes(job.status) : false;
   const [contextOptions, setContextOptions] = useState<ContextOptions | undefined>(undefined);
+  const [qualityMode, setQualityMode] = useState<QualityMode>("balanced");
+  const busy = isStarting || isRunning || !canGenerate;
+
   const generateLabel = isStarting && job?.jobType === "GENERATE_CHAPTER"
     ? "提交中..."
     : isRunning && job?.jobType === "GENERATE_CHAPTER"
     ? "生成中..."
     : "生成章节";
+  const diagnoseLabel = isStarting && job?.jobType === "DIAGNOSE_CHAPTER"
+    ? "提交中..."
+    : isRunning && job?.jobType === "DIAGNOSE_CHAPTER"
+    ? "诊断中..."
+    : "运行诊断";
   const deslopLabel = isStarting && job?.jobType === "DESLOP" ? "提交中..." : "去 AI 味";
   const extractLabel = isStarting && job?.jobType === "EXTRACT_MEMORY" ? "提交中..." : "抽取记忆";
 
   return (
     <div className="ai-panel-content" aria-label="AI 面板">
       <h3>AI 助手</h3>
+
+      <div className="quality-mode" role="radiogroup" aria-label="生成质量模式">
+        <span className="quality-mode-label muted">质量模式</span>
+        <div className="quality-mode-options">
+          {QUALITY_MODES.map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              role="radio"
+              aria-checked={qualityMode === mode}
+              className={`quality-mode-option ${qualityMode === mode ? "active" : ""}`}
+              onClick={() => setQualityMode(mode)}
+              disabled={busy}
+            >
+              {labelForQualityMode(mode)}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="ai-actions">
         <button
           className="btn-primary"
-          onClick={() => onGenerate(contextOptions)}
-          disabled={isStarting || isRunning || !canGenerate}
+          onClick={() => onGenerate(qualityMode, contextOptions)}
+          disabled={busy}
         >
           {generateLabel}
         </button>
         <button
           className="btn-ghost"
+          onClick={() => onDiagnose(qualityMode)}
+          disabled={busy}
+        >
+          {diagnoseLabel}
+        </button>
+        <button
+          className="btn-ghost"
           onClick={onDeslop}
-          disabled={isStarting || isRunning || !canGenerate}
+          disabled={busy}
         >
           {deslopLabel}
         </button>
         <button
           className="btn-ghost"
           onClick={onExtractMemory}
-          disabled={isStarting || isRunning || !canGenerate}
+          disabled={busy}
         >
           {extractLabel}
         </button>
@@ -62,7 +102,7 @@ export function AiPanel({ onGenerate, onDeslop, onExtractMemory, isStarting, job
 
       <ContextComposer
         chapterId={chapterId}
-        disabled={isStarting || isRunning || !canGenerate}
+        disabled={busy}
         onChange={setContextOptions}
       />
 

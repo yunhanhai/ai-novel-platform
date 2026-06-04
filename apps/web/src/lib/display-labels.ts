@@ -63,7 +63,30 @@ const PIPELINE_STEP_LABELS: Record<string, string> = {
   persist_version: "保存版本",
   extract_memory: "抽取记忆",
   scan_deslop: "扫描 AI 味",
-  analyze_style: "分析风格"
+  analyze_style: "分析风格",
+  diagnose_chapter: "质量诊断"
+};
+
+const QUALITY_MODE_LABELS: Record<string, string> = {
+  fast: "快速",
+  balanced: "均衡",
+  deep: "深度"
+};
+
+const ABANDON_RISK_LABELS: Record<string, string> = {
+  low: "低",
+  medium: "中",
+  high: "高"
+};
+
+const SKIP_REASON_LABELS: Record<string, string> = {
+  quality_mode: "质量模式跳过",
+  budget_model_calls: "超出模型调用预算",
+  budget_input_tokens: "超出输入 token 预算",
+  budget_output_tokens: "超出输出 token 预算",
+  budget_latency_ms: "超出延迟预算",
+  missing_input: "缺少输入",
+  not_applicable: "无需执行"
 };
 
 function fallback(value: string): string {
@@ -96,4 +119,16 @@ export function labelForTaskType(taskType: string): string {
 
 export function labelForPipelineStep(stepKey: string): string {
   return PIPELINE_STEP_LABELS[stepKey] ?? fallback(stepKey);
+}
+
+export function labelForQualityMode(mode: string): string {
+  return QUALITY_MODE_LABELS[mode] ?? fallback(mode);
+}
+
+export function labelForAbandonRisk(risk: string): string {
+  return ABANDON_RISK_LABELS[risk] ?? fallback(risk);
+}
+
+export function labelForSkipReason(reason: string): string {
+  return SKIP_REASON_LABELS[reason] ?? fallback(reason);
 }
