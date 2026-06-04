@@ -1,5 +1,6 @@
 ﻿import { describe, expect, it, vi } from "vitest";
 import { runChapterPipeline, type PipelineDeps } from "./chapter-pipeline";
+import { normalizePerformanceBudget } from "@ai-novel/shared/generation/performance";
 
 function mockDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
   return {
@@ -158,5 +159,35 @@ describe("chapter-pipeline", () => {
     const reviewPromptArg = generate.mock.calls[2]?.[0] as string;
     expect(reviewPromptArg).toContain("cliche");
     expect(reviewPromptArg).toContain("each chapter has a hook");
+  });
+
+  it("skips review and revise in fast mode", async () => {
+    const deps = mockDeps({
+      performance: { qualityMode: "fast", budget: normalizePerformanceBudget("fast", undefined) }
+    });
+
+    const result = await runChapterPipeline(deps);
+
+    expect(result.steps.find((s) => s.stepKey === "review")).toMatchObject({
+      status: "SKIPPED",
+      outputPreview: "quality_mode"
+    });
+    expect(result.steps.find((s) => s.stepKey === "revise")).toMatchObject({
+      status: "SKIPPED",
+      outputPreview: "quality_mode"
+    });
+    expect(result.performanceSummary.qualityMode).toBe("fast");
+    expect(result.performanceSummary.skippedSteps).toContainEqual({ stepKey: "review", reason: "quality_mode" });
+  });
+
+  it("skips optional model steps when the budget is exhausted", async () => {
+    const deps = mockDeps({
+      performance: { qualityMode: "balanced", budget: normalizePerformanceBudget("balanced", { maxModelCalls: 2 }) }
+    });
+
+    const result = await runChapterPipeline(deps);
+
+    expect(result.steps.find((s) => s.stepKey === "review")).toMatchObject({ status: "SKIPPED" });
+    expect(result.performanceSummary.modelCalls).toBe(2);
   });
 });

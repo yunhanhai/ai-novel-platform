@@ -1,5 +1,13 @@
 ﻿import type { ActivationReport } from "../context/keyword-activation";
 import type { StyleGuide, MethodologyGuide } from "../context/build-context-packet";
+import {
+  createPerformanceTracker,
+  normalizePerformanceBudget,
+  type BudgetSkipReason,
+  type PerformanceBudget,
+  type PerformanceSummary,
+  type QualityMode
+} from "@ai-novel/shared/generation/performance";
 
 interface PipelineJob {
   id: string;
@@ -74,18 +82,24 @@ export interface PipelineDeps {
     latencyMs: number;
     promptSnapshot?: string;
   }) => Promise<unknown>;
+  performance?: { qualityMode: QualityMode; budget: PerformanceBudget };
 }
 
 interface PipelineResult {
   steps: StepRecord[];
   extracted: ExtractOutput;
   activationReport: ActivationReport;
+  performanceSummary: PerformanceSummary;
 }
 
 export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   const { job, model, buildContext, persistVersion, createStep, updateStep } = deps;
   const input = job.input as { chapterId: string };
   const chapterId = input.chapterId;
+
+  const qualityMode = deps.performance?.qualityMode ?? "balanced";
+  const budget = deps.performance?.budget ?? normalizePerformanceBudget(qualityMode, undefined);
+  const tracker = createPerformanceTracker({ qualityMode, budget });
 
   const context = buildContext(chapterId);
   const steps: StepRecord[] = [];
@@ -111,6 +125,12 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
       promptSnapshot: promptText.slice(0, 4000)
     });
 
+    tracker.recordModelStep({
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      latencyMs: elapsed
+    });
+
     steps.push({
       stepKey: key,
       status: "SUCCEEDED",
@@ -121,6 +141,27 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
     });
 
     return result.text;
+  }
+
+  async function skipStep(key: string, reason: BudgetSkipReason): Promise<void> {
+    const step = await createStep({ stepKey: key });
+    await updateStep({
+      stepId: step.id,
+      status: "SKIPPED",
+      outputPreview: reason,
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: 0
+    });
+    tracker.recordSkippedStep(key, reason);
+    steps.push({
+      stepKey: key,
+      status: "SKIPPED",
+      outputPreview: reason,
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: 0
+    });
   }
 
   const methodologyHint = context.methodologyGuide
@@ -184,10 +225,24 @@ Return valid JSON only:
   "passed": true
 }`;
 
-  const reviewText = await execStep("review", reviewPrompt);
-  const review = safeJson<ReviewOutput>(reviewText, { issues: [], passed: true });
+  let review: ReviewOutput = { issues: [], passed: true };
+  if (qualityMode === "fast") {
+    await skipStep("review", "quality_mode");
+  } else {
+    const reviewCheck = tracker.canRunModelStep("review", { estimatedInputTokens: estimatePromptTokens(reviewPrompt) });
+    if (!reviewCheck.ok) {
+      await skipStep("review", reviewCheck.reason);
+    } else {
+      const reviewText = await execStep("review", reviewPrompt);
+      review = safeJson<ReviewOutput>(reviewText, { issues: [], passed: true });
+    }
+  }
 
-  if (review.issues.length > 0) {
+  if (qualityMode === "fast") {
+    await skipStep("revise", "quality_mode");
+  } else if (review.issues.length === 0) {
+    await skipStep("revise", "not_applicable");
+  } else {
     const revisePrompt = `Revise the chapter according to the review notes. Return only the revised prose, without explanation.
 Review notes:
 ${JSON.stringify(review.issues, null, 2)}
@@ -197,16 +252,12 @@ ${draftText}
 
 Revised chapter:`;
 
-    draftText = await execStep("revise", revisePrompt, { previewLen: 500 });
-  } else {
-    steps.push({
-      stepKey: "revise",
-      status: "SKIPPED",
-      outputPreview: "",
-      inputTokens: 0,
-      outputTokens: 0,
-      latencyMs: 0
-    });
+    const reviseCheck = tracker.canRunModelStep("revise", { estimatedInputTokens: estimatePromptTokens(revisePrompt) });
+    if (!reviseCheck.ok) {
+      await skipStep("revise", reviseCheck.reason);
+    } else {
+      draftText = await execStep("revise", revisePrompt, { previewLen: 500 });
+    }
   }
 
   {
@@ -255,16 +306,26 @@ Output schema:
   "chapterSummary": "detailed chapter summary within 300 characters"
 }`;
 
-  const extractText = await execStep("extract_memory", extractPrompt);
-  const extracted = safeJson<ExtractOutput>(extractText, {
+  let extracted: ExtractOutput = {
     characterChanges: [], worldFacts: [], newHooks: [],
     summary: "", chapterSummary: "pending extraction"
-  });
+  };
+  const extractCheck = tracker.canRunModelStep("extract_memory", { estimatedInputTokens: estimatePromptTokens(extractPrompt) });
+  if (!extractCheck.ok) {
+    await skipStep("extract_memory", extractCheck.reason);
+  } else {
+    const extractText = await execStep("extract_memory", extractPrompt);
+    extracted = safeJson<ExtractOutput>(extractText, {
+      characterChanges: [], worldFacts: [], newHooks: [],
+      summary: "", chapterSummary: "pending extraction"
+    });
+  }
 
   return {
     steps,
     extracted,
-    activationReport: context.activationReport
+    activationReport: context.activationReport,
+    performanceSummary: tracker.summary()
   };
 }
 
@@ -276,4 +337,8 @@ function safeJson<T>(text: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function estimatePromptTokens(prompt: string): number {
+  return Math.ceil(prompt.length / 4);
 }
