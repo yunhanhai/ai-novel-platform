@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-06-04
+> Last updated: 2026-06-05
 
 ## Completed
 
@@ -536,3 +536,39 @@ ReadLints on edited files
 - ❌ Worker 未写回 `UsageEvent` → 预算仪表盘读不到真实用量。
 - ❌ `/settings/budget` 无顶部导航入口（页面已实现但用户进不去）。
 - ⏳ 会话安全加固（`/api/auth/me`、`/api` 401 边界、`SESSION_SECRET` 强值）、队列健壮性、真实 LLM 端到端验证仍未做。
+
+---
+
+## 2026-06-05 — 生成性能架构交付（计划 Tasks 5–9 完成）
+
+执行 `docs/plans/2026-05-21-generation-performance-architecture-implementation-plan.md`，按 TDD（RED→GREEN→逐任务提交）补完 Task 5–9。Task 1–4（`performance.ts` 预算/追踪器、`DIAGNOSE_CHAPTER` 等诊断 job 枚举 + DB helper、Web 接受 qualityMode）此前已交付。
+
+### 本轮提交
+
+- `b660512 feat(worker): persist performance summaries and deep diagnostics`：`generate-chapter-handler` 从 `job.input` 读取 `qualityMode`/`performanceBudget` 归一化后传入 `runChapterPipeline`，把 `performanceSummary` 落进 job `output`；新增 `enqueueDeepDiagnostic`——`qualityMode==="deep"` 时直接 `prisma.generationJob.create` 异步派生 `DIAGNOSE_CHAPTER`，失败仅 best-effort 写 `diagnosticWarning`、**绝不抛出**（父 job 保持 SUCCEEDED）。
+- `16e910b feat(worker): add async chapter diagnostic handler`：新增 `diagnose-chapter-handler.ts`，单步 `diagnose_chapter`，JSON 解析失败回退降级摘要（`diagnosticDegraded`）、评分 clamp 0–100。
+- `c2bc6ca feat(worker): register generation diagnostic jobs`：抽出 `handlers.ts` 的 `createHandlers()`，循环 `DIAGNOSTIC_JOB_TYPES` 注册 4 个诊断类型；`index.ts` 改为调用它。
+- `b6c4dd5 feat(web): expose generation performance and diagnostics`：纯逻辑 `job-request.ts`（`buildGenerationRequestBody`）；`ai-panel` 加质量模式分段控件 + 「运行诊断」按钮；`pipeline-timeline` 渲染性能摘要块 + 诊断评分块；`display-labels` 增质量模式/弃读风险/跳过原因中文标签。
+
+### 验证证据（全绿）
+
+```
+pnpm db:validate     exit 0
+pnpm db:generate     exit 0
+pnpm typecheck       exit 0（5 个 workspace）
+pnpm test            exit 0（db 13 + shared 28 + model-adapters 37 + worker 118 + web 370 = 566）
+pnpm test:e2e        smoke ✓（含新增 DIAGNOSE_CHAPTER 闭环：触发「运行诊断」→ 状态「已完成」→ `.diagnostic-summary` 可见）
+                     settings ✓（修复选择器歧义后）
+```
+
+### settings e2e 失败的真实根因（纠正早前误判）
+
+- **早前误判**：曾假设 `GET /api/model-providers` 对新注册用户报 500。**经 WebServer 日志证伪**——该接口全程返回 200（74ms/12ms/7ms），数据正常。
+- **真实根因**：Playwright strict-mode 选择器歧义。`settings.spec.ts` 旧 line 46 用 `.settings-card` + `filter({ hasText: "模型供应商" })`，而**模型档案卡**在 `providers.length===0`（providers fetch 未返回的初始渲染窗口）会显示空状态提示「请先创建模型供应商，才能新增模型档案。」，该提示含「模型供应商」子串 → 命中两张卡 → strict-mode 立即违例。冷启动慢时必现，热启动偶过 → 表现为 flaky。
+- **归属**：选择器在 `94e5f17`（2026-05-30，早于本会话）引入，属**预存 flaky 测试**，与生成性能架构计划无关，也非应用 bug。
+- **修复**：改为按标题锚定 `filter({ has: page.getByRole("heading", { name: "模型供应商" }) })`（提示语是 `<p>` 非标题，不再命中）。独立提交，便于回退。
+
+### 已知限制 / 下一步
+
+- 真实 LLM（`USE_FAKE_MODEL="false"`）端到端仍未验证；本轮全部在 fake-model 下验证流程与 UI。
+- `UsageEvent` 写回、`/settings/budget` 顶部导航入口等审计项不在本计划范围，仍待办。
