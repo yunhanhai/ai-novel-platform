@@ -34,6 +34,9 @@ function createTxStub(overrides: Partial<TxStub> = {}): TxStub {
     generationJob: {
       update: vi.fn().mockResolvedValue({})
     },
+    usageEvent: {
+      create: vi.fn().mockResolvedValue({ id: "usage-1" })
+    },
     ...overrides
   };
 }
@@ -49,6 +52,7 @@ interface TxStub {
     update: ReturnType<typeof vi.fn>;
   };
   generationJob: { update: ReturnType<typeof vi.fn> };
+  usageEvent: { create: ReturnType<typeof vi.fn> };
 }
 
 interface PrismaStubOptions {
@@ -154,6 +158,33 @@ describe("createGenerateChapterHandler", () => {
       })
     );
     expect(updateJobStatus).not.toHaveBeenCalled();
+  });
+
+  it("writes a UsageEvent with token totals accumulated across pipeline steps", async () => {
+    const { prisma, tx } = createPrismaStub();
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never
+    });
+
+    await handler(baseJob);
+
+    expect(tx.usageEvent.create).toHaveBeenCalledTimes(1);
+    const usageData = tx.usageEvent.create.mock.calls[0]![0].data;
+    expect(usageData).toMatchObject({
+      organizationId: "org-1",
+      projectId: "proj-1",
+      userId: "user-1",
+      generationJobId: "job-1",
+      modelName: "fake-model",
+      billingSource: "PLATFORM"
+    });
+    // 4 个模型步骤（plan/draft/review/extract_memory），每步 100/50 token
+    expect(usageData.inputTokens).toBe(400);
+    expect(usageData.outputTokens).toBe(200);
   });
 
   it("marks job FAILED with CHAPTER_NOT_FOUND when chapter is missing", async () => {

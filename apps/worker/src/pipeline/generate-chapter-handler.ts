@@ -10,6 +10,7 @@ import type { GenerationJob } from "../poll";
 
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 type FakeModel = ReturnType<typeof createFakeModel>;
+type BillingSource = "USER_KEY" | "PLATFORM";
 
 export const ERROR_CODES = {
   CHAPTER_NOT_FOUND: "CHAPTER_NOT_FOUND",
@@ -62,10 +63,15 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
     }
 
     let model = builtinModel;
+    let modelName = "fake-model";
+    let billingSource: BillingSource = "PLATFORM";
     if (resolveModel) {
       const resolved = await resolveModel(job);
       if (resolved) {
         model = resolved;
+        const meta = resolved as { modelName?: string; billingSource?: BillingSource };
+        modelName = meta.modelName ?? "configured-model";
+        billingSource = meta.billingSource ?? "USER_KEY";
       } else if (!deps.model) {
         await fail(job.id, ERROR_CODES.NO_MODEL_PROFILE, "Unable to resolve ModelProfile and no fallback model is configured");
         return;
@@ -92,7 +98,8 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
         chapter,
         finalContent: pipelineResult.content,
         wordCount: computeWordCount(pipelineResult.content),
-        contextSummary: pipelineResult.contextSummary
+        contextSummary: pipelineResult.contextSummary,
+        usage: { ...pipelineResult.usage, modelName, billingSource }
       });
     } catch (error: unknown) {
       await fail(job.id, ERROR_CODES.FINALIZE_FAILED, errorMessage(error, "finalize transaction failed"));
@@ -126,6 +133,13 @@ interface PipelineRunParams {
 interface PipelineRunResult {
   content: string;
   contextSummary: ContextSummary;
+  usage: UsageTotals;
+}
+
+interface UsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
 }
 
 interface ContextSummary {
@@ -193,6 +207,7 @@ async function runPipelineForContentWithContext(params: PipelineRunParams): Prom
   const context = await buildWorkerContextPacket({ prisma, job, chapterId, methodologyGuide, contextOptions });
 
   let finalContent = "";
+  const usage: UsageTotals = { inputTokens: 0, outputTokens: 0, latencyMs: 0 };
   await runChapterPipeline({
     job,
     model,
@@ -207,6 +222,9 @@ async function runPipelineForContentWithContext(params: PipelineRunParams): Prom
         select: { id: true }
       }),
     updateStep: async (update) => {
+      usage.inputTokens += update.inputTokens ?? 0;
+      usage.outputTokens += update.outputTokens ?? 0;
+      usage.latencyMs += update.latencyMs ?? 0;
       await prisma.generationStep.update({
         where: { id: update.stepId },
         data: {
@@ -230,7 +248,8 @@ async function runPipelineForContentWithContext(params: PipelineRunParams): Prom
       trimmedCount: context.assets.trimmed.length,
       forcedCount: context.assets.forced.length,
       excludedCount: context.assets.excluded.length
-    }
+    },
+    usage
   };
 }
 
@@ -411,6 +430,15 @@ interface CommitParams {
   finalContent: string;
   wordCount: number;
   contextSummary?: ContextSummary;
+  usage?: UsageRecord;
+}
+
+interface UsageRecord {
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  modelName: string;
+  billingSource: BillingSource;
 }
 
 interface FinalOutput {
@@ -422,7 +450,7 @@ interface FinalOutput {
 }
 
 export async function commitFinalize(params: CommitParams): Promise<FinalOutput> {
-  const { prisma, job, chapter, finalContent, wordCount, contextSummary } = params;
+  const { prisma, job, chapter, finalContent, wordCount, contextSummary, usage } = params;
 
   return prisma.$transaction(async (tx: Tx) => {
     await assertChapterStillValid(tx, chapter, job);
@@ -477,6 +505,22 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       where: { id: job.id },
       data: { status: "SUCCEEDED", progress: "100", finishedAt, output }
     });
+
+    if (usage) {
+      await tx.usageEvent.create({
+        data: {
+          organizationId: job.organizationId,
+          userId: job.userId,
+          projectId: chapter.projectId,
+          generationJobId: job.id,
+          modelName: usage.modelName,
+          billingSource: usage.billingSource,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          latencyMs: usage.latencyMs
+        }
+      });
+    }
 
     return output;
   });
