@@ -49,6 +49,22 @@ describe("generation-jobs", () => {
       expect(result.status).toBe("QUEUED");
       expect(result.jobType).toBe("GENERATE_CHAPTER");
     });
+
+    it("creates chapter diagnostic jobs", async () => {
+      const diagnosticJob = { ...job, jobType: "DIAGNOSE_CHAPTER", targetEntityType: "CHAPTER", targetEntityId: "c1" };
+      const prisma = mockPrisma({ generationJob: { create: vi.fn().mockResolvedValue(diagnosticJob) } });
+
+      const result = await createJob({
+        organizationId: "org1", projectId: "p1", userId: "u1",
+        jobType: "DIAGNOSE_CHAPTER",
+        targetEntityType: "CHAPTER", targetEntityId: "c1",
+        input: { chapterId: "c1" }, prisma
+      });
+
+      expect(result.jobType).toBe("DIAGNOSE_CHAPTER");
+      expect(result.targetEntityType).toBe("CHAPTER");
+      expect(result.targetEntityId).toBe("c1");
+    });
   });
 
   describe("claimNextJob", () => {

@@ -16,7 +16,11 @@ interface CreateJobParams {
     | "POLISH"
     | "DESLOP"
     | "REVIEW"
-    | "EXTRACT_MEMORY";
+    | "EXTRACT_MEMORY"
+    | "DIAGNOSE_CHAPTER"
+    | "READER_SIMULATION"
+    | "STYLE_DRIFT_CHECK"
+    | "CONTINUITY_CHECK";
   input: InputJson;
   modelProfileId?: string;
   targetEntityType?: "PROJECT" | "OUTLINE" | "CHAPTER";
