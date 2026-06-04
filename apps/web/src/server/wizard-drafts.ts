@@ -114,9 +114,6 @@ async function generateWithFallback(
     // 没有 projectId 时只能解析 org 级 profile；继续尝试
   }
   const encryptionKey = getEncryptionKey(env);
-  if (!encryptionKey) {
-    return null;
-  }
 
   try {
     const profile = await resolveModelProfile(
@@ -133,6 +130,7 @@ async function generateWithFallback(
     if (!provider) return null;
     const modelName = profile.modelName as string | undefined;
     if (!modelName) return null;
+    if (provider.authMode === "USER_KEY" && !encryptionKey) return null;
 
     const adapter = await createAdapter(provider, modelName, { encryptionKey, env });
 

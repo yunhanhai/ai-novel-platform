@@ -11,7 +11,7 @@ export interface ProviderRecord {
 }
 
 export interface AdapterFactoryDeps {
-  encryptionKey: Buffer;
+  encryptionKey?: Buffer | null;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -48,6 +48,9 @@ async function resolveApiKey(provider: ProviderRecord, deps: AdapterFactoryDeps)
   const env = deps.env ?? process.env;
 
   if (provider.authMode === "USER_KEY") {
+    if (!deps.encryptionKey) {
+      throw new Error("ENCRYPTION_KEY_NOT_RESOLVED: USER_KEY mode requires ENCRYPTION_KEY");
+    }
     if (!provider.encryptedApiKey) {
       throw new Error("API_KEY_NOT_RESOLVED: USER_KEY mode but encryptedApiKey is null");
     }

@@ -61,6 +61,15 @@ describe("adapter-factory", () => {
     expect(adapter).toBe(mockOpenAIAdapter);
   });
 
+  test("USER_KEY without ENCRYPTION_KEY throws before decrypting", async () => {
+    await expect(
+      createAdapter(makeProvider(), "gpt-4o", {})
+    ).rejects.toThrow("ENCRYPTION_KEY_NOT_RESOLVED");
+
+    expect(mockDecrypt).not.toHaveBeenCalled();
+    expect(mockCreateOpenAIAdapter).not.toHaveBeenCalled();
+  });
+
   // Case 2
   test("PLATFORM_KEY + ANTHROPIC: uses ANTHROPIC_API_KEY from env", async () => {
     await createAdapter(

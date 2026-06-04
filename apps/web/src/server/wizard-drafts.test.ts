@@ -63,7 +63,35 @@ describe("draftPremise", () => {
     expect(resolveModelProfileMock).not.toHaveBeenCalled();
   });
 
-  it("真实模式未配 ENCRYPTION_KEY 时降级 fake 并 degraded=true", async () => {
+  it("PLATFORM_KEY 真实模式未配 ENCRYPTION_KEY 仍可使用环境 key", async () => {
+    resolveModelProfileMock.mockResolvedValue({
+      provider: { providerType: "OPENAI_COMPATIBLE", authMode: "PLATFORM_KEY", baseUrl: null, encryptedApiKey: null },
+      modelName: "gpt-5.5"
+    });
+    createAdapterMock.mockResolvedValue(fakeAdapter("平台 key 真实输出"));
+
+    const env = { USE_FAKE_MODEL: "false", OPENAI_API_KEY: "sk-openai-test" };
+    const result = await draftPremise(
+      { projectTitle: "X" },
+      buildDeps(env)
+    );
+
+    expect(result.degraded).toBe(false);
+    expect(result.text).toBe("平台 key 真实输出");
+    expect(resolveModelProfileMock).toHaveBeenCalled();
+    expect(createAdapterMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "gpt-5.5",
+      expect.objectContaining({ encryptionKey: null, env })
+    );
+  });
+
+  it("USER_KEY 真实模式未配 ENCRYPTION_KEY 时降级 fake 并 degraded=true", async () => {
+    resolveModelProfileMock.mockResolvedValue({
+      provider: { providerType: "OPENAI_COMPATIBLE", authMode: "USER_KEY", baseUrl: null, encryptedApiKey: "enc-key" },
+      modelName: "gpt-5.5"
+    });
+
     const result = await draftPremise(
       { projectTitle: "X" },
       buildDeps({ USE_FAKE_MODEL: "false" })
@@ -71,7 +99,8 @@ describe("draftPremise", () => {
 
     expect(result.degraded).toBe(true);
     expect(result.text).toContain("X");
-    expect(resolveModelProfileMock).not.toHaveBeenCalled();
+    expect(resolveModelProfileMock).toHaveBeenCalled();
+    expect(createAdapterMock).not.toHaveBeenCalled();
   });
 
   it("真实模式 resolveModelProfile 返回 null 时降级", async () => {
