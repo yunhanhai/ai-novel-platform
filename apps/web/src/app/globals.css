@@ -1640,6 +1640,36 @@ select {
 
 
 /* Settings models page + banner */
+.settings-nav {
+  display: flex;
+  gap: 8px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px 24px 0;
+}
+
+.settings-nav-tab {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.settings-nav-tab:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.settings-nav-tab.is-active {
+  background: var(--surface);
+  color: var(--accent-strong);
+  border-color: var(--accent);
+}
+
 .settings-page {
   display: flex;
   flex-direction: column;
