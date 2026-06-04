@@ -58,6 +58,7 @@ interface TxStub {
 interface PrismaStubOptions {
   chapterMissing?: boolean;
   txThrowsOn?: "contentVersion.create";
+  enqueueThrows?: boolean;
 }
 
 function createPrismaStub(options: PrismaStubOptions = {}) {
@@ -81,6 +82,12 @@ function createPrismaStub(options: PrismaStubOptions = {}) {
     },
     generationStep: {
       create: vi.fn().mockResolvedValue({ id: "step-x" }),
+      update: vi.fn().mockResolvedValue({})
+    },
+    generationJob: {
+      create: options.enqueueThrows
+        ? vi.fn().mockRejectedValue(new Error("enqueue failed"))
+        : vi.fn().mockResolvedValue({ id: "diag-job-1" }),
       update: vi.fn().mockResolvedValue({})
     },
     $transaction: vi.fn(async (cb: (tx: TxStub) => Promise<unknown>) => cb(tx))
@@ -435,6 +442,107 @@ describe("model resolution", () => {
         errorCode: "NO_MODEL_PROFILE"
       })
     );
+  });
+});
+
+describe("performance summary and deep diagnostics", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("includes performanceSummary in the parent job output (balanced default)", async () => {
+    const { prisma, tx } = createPrismaStub();
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never
+    });
+
+    await handler(baseJob);
+
+    expect(tx.generationJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          output: expect.objectContaining({
+            performanceSummary: expect.objectContaining({
+              qualityMode: "balanced",
+              modelCalls: 4
+            })
+          })
+        })
+      })
+    );
+  });
+
+  it("enqueues a DIAGNOSE_CHAPTER child job when qualityMode is deep", async () => {
+    const { prisma, tx } = createPrismaStub();
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never
+    });
+
+    await handler({ ...baseJob, input: { qualityMode: "deep" } });
+
+    expect(prisma.generationJob.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          jobType: "DIAGNOSE_CHAPTER",
+          targetEntityType: "CHAPTER",
+          targetEntityId: "chapter-1",
+          organizationId: "org-1",
+          projectId: "proj-1",
+          userId: "user-1"
+        })
+      })
+    );
+    // 父任务仍在事务内标记 SUCCEEDED
+    expect(tx.generationJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "SUCCEEDED" }) })
+    );
+  });
+
+  it("does not enqueue diagnostics for fast/balanced modes", async () => {
+    const { prisma } = createPrismaStub();
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never
+    });
+
+    await handler({ ...baseJob, input: { qualityMode: "fast" } });
+
+    expect(prisma.generationJob.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps the parent SUCCEEDED and records diagnosticWarning when enqueue fails", async () => {
+    const { prisma, tx } = createPrismaStub({ enqueueThrows: true });
+    const updateJobStatus = vi.fn().mockResolvedValue({});
+    const handler = createGenerateChapterHandler({
+      prisma: prisma as never,
+      updateJobStatus,
+      model: stubModel as never
+    });
+
+    await handler({ ...baseJob, input: { qualityMode: "deep" } });
+
+    // 父任务事务内已 SUCCEEDED
+    expect(tx.generationJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "SUCCEEDED" }) })
+    );
+    // 入队失败 → 事务外补写 diagnosticWarning，父任务状态不变
+    expect(prisma.generationJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job-1" },
+        data: expect.objectContaining({
+          output: expect.objectContaining({ diagnosticWarning: expect.any(String) })
+        })
+      })
+    );
+    expect(updateJobStatus).not.toHaveBeenCalled();
   });
 });
 

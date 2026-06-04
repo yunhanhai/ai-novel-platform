@@ -1,9 +1,11 @@
-﻿import type { PrismaClient } from "@ai-novel/db";
+﻿import type { PrismaClient, Prisma } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { buildContextPacket } from "@ai-novel/shared/context-composer/build-context-packet";
 import { normalizeContextOptions, resolveTokenBudget } from "@ai-novel/shared/context-composer/options";
 import type { ContextOptions, NormalizedContextOptions } from "@ai-novel/shared/context-composer/types";
 import { getMethodologyTemplate, type MethodType, type MethodologyTemplate } from "@ai-novel/shared/methodology/templates";
+import { normalizeQualityMode, normalizePerformanceBudget } from "@ai-novel/shared/generation/performance";
+import type { PerformanceSummary, PerformanceBudgetInput } from "@ai-novel/shared/generation/performance";
 import { createFakeModel } from "./fake-model";
 import { runChapterPipeline } from "./chapter-pipeline";
 import type { GenerationJob } from "../poll";
@@ -92,15 +94,20 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
     }
 
     try {
-      await commitFinalize({
+      const finalOutput = await commitFinalize({
         prisma,
         job,
         chapter,
         finalContent: pipelineResult.content,
         wordCount: computeWordCount(pipelineResult.content),
         contextSummary: pipelineResult.contextSummary,
+        performanceSummary: pipelineResult.performanceSummary,
         usage: { ...pipelineResult.usage, modelName, billingSource }
       });
+
+      if (pipelineResult.performanceSummary.qualityMode === "deep") {
+        await enqueueDeepDiagnostic({ prisma, job, chapterId: chapter.id, finalOutput });
+      }
     } catch (error: unknown) {
       await fail(job.id, ERROR_CODES.FINALIZE_FAILED, errorMessage(error, "finalize transaction failed"));
     }
@@ -134,6 +141,7 @@ interface PipelineRunResult {
   content: string;
   contextSummary: ContextSummary;
   usage: UsageTotals;
+  performanceSummary: PerformanceSummary;
 }
 
 interface UsageTotals {
@@ -206,11 +214,16 @@ async function runPipelineForContentWithContext(params: PipelineRunParams): Prom
   const contextOptions = normalizeContextOptions(readContextOptions(job));
   const context = await buildWorkerContextPacket({ prisma, job, chapterId, methodologyGuide, contextOptions });
 
+  const performanceInput = (job.input ?? {}) as { qualityMode?: unknown; performanceBudget?: PerformanceBudgetInput };
+  const qualityMode = normalizeQualityMode(performanceInput.qualityMode);
+  const budget = normalizePerformanceBudget(qualityMode, performanceInput.performanceBudget);
+
   let finalContent = "";
   const usage: UsageTotals = { inputTokens: 0, outputTokens: 0, latencyMs: 0 };
-  await runChapterPipeline({
+  const pipeline = await runChapterPipeline({
     job,
     model,
+    performance: { qualityMode, budget },
     buildContext: () => context,
     persistVersion: async ({ content }) => {
       finalContent = content;
@@ -249,7 +262,8 @@ async function runPipelineForContentWithContext(params: PipelineRunParams): Prom
       forcedCount: context.assets.forced.length,
       excludedCount: context.assets.excluded.length
     },
-    usage
+    usage,
+    performanceSummary: pipeline.performanceSummary
   };
 }
 
@@ -430,6 +444,7 @@ interface CommitParams {
   finalContent: string;
   wordCount: number;
   contextSummary?: ContextSummary;
+  performanceSummary?: PerformanceSummary;
   usage?: UsageRecord;
 }
 
@@ -447,10 +462,11 @@ interface FinalOutput {
   versionNo: number;
   wordCount: number;
   contextSummary?: ContextSummary;
+  performanceSummary?: PerformanceSummary;
 }
 
 export async function commitFinalize(params: CommitParams): Promise<FinalOutput> {
-  const { prisma, job, chapter, finalContent, wordCount, contextSummary, usage } = params;
+  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, usage } = params;
 
   return prisma.$transaction(async (tx: Tx) => {
     await assertChapterStillValid(tx, chapter, job);
@@ -487,7 +503,8 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       versionId: version.id,
       versionNo: version.versionNo,
       wordCount,
-      ...(contextSummary ? { contextSummary } : {})
+      ...(contextSummary ? { contextSummary } : {}),
+      ...(performanceSummary ? { performanceSummary } : {})
     };
 
     await tx.generationStep.create({
@@ -503,7 +520,7 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
 
     await tx.generationJob.update({
       where: { id: job.id },
-      data: { status: "SUCCEEDED", progress: "100", finishedAt, output }
+      data: { status: "SUCCEEDED", progress: "100", finishedAt, output: output as unknown as Prisma.InputJsonValue }
     });
 
     if (usage) {
@@ -524,6 +541,50 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
 
     return output;
   });
+}
+
+async function enqueueDeepDiagnostic(params: {
+  prisma: PrismaClient;
+  job: GenerationJob;
+  chapterId: string;
+  finalOutput: FinalOutput;
+}): Promise<void> {
+  const { prisma, job, chapterId, finalOutput } = params;
+  try {
+    await prisma.generationJob.create({
+      data: {
+        organizationId: job.organizationId,
+        projectId: job.projectId,
+        userId: job.userId,
+        jobType: "DIAGNOSE_CHAPTER",
+        targetEntityType: "CHAPTER",
+        targetEntityId: chapterId,
+        status: "QUEUED",
+        progress: "0",
+        input: {
+          chapterId,
+          parentJobId: job.id,
+          qualityMode: "deep",
+          performanceBudget: normalizePerformanceBudget("balanced", undefined)
+        } as unknown as Prisma.InputJsonValue
+      }
+    });
+  } catch (error: unknown) {
+    // 诊断子任务入队失败不得回退已 SUCCEEDED 的父任务，仅在 output 追加告警（best-effort）
+    try {
+      await prisma.generationJob.update({
+        where: { id: job.id },
+        data: {
+          output: {
+            ...finalOutput,
+            diagnosticWarning: errorMessage(error, "failed to enqueue diagnostic job")
+          } as unknown as Prisma.InputJsonValue
+        }
+      });
+    } catch {
+      // 二次失败忽略：父任务已成功落库，诊断仅为增强能力
+    }
+  }
 }
 
 async function assertChapterStillValid(tx: Tx, chapter: ChapterRef, job: GenerationJob): Promise<void> {
