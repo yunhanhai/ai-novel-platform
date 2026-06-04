@@ -1,9 +1,6 @@
 import { prisma, claimNextJob, updateJobStatus } from "@ai-novel/db";
-import { createPoller, type JobHandler, type UpdateStatusFn } from "./poll";
-import { createGenerateChapterHandler } from "./pipeline/generate-chapter-handler";
-import { createDeslopHandler } from "./pipeline/deslop-handler";
-import { createExtractMemoryHandler } from "./pipeline/extract-memory-handler";
-import { createFakeModel } from "./pipeline/fake-model";
+import { createPoller, type UpdateStatusFn } from "./poll";
+import { createHandlers } from "./handlers";
 import { createJobModelResolver } from "./model-runtime";
 
 const ORGANIZATION_ID = process.env.DEFAULT_ORGANIZATION_ID ?? "default";
@@ -17,26 +14,12 @@ const updateJobStatusFn: UpdateStatusFn = (params) =>
 
 const resolveModel = createJobModelResolver({ prisma, useFakeModel: USE_FAKE_MODEL });
 
-const handlers = new Map<string, JobHandler>([
-  ["GENERATE_CHAPTER", createGenerateChapterHandler({
-    prisma,
-    updateJobStatus: updateJobStatusFn,
-    resolveModel,
-    ...(USE_FAKE_MODEL ? { model: createFakeModel() } : {})
-  })],
-  ["DESLOP", createDeslopHandler({
-    prisma,
-    updateJobStatus: updateJobStatusFn,
-    resolveModel,
-    ...(USE_FAKE_MODEL ? { model: createFakeModel() } : {})
-  })],
-  ["EXTRACT_MEMORY", createExtractMemoryHandler({
-    prisma,
-    updateJobStatus: updateJobStatusFn,
-    resolveModel,
-    ...(USE_FAKE_MODEL ? { model: createFakeModel() } : {})
-  })]
-]);
+const handlers = createHandlers({
+  prisma,
+  updateJobStatus: updateJobStatusFn,
+  resolveModel,
+  useFakeModel: USE_FAKE_MODEL
+});
 
 const poller = createPoller({
   claimNext: () =>
