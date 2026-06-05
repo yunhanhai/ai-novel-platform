@@ -572,3 +572,19 @@ pnpm test:e2e        smoke ✓（含新增 DIAGNOSE_CHAPTER 闭环：触发「�
 
 - 真实 LLM（`USE_FAKE_MODEL="false"`）端到端仍未验证；本轮全部在 fake-model 下验证流程与 UI。
 - `UsageEvent` 写回、`/settings/budget` 顶部导航入口等审计项不在本计划范围，仍待办。
+
+### 复审跟进：4 项确认改进已修复（用户确认全修）
+
+对抗式复审确认的 4 条非阻塞项（无 CRITICAL）已全部修复并提交，全量验证仍全绿。
+
+- `fdbedd8 fix(worker): enforce output token budget on model calls and record real usage metadata`
+  - **#1（MEDIUM）**：`PerformanceBudget.maxOutputTokens` 此前从未传入真实 LLM 调用 → OpenAI 兼容/DeepSeek/CUSTOM 单次输出无上限。让 `generate` 统一接受 `ModelGenerateOptions`，`model-runtime` 转发给 adapter，`chapter-pipeline`/`diagnose-chapter-handler` 调用时传 `maxOutputTokens` 作硬上限。
+  - **#3（LOW）**：`RuntimeModel` 增 `modelName`/`billingSource`（由 `provider.authMode` 推出），删除断言不存在形状的 cast；`UsageEvent` 遥测改写入真实模型名/计费来源（此前恒为占位符）。
+  - **#2（worker 侧）**：深度诊断子任务入队失败补 `console.error`。
+- `4110778 fix(web): surface diagnostic enqueue warning and localize skipped pipeline steps`
+  - **#2（MEDIUM）**：`JobSummary.output` 增 `diagnosticWarning`，`pipeline-timeline` 以告警条渲染（此前是写入即丢的死数据）。
+  - **#4（LOW）**：SKIPPED 步骤预览此前显示原始英文 reason 码 → 改用 `labelForSkipReason` 本地化为中文。
+
+验证（修复后）：`pnpm typecheck` ✓（5 ws）、`pnpm test` ✓（566）、`pnpm test:e2e` ✓（smoke + settings 2 passed）。
+
+> 备注：e2e 期间曾遇一次 PostgreSQL `ECONNREFUSED`（PG 进程掉线，非代码问题），重启 PG 后重跑双绿。
