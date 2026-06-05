@@ -1,3 +1,5 @@
+import type { ModelGenerateOptions } from "@ai-novel/model-adapters";
+
 export interface FakeModelConfig {
   outputText?: string;
   latencyMs?: number;
@@ -23,7 +25,7 @@ export function createFakeModel(config: FakeModelConfig = {}) {
   const outputText = config.outputText ?? defaultText;
   const latencyMs = config.latencyMs ?? 0;
 
-  async function generate(_prompt: string): Promise<ModelResult> {
+  async function generate(_prompt: string, _options?: ModelGenerateOptions): Promise<ModelResult> {
     if (latencyMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, latencyMs));
     }

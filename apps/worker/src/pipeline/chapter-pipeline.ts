@@ -1,5 +1,6 @@
 ﻿import type { ActivationReport } from "../context/keyword-activation";
 import type { StyleGuide, MethodologyGuide } from "../context/build-context-packet";
+import type { ModelGenerateOptions } from "@ai-novel/model-adapters";
 import {
   createPerformanceTracker,
   normalizePerformanceBudget,
@@ -19,7 +20,7 @@ interface PipelineJob {
 }
 
 interface FakeModelLike {
-  generate: (prompt: string) => Promise<{ text: string; inputTokens: number; outputTokens: number }>;
+  generate: (prompt: string, options?: ModelGenerateOptions) => Promise<{ text: string; inputTokens: number; outputTokens: number }>;
 }
 
 interface StepRecord {
@@ -111,7 +112,7 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
   ): Promise<string> {
     const step = await createStep({ stepKey: key });
     const started = Date.now();
-    const result = await model.generate(promptText);
+    const result = await model.generate(promptText, { maxOutputTokens: budget.maxOutputTokens });
     const elapsed = Date.now() - started;
     const preview = result.text.slice(0, opts.previewLen ?? 200);
 

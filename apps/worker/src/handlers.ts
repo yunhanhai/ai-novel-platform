@@ -1,12 +1,13 @@
 import type { PrismaClient } from "@ai-novel/db";
 import type { GenerationJob, JobHandler, UpdateStatusFn } from "./poll";
+import type { RuntimeModel } from "./model-runtime";
 import { createGenerateChapterHandler } from "./pipeline/generate-chapter-handler";
 import { createDeslopHandler } from "./pipeline/deslop-handler";
 import { createExtractMemoryHandler } from "./pipeline/extract-memory-handler";
 import { createDiagnoseChapterHandler, type DiagnosticType } from "./pipeline/diagnose-chapter-handler";
 import { createFakeModel } from "./pipeline/fake-model";
 
-type ResolveModel = (job: GenerationJob) => Promise<ReturnType<typeof createFakeModel> | null>;
+type ResolveModel = (job: GenerationJob) => Promise<RuntimeModel | null>;
 
 export interface HandlerFactoryDeps {
   prisma: PrismaClient;

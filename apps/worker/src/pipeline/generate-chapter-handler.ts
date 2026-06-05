@@ -9,6 +9,7 @@ import type { PerformanceSummary, PerformanceBudgetInput } from "@ai-novel/share
 import { createFakeModel } from "./fake-model";
 import { runChapterPipeline } from "./chapter-pipeline";
 import type { GenerationJob } from "../poll";
+import type { RuntimeModel } from "../model-runtime";
 
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 type FakeModel = ReturnType<typeof createFakeModel>;
@@ -35,7 +36,7 @@ interface HandlerDeps {
   prisma: PrismaClient;
   updateJobStatus: UpdateStatusFn;
   model?: FakeModel;
-  resolveModel?: (job: GenerationJob) => Promise<FakeModel | null>;
+  resolveModel?: (job: GenerationJob) => Promise<RuntimeModel | null>;
 }
 
 interface ChapterRef {
@@ -71,9 +72,8 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
       const resolved = await resolveModel(job);
       if (resolved) {
         model = resolved;
-        const meta = resolved as { modelName?: string; billingSource?: BillingSource };
-        modelName = meta.modelName ?? "configured-model";
-        billingSource = meta.billingSource ?? "USER_KEY";
+        modelName = resolved.modelName;
+        billingSource = resolved.billingSource;
       } else if (!deps.model) {
         await fail(job.id, ERROR_CODES.NO_MODEL_PROFILE, "Unable to resolve ModelProfile and no fallback model is configured");
         return;
@@ -571,13 +571,15 @@ async function enqueueDeepDiagnostic(params: {
     });
   } catch (error: unknown) {
     // 诊断子任务入队失败不得回退已 SUCCEEDED 的父任务，仅在 output 追加告警（best-effort）
+    const warning = errorMessage(error, "failed to enqueue diagnostic job");
+    console.error(`[generate-chapter] deep diagnostic enqueue failed for job ${job.id}: ${warning}`);
     try {
       await prisma.generationJob.update({
         where: { id: job.id },
         data: {
           output: {
             ...finalOutput,
-            diagnosticWarning: errorMessage(error, "failed to enqueue diagnostic job")
+            diagnosticWarning: warning
           } as unknown as Prisma.InputJsonValue
         }
       });

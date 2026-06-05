@@ -133,7 +133,7 @@ export function createDiagnoseChapterHandler(deps: HandlerDeps) {
       });
 
       const started = Date.now();
-      const result = await model.generate(prompt);
+      const result = await model.generate(prompt, { maxOutputTokens: budget.maxOutputTokens });
       const latencyMs = Date.now() - started;
 
       const { summary: diagnosticSummary, degraded } = diagnoseFromText(result.text);

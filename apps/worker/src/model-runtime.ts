@@ -1,9 +1,13 @@
-import { createAdapter, resolveModelProfile, type ProviderRecord } from "@ai-novel/model-adapters";
+import { createAdapter, resolveModelProfile, type ProviderRecord, type ModelGenerateOptions } from "@ai-novel/model-adapters";
 import type { PrismaClient } from "@ai-novel/db";
 import type { GenerationJob } from "./poll";
 
+export type BillingSource = "USER_KEY" | "PLATFORM";
+
 export interface RuntimeModel {
-  generate(prompt: string): Promise<{ text: string; inputTokens: number; outputTokens: number }>;
+  generate(prompt: string, options?: ModelGenerateOptions): Promise<{ text: string; inputTokens: number; outputTokens: number }>;
+  modelName: string;
+  billingSource: BillingSource;
 }
 
 interface Logger {
@@ -51,7 +55,11 @@ export function createJobModelResolver(params: CreateJobModelResolverParams) {
 
     try {
       const adapter = await createAdapter(provider, modelName, { encryptionKey, env });
-      return { generate: (prompt: string) => adapter.generate(prompt) };
+      return {
+        generate: (prompt: string, options?: ModelGenerateOptions) => adapter.generate(prompt, options),
+        modelName,
+        billingSource: provider.authMode === "USER_KEY" ? "USER_KEY" : "PLATFORM"
+      };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.warn(`Failed to create model adapter: ${msg}`);
