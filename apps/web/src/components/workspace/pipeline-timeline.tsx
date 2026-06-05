@@ -45,6 +45,13 @@ export function PipelineTimeline({ job }: Props) {
         </div>
       )}
 
+      {job.output?.diagnosticWarning && (
+        <div className="pipeline-warning" role="status">
+          <span className="tag tag-warning">诊断未排队</span>
+          <span className="muted">{job.output.diagnosticWarning}</span>
+        </div>
+      )}
+
       {diag && (
         <div className="diagnostic-summary" aria-label="质量诊断结果">
           <div className="diagnostic-summary-head">
@@ -102,12 +109,16 @@ export function PipelineTimeline({ job }: Props) {
                 {step.errorMessage && (
                   <p className="form-error pipeline-step-error">{step.errorMessage}</p>
                 )}
-                {step.outputPreview && (
+                {step.status === "SKIPPED" && step.outputPreview ? (
+                  <p className="pipeline-step-skip muted">
+                    跳过原因：{labelForSkipReason(step.outputPreview)}
+                  </p>
+                ) : step.outputPreview ? (
                   <details className="pipeline-step-preview">
                     <summary>查看输出预览</summary>
                     <pre>{step.outputPreview}</pre>
                   </details>
-                )}
+                ) : null}
                 {step.promptSnapshot && (
                   <details className="pipeline-step-preview pipeline-step-prompt">
                     <summary>查看提示词快照</summary>

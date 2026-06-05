@@ -216,6 +216,7 @@ export interface JobSummary {
     performanceSummary?: PerformanceSummaryView;
     diagnosticSummary?: DiagnosticSummaryView;
     diagnosticDegraded?: boolean;
+    diagnosticWarning?: string;
   } | null;
   startedAt: string | null;
   finishedAt: string | null;

@@ -2446,6 +2446,23 @@ select {
   gap: 3px;
 }
 
+.pipeline-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  font-size: 12px;
+}
+
+.pipeline-step-skip {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+
 .tag-quality {
   font-size: 11px;
   color: var(--accent-strong);
