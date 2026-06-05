@@ -570,8 +570,9 @@ pnpm test:e2e        smoke ✓（含新增 DIAGNOSE_CHAPTER 闭环：触发「�
 
 ### 已知限制 / 下一步
 
-- 真实 LLM（`USE_FAKE_MODEL="false"`）端到端仍未验证；本轮全部在 fake-model 下验证流程与 UI。
-- `UsageEvent` 写回、`/settings/budget` 顶部导航入口等审计项不在本计划范围，仍待办。
+- 真实 LLM（`USE_FAKE_MODEL="false"`）端到端仍未验证；本轮 #1（`maxOutputTokens`→adapter）与 #3（真实 usage 元数据）的修复**只在 fake 模式验证过**，其真正生效的场景未跑——这是当前最该补的验证（待真实 provider 凭据）。
+- 会话安全加固（`/api/auth/me`、`/api` 401 边界、`SESSION_SECRET` 强值）、队列健壮性仍未做。
+- DB 不可用时 `errorResponse` 把 `error.message` 原样回客户端（`apps/web/src/app/api/projects/route.ts:136` 等多路由共用），Prisma `ECONNREFUSED` 会泄露 DB host/port → 建议 5xx 仅回通用文案、详情记服务端日志（全局错误处理模式，跨本计划范围）。
 
 ### 复审跟进：4 项确认改进已修复（用户确认全修）
 
@@ -588,3 +589,11 @@ pnpm test:e2e        smoke ✓（含新增 DIAGNOSE_CHAPTER 闭环：触发「�
 验证（修复后）：`pnpm typecheck` ✓（5 ws）、`pnpm test` ✓（566）、`pnpm test:e2e` ✓（smoke + settings 2 passed）。
 
 > 备注：e2e 期间曾遇一次 PostgreSQL `ECONNREFUSED`（PG 进程掉线，非代码问题），重启 PG 后重跑双绿。
+
+### 待办状态校正（2026-06-05 核实，纠正 2026-06-04 审计快照）
+
+上文 2026-06-04「审计发现的未完成项」中有两条经核实**实际已完成**，那段是修复前的旧快照，特此校正（保留原文以存历史）：
+
+- ✅ **Worker 写回 `UsageEvent` + 仪表盘联通**：worker 已写回 `apps/worker/src/pipeline/generate-chapter-handler.ts:527`（commit `9c94535`）；仪表盘已聚合读取 `apps/web/src/server/budgets.ts:301`（`aggregateUsageEvents`）。链路完整。唯真实 LLM 下的真实用量数据仍待 A 级验证（fake 模式写的是占位用量）。
+- ✅ **`/settings/budget` 顶部导航入口**：`apps/web/src/components/settings/settings-nav.tsx` 已提供「模型 / 预算与用量」双 tab（commit `6fa05b2`），预算页可达。
+- ⏳ **真实 LLM 端到端验证**：仍未做，见上「已知限制 / 下一步」，待真实 provider 凭据后执行。
