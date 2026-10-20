@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { draftOutline, type DraftOutlineInput } from "../../../../server/wizard-drafts";
-import { getOrganizationId } from "../../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
 
 const VALID_METHODS = new Set([
   "snowflake", "three_act", "four_act",
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const input: DraftOutlineInput = {
       methodType: methodType as DraftOutlineInput["methodType"]
     };
@@ -62,7 +62,9 @@ export async function POST(request: Request) {
     const result = await draftOutline(input, { prisma, organizationId });
     return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "服务异常";
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    const message = error instanceof Error ? error.message : "服务异常";
     return NextResponse.json(
       { success: false, error: message },
       { status: 500 }

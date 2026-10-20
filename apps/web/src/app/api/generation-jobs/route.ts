@@ -4,7 +4,7 @@ import { normalizeContextOptions } from "@ai-novel/shared/context-composer/optio
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import { normalizeQualityMode, normalizePerformanceBudget } from "@ai-novel/shared/generation/performance";
 import type { PerformanceBudgetInput } from "@ai-novel/shared/generation/performance";
-import { getOrganizationId, getUserId } from "../../../server/context";
+import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../server/context";
 
 type JobType =
   | "GENERATE_OUTLINE"
@@ -31,19 +31,22 @@ interface CreateJobBody {
   performanceBudget?: PerformanceBudgetInput;
 }
 
-const ALLOWED_JOB_TYPES: JobType[] = [
-  "GENERATE_OUTLINE",
+const SUPPORTED_JOB_TYPES: JobType[] = [
   "GENERATE_CHAPTER",
-  "CONTINUE_CHAPTER",
-  "REWRITE",
-  "POLISH",
   "DESLOP",
-  "REVIEW",
   "EXTRACT_MEMORY",
   "DIAGNOSE_CHAPTER",
   "READER_SIMULATION",
   "STYLE_DRIFT_CHECK",
   "CONTINUITY_CHECK"
+];
+
+const PENDING_JOB_TYPES: JobType[] = [
+  "GENERATE_OUTLINE",
+  "CONTINUE_CHAPTER",
+  "REWRITE",
+  "POLISH",
+  "REVIEW"
 ];
 
 const DIAGNOSTIC_JOB_TYPES: JobType[] = [
@@ -70,7 +73,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const jobs = await prisma.generationJob.findMany({
       where: {
         organizationId,
@@ -106,9 +109,15 @@ export async function POST(request: Request) {
   const { chapterId, jobType: rawJobType } = body;
   const jobType = rawJobType ?? "GENERATE_CHAPTER";
 
-  if (!ALLOWED_JOB_TYPES.includes(jobType)) {
+  if (PENDING_JOB_TYPES.includes(jobType)) {
     return NextResponse.json(
-      { success: false, error: `jobType 必须为 ${ALLOWED_JOB_TYPES.join(", ")} 之一` },
+      { success: false, error: `任务类型 ${jobType} 尚未开放：worker 暂未实现对应处理逻辑` },
+      { status: 400 }
+    );
+  }
+  if (!SUPPORTED_JOB_TYPES.includes(jobType)) {
+    return NextResponse.json(
+      { success: false, error: `jobType 必须为 ${SUPPORTED_JOB_TYPES.join(", ")} 之一` },
       { status: 400 }
     );
   }
@@ -132,8 +141,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
-    const userId = getUserId();
+    const organizationId = await getOrganizationId();
+    const userId = await getUserId();
 
     let projectId = body.projectId;
     let targetEntityType: "PROJECT" | "OUTLINE" | "CHAPTER" | undefined;
@@ -198,6 +207,9 @@ export async function POST(request: Request) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   return NextResponse.json({ success: false, error: message }, { status: 500 });
 }

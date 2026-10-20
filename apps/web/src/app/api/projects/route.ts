@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { createProject, findProjectsByOrganization, type WizardExtras, type WizardOutlineNode } from "../../../server/projects";
-import { getOrganizationId, getUserId } from "../../../server/context";
+import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../server/context";
 
 interface CreateBody {
   title?: string;
@@ -23,7 +23,7 @@ interface CreateBody {
 
 export async function GET() {
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const projects = await findProjectsByOrganization(organizationId, prisma);
     const data = await Promise.all(projects.map(toProjectListItem));
     return NextResponse.json({ success: true, data });
@@ -50,8 +50,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
-    const createdById = getUserId();
+    const organizationId = await getOrganizationId();
+    const createdById = await getUserId();
     const wizard = sanitizeWizard(body.wizard);
     const project = await createProject({
       organizationId,
@@ -133,6 +133,9 @@ async function toProjectListItem(project: {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   const status = /已被占用|已存在/.test(message) ? 409 : 500;
   return NextResponse.json({ success: false, error: message }, { status });

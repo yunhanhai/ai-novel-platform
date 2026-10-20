@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { listChapterVersions } from "../../../../../server/content-versions";
-import { getOrganizationId } from "../../../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../../../server/context";
 
 interface RouteContext {
   params: Promise<{ chapterId: string }>;
@@ -10,7 +10,7 @@ interface RouteContext {
 export async function GET(_request: Request, context: RouteContext) {
   const { chapterId } = await context.params;
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const versions = await listChapterVersions({ organizationId, chapterId, prisma });
     return NextResponse.json({
       success: true,
@@ -26,7 +26,9 @@ export async function GET(_request: Request, context: RouteContext) {
       }))
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "服务异常";
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    const message = error instanceof Error ? error.message : "服务异常";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

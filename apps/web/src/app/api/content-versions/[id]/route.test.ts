@@ -7,8 +7,9 @@ vi.mock("@ai-novel/db", () => ({
 }));
 
 vi.mock("../../../../server/context", () => ({
-  getOrganizationId: () => "org-1",
-  getUserId: () => "user-1"
+  getOrganizationId: async () => "org-1",
+  getUserId: async () => "user-1",
+  isUnauthorizedError: () => false
 }));
 
 vi.mock("../../../../server/content-versions", () => ({

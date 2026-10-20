@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@ai-novel/db", () => ({ prisma: {} }));
-vi.mock("../../../../server/context", () => ({ getOrganizationId: () => "org-1" }));
+vi.mock("../../../../server/context", () => ({getOrganizationId: async () => "org-1", isUnauthorizedError: () => false }));
 vi.mock("../../../../server/writing-assets", () => ({ updateCharacter: vi.fn(), deleteCharacter: vi.fn() }));
 import { PATCH, DELETE } from "./route";
 import { updateCharacter, deleteCharacter } from "../../../../server/writing-assets";

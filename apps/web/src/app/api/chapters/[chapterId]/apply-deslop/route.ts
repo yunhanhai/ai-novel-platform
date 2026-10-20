@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { applyDeslopEdit } from "../../../../../server/chapters";
-import { getOrganizationId, getUserId } from "../../../../../server/context";
+import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../../../server/context";
 
 interface RouteContext {
   params: Promise<{ chapterId: string }>;
@@ -35,11 +35,11 @@ export async function POST(request: Request, context: RouteContext) {
 
   try {
     const result = await applyDeslopEdit({
-      organizationId: getOrganizationId(),
+      organizationId: await getOrganizationId(),
       chapterId,
       nextContent: body.nextContent,
       baseContentHash: body.baseContentHash,
-      updatedById: getUserId(),
+      updatedById: await getUserId(),
       matchedText: typeof body.matchedText === "string" ? body.matchedText : undefined,
       category: typeof body.category === "string" ? body.category : undefined,
       prisma
@@ -47,7 +47,9 @@ export async function POST(request: Request, context: RouteContext) {
 
     return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Server error";
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    const message = error instanceof Error ? error.message : "Server error";
     if (message.includes("CHAPTER_CONTENT_STALE")) {
       return NextResponse.json(
         { success: false, error: "章节内容已变化，请重新扫描后再应用" },

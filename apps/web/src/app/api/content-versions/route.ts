@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
-import { getOrganizationId, getUserId } from "../../../server/context";
+import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../server/context";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 
 interface CreateVersionBody {
@@ -18,8 +18,8 @@ export async function POST(request: Request) {
     );
   }
   try {
-    const organizationId = getOrganizationId();
-    const userId = getUserId();
+    const organizationId = await getOrganizationId();
+    const userId = await getUserId();
 
     const chapter = await prisma.chapter.findFirst({
       where: { id: body.chapterId, organizationId, deletedAt: null },
@@ -53,7 +53,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, data: version }, { status: 201 });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "服务异常";
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    const message = error instanceof Error ? error.message : "服务异常";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

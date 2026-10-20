@@ -9,8 +9,9 @@ vi.mock("@ai-novel/db", () => ({
 }));
 
 vi.mock("../../../server/context", () => ({
-  getOrganizationId: () => "org-1",
-  getUserId: () => "user-1"
+  getOrganizationId: async () => "org-1",
+  getUserId: async () => "user-1",
+  isUnauthorizedError: () => false
 }));
 
 import { GET, POST } from "./route";
@@ -50,6 +51,13 @@ describe("POST /api/generation-jobs", () => {
   it("returns 400 when jobType is invalid", async () => {
     const res = await POST(req({ projectId: "proj-1", jobType: "INVALID" }));
     expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when jobType has no worker handler yet", async () => {
+    const res = await POST(req({ chapterId: "ch-1", jobType: "REWRITE" }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("尚未开放");
   });
 
   it("returns 400 when both chapterId and projectId missing", async () => {

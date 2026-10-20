@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@ai-novel/db", () => ({ prisma: {} }));
 
 vi.mock("../../../server/context", () => ({
-  getOrganizationId: () => "org-1",
-  getUserId: () => "user-1"
+  getOrganizationId: async () => "org-1",
+  getUserId: async () => "user-1",
+  isUnauthorizedError: () => false
 }));
 
 vi.mock("../../../server/outlines", () => ({

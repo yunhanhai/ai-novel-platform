@@ -1,4 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../../../server/context", () => ({
+  getSessionContext: async () => ({ userId: "user-1", organizationId: "org-1", displayName: "测试用户" }),
+  isUnauthorizedError: () => false
+}));
+
 import { GET } from "./route";
 
 const originalEnv = { ...process.env };

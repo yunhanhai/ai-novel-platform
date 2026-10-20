@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { updateChapterContent } from "../../../../server/chapters";
-import { getOrganizationId, getUserId } from "../../../../server/context";
+import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../../server/context";
 
 interface RouteContext {
   params: Promise<{ chapterId: string }>;
@@ -17,7 +17,7 @@ interface PatchBody {
 export async function GET(_request: Request, context: RouteContext) {
   const { chapterId } = await context.params;
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const chapter = await prisma.chapter.findFirst({
       where: { id: chapterId, organizationId, deletedAt: null }
     });
@@ -47,8 +47,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   const body = (await request.json()) as PatchBody;
 
   try {
-    const organizationId = getOrganizationId();
-    const updatedById = getUserId();
+    const organizationId = await getOrganizationId();
+    const updatedById = await getUserId();
 
     const existing = await prisma.chapter.findFirst({
       where: { id: chapterId, organizationId, deletedAt: null },
@@ -88,6 +88,9 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   return NextResponse.json({ success: false, error: message }, { status: 500 });
 }

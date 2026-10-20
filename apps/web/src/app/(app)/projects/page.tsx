@@ -7,7 +7,7 @@ import { ProjectList } from "../../../components/projects/project-list";
 export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
-  const organizationId = safeGetOrganizationId();
+  const organizationId = await safeGetOrganizationId();
   const items = organizationId ? await loadProjects(organizationId) : [];
 
   return (
@@ -20,7 +20,7 @@ export default async function ProjectsPage() {
         <Link href="/projects/new" className="btn-primary">新建作品</Link>
       </div>
       {!organizationId && (
-        <p className="form-error">DEFAULT_ORGANIZATION_ID 未配置，无法读取项目列表。</p>
+        <p className="form-error">未登录或当前账号未归属组织，无法读取项目列表。</p>
       )}
       <section>
         <ProjectList projects={items} />

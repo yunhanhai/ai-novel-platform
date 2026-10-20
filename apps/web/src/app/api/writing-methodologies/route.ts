@@ -6,7 +6,7 @@ import {
   createMethodologyFromTemplate,
   findMethodologiesByProject
 } from "../../../server/writing-methodologies";
-import { getOrganizationId } from "../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../server/context";
 
 interface CustomCreateBody {
   projectId?: string;
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const items = await findMethodologiesByProject(organizationId, projectId, prisma);
     return NextResponse.json({ success: true, data: items });
   } catch (error: unknown) {
@@ -71,7 +71,7 @@ async function handleFromTemplate(body: TemplateCreateBody): Promise<NextRespons
     );
   }
 
-  const organizationId = getOrganizationId();
+  const organizationId = await getOrganizationId();
   const created = await createMethodologyFromTemplate({
     organizationId,
     projectId,
@@ -91,7 +91,7 @@ async function handleCustom(body: CustomCreateBody): Promise<NextResponse> {
     );
   }
 
-  const organizationId = getOrganizationId();
+  const organizationId = await getOrganizationId();
   const created = await createMethodology({
     organizationId,
     projectId,
@@ -106,6 +106,9 @@ async function handleCustom(body: CustomCreateBody): Promise<NextResponse> {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   const status = /已存在/.test(message) ? 409 : /未知方法论类型/.test(message) ? 400 : 500;
   return NextResponse.json({ success: false, error: message }, { status });

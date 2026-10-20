@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { draftPremise, type DraftPremiseInput } from "../../../../server/wizard-drafts";
-import { getOrganizationId } from "../../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
 
 interface RequestBody {
   projectTitle?: string;
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const input: DraftPremiseInput = {};
     if (typeof body.projectTitle === "string" && body.projectTitle.trim()) {
       input.projectTitle = body.projectTitle.trim();
@@ -58,7 +58,9 @@ export async function POST(request: Request) {
     const result = await draftPremise(input, { prisma, organizationId });
     return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "服务异常";
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    const message = error instanceof Error ? error.message : "服务异常";
     return NextResponse.json(
       { success: false, error: message },
       { status: 500 }

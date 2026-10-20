@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@ai-novel/db";
+import { Prisma } from "@ai-novel/db";
 import { hashPassword } from "@ai-novel/shared/auth/password";
 
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
@@ -22,6 +23,53 @@ export async function findUserByEmail(email: string, prisma: PrismaClient) {
 
 export async function findUserById(id: string, prisma: PrismaClient) {
   return prisma.user.findUnique({ where: { id } });
+}
+
+async function cloneStarterModelAssets(tx: Tx, targetOrgId: string, sourceOrgId: string | null) {
+  if (!sourceOrgId || sourceOrgId === targetOrgId) return;
+
+  const providers = await tx.modelProvider.findMany({
+    where: { organizationId: sourceOrgId, status: "ACTIVE" },
+    orderBy: { createdAt: "asc" }
+  });
+
+  for (const provider of providers) {
+    const clonedProvider = await tx.modelProvider.create({
+      data: {
+        organizationId: targetOrgId,
+        name: provider.name,
+        providerType: provider.providerType,
+        baseUrl: provider.baseUrl,
+        encryptedApiKey: provider.encryptedApiKey,
+        authMode: provider.authMode,
+        protocol: provider.protocol,
+        isDefault: provider.isDefault,
+        status: provider.status
+      },
+      select: { id: true }
+    });
+
+    const profiles = await tx.modelProfile.findMany({
+      where: { organizationId: sourceOrgId, projectId: null, providerId: provider.id },
+      orderBy: { createdAt: "asc" }
+    });
+
+    for (const profile of profiles) {
+      await tx.modelProfile.create({
+        data: {
+          organizationId: targetOrgId,
+          providerId: clonedProvider.id,
+          name: profile.name,
+          modelName: profile.modelName,
+          taskType: profile.taskType,
+          temperature: profile.temperature,
+          topP: profile.topP,
+          maxOutputTokens: profile.maxOutputTokens,
+          settings: profile.settings ?? Prisma.JsonNull
+        }
+      });
+    }
+  }
 }
 
 export async function createUser({ email, displayName, password, prisma }: CreateUserParams): Promise<CreateUserResult> {
@@ -56,6 +104,9 @@ export async function createUser({ email, displayName, password, prisma }: Creat
         },
         select: { id: true, role: true }
       });
+
+      const sourceOrgId = process.env.DEFAULT_ORGANIZATION_ID?.trim() || null;
+      await cloneStarterModelAssets(tx, organization.id, sourceOrgId);
 
       return { user, organization, membership };
     });

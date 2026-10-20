@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { createChapter, findChaptersByProject } from "../../../../../server/chapters";
-import { getOrganizationId, getUserId } from "../../../../../server/context";
+import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../../../server/context";
 
 interface RouteContext {
   params: Promise<{ projectId: string }>;
@@ -17,7 +17,7 @@ export async function GET(_request: Request, context: RouteContext) {
   const { projectId } = await context.params;
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const chapters = await findChaptersByProject(organizationId, projectId, prisma);
     return NextResponse.json({
       success: true,
@@ -55,8 +55,8 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   try {
-    const organizationId = getOrganizationId();
-    const createdById = getUserId();
+    const organizationId = await getOrganizationId();
+    const createdById = await getUserId();
     const chapter = await createChapter({
       organizationId,
       projectId,
@@ -73,6 +73,9 @@ export async function POST(request: Request, context: RouteContext) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   const status = /unique|已存在|P2002/i.test(message) ? 409 : 500;
   return NextResponse.json({ success: false, error: message }, { status });

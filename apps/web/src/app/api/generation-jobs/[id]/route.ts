@@ -1,6 +1,6 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
-import { getOrganizationId } from "../../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -9,7 +9,7 @@ interface RouteContext {
 export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const job = await prisma.generationJob.findFirst({
       where: { id, organizationId },
       select: {
@@ -48,7 +48,9 @@ export async function GET(_request: Request, context: RouteContext) {
     }
     return NextResponse.json({ success: true, data: job });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Service error";
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    const message = error instanceof Error ? error.message : "Service error";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

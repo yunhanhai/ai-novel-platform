@@ -4,7 +4,7 @@ import {
   getChapterVersion,
   restoreChapterVersion
 } from "../../../../server/content-versions";
-import { getOrganizationId, getUserId } from "../../../../server/context";
+import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../../server/context";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -13,7 +13,7 @@ interface RouteContext {
 export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const version = await getChapterVersion(organizationId, id, prisma);
     if (!version) {
       return NextResponse.json({ success: false, error: "版本不存在" }, { status: 404 });
@@ -29,8 +29,8 @@ export async function GET(_request: Request, context: RouteContext) {
 export async function POST(_request: Request, context: RouteContext) {
   const { id } = await context.params;
   try {
-    const organizationId = getOrganizationId();
-    const updatedById = getUserId();
+    const organizationId = await getOrganizationId();
+    const updatedById = await getUserId();
     const chapter = await restoreChapterVersion({
       organizationId,
       versionId: id,
@@ -44,6 +44,9 @@ export async function POST(_request: Request, context: RouteContext) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   const isNotFound = /不存在|P2025/.test(message);
   return NextResponse.json(

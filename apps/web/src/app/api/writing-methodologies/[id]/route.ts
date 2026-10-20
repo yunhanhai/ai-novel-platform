@@ -4,7 +4,7 @@ import {
   deactivateMethodology,
   updateMethodology
 } from "../../../../server/writing-methodologies";
-import { getOrganizationId } from "../../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -22,7 +22,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const body = (await request.json()) as PatchBody;
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const updated = await updateMethodology(organizationId, id, buildPatchFields(body), prisma);
     return NextResponse.json({ success: true, data: updated });
   } catch (error: unknown) {
@@ -34,7 +34,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const { id } = await context.params;
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const result = await deactivateMethodology(organizationId, id, prisma);
     return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {
@@ -52,6 +52,9 @@ function buildPatchFields(body: PatchBody) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   const isNotFound = /not found|不存在|P2025/i.test(message);
   return NextResponse.json(

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { scanDeslop } from "@ai-novel/shared/deslop/scanner";
 import { findDeslopRulesByProject } from "../../../../server/deslop-rules";
-import { getOrganizationId } from "../../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
 
 interface ScanBody {
   projectId?: string;
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const rules = await findDeslopRulesByProject(organizationId, projectId, prisma, {
       isActive: true
     });
@@ -57,7 +57,9 @@ export async function POST(request: Request) {
       }
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "服务异常";
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    const message = error instanceof Error ? error.message : "服务异常";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

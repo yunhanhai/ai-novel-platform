@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { pingProvider } from "../../../../../server/model-providers-test";
-import { getOrganizationId } from "../../../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../../../server/context";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -16,11 +16,13 @@ interface RouteContext {
 export async function POST(_request: Request, context: RouteContext) {
   const { id } = await context.params;
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const result = await pingProvider({ organizationId, providerId: id, prisma });
     return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "服务异常";
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    const message = error instanceof Error ? error.message : "服务异常";
     return NextResponse.json({ success: true, data: { ok: false, error: message } });
   }
 }

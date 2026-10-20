@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
 import { draftOutlineNodes, type OutlineDraftInput } from "../../../../server/outline-drafts";
-import { getOrganizationId } from "../../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
 
 interface RequestBody {
   projectId?: string;
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const input: OutlineDraftInput = {
       count: typeof body.count === "number" ? body.count : 3
     };
@@ -70,7 +70,9 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {
-    return NextResponse.json(
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "服务异常" },
       { status: 500 }
     );

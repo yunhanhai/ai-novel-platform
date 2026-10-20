@@ -29,7 +29,7 @@ interface CreateJobParams {
 }
 
 interface ClaimParams {
-  organizationId: string;
+  organizationId?: string;
   lockKey: string;
   leaseDurationMs: number;
   prisma: PrismaClient;
@@ -81,7 +81,7 @@ export async function claimNextJob({ organizationId, lockKey, leaseDurationMs, p
   return prisma.$transaction(async (tx: Tx) => {
     const job = await tx.generationJob.findFirst({
       where: {
-        organizationId,
+        ...(organizationId ? { organizationId } : {}),
         status: "QUEUED",
         OR: [
           { leaseExpiresAt: null },

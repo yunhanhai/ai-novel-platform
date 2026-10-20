@@ -4,7 +4,7 @@ import {
   createProfile,
   findProfilesByOrganization
 } from "../../../server/model-profiles";
-import { getOrganizationId } from "../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../server/context";
 
 const VALID_TASK_TYPES = new Set([
   "default", "generate_chapter", "generate_outline", "deslop",
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   const taskType = searchParams.get("taskType") ?? undefined;
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const filter: { projectId?: string | null; taskType?: string } = {};
     if (projectIdParam !== null) {
       filter.projectId = projectIdParam === "" ? null : projectIdParam;
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const profile = await createProfile({
       organizationId,
       providerId,
@@ -80,6 +80,9 @@ export async function POST(request: Request) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   return NextResponse.json({ success: false, error: message }, { status: 500 });
 }

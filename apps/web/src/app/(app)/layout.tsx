@@ -5,7 +5,7 @@ import { LogoutButton } from "../../components/logout-button";
 import { getSession } from "../../server/auth";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const organizationId = safeGetOrganizationId();
+  const organizationId = await safeGetOrganizationId();
   const session = await getSession();
 
   return (

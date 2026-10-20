@@ -4,7 +4,7 @@ import {
   createPlotThread,
   findPlotThreadsByProject
 } from "../../../server/writing-assets";
-import { getOrganizationId, getUserId } from "../../../server/context";
+import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../server/context";
 
 const THREAD_TYPES = ["main", "side", "foreshadowing", "mystery", "conflict"] as const;
 type ThreadType = (typeof THREAD_TYPES)[number];
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: false, error: "projectId 必填" }, { status: 400 });
   }
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const items = await findPlotThreadsByProject(organizationId, projectId, prisma);
     return NextResponse.json({ success: true, data: items });
   } catch (error: unknown) {
@@ -50,8 +50,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
-    const createdById = getUserId();
+    const organizationId = await getOrganizationId();
+    const createdById = await getUserId();
     const thread = await createPlotThread({
       organizationId,
       projectId: body.projectId,
@@ -71,6 +71,9 @@ export async function POST(request: Request) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   return NextResponse.json({ success: false, error: message }, { status: 500 });
 }

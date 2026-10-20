@@ -95,6 +95,22 @@ describe("generation-jobs", () => {
       expect(result).not.toBeNull();
       expect(result!.status).toBe("RUNNING");
     });
+
+    it("claims across organizations when organizationId is omitted", async () => {
+      const claimed = { ...job, status: "RUNNING", lockKey: "worker-1" };
+      const prisma = mockPrisma({
+        $transaction: vi.fn(async () => claimed)
+      });
+
+      const result = await claimNextJob({
+        lockKey: "worker-1",
+        leaseDurationMs: 60_000,
+        prisma
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.organizationId).toBe("org1");
+    });
   });
 
   describe("releaseJobLease", () => {

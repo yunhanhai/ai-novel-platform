@@ -4,7 +4,7 @@ import {
   createProvider,
   findProvidersByOrganization
 } from "../../../server/model-providers";
-import { getOrganizationId, getUserId } from "../../../server/context";
+import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../server/context";
 
 const VALID_PROVIDER_TYPES = new Set([
   "OPENAI_COMPATIBLE", "ANTHROPIC", "GEMINI", "DEEPSEEK", "CUSTOM"
@@ -20,7 +20,7 @@ interface CreateBody {
 
 export async function GET() {
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const providers = await findProvidersByOrganization(organizationId, prisma);
     return NextResponse.json({ success: true, data: providers });
   } catch (error: unknown) {
@@ -52,8 +52,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
-    const ownerUserId = getUserId();
+    const organizationId = await getOrganizationId();
+    const ownerUserId = await getUserId();
     const provider = await createProvider({
       organizationId,
       ownerUserId,
@@ -70,6 +70,9 @@ export async function POST(request: Request) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   return NextResponse.json({ success: false, error: message }, { status: 500 });
 }

@@ -7,7 +7,8 @@ vi.mock("@ai-novel/shared/deslop/scanner", () => ({
 }));
 
 vi.mock("../../../../server/context", () => ({
-  getOrganizationId: () => "org-1"
+  getOrganizationId: async () => "org-1",
+  isUnauthorizedError: () => false
 }));
 
 vi.mock("../../../../server/deslop-rules", () => ({

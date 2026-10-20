@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
-import { getOrganizationId } from "../../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
 import { getBudgetDashboard, type BudgetPrismaClient } from "../../../../server/budgets";
 
 export async function GET(request: Request) {
@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const projectId = searchParams.get("projectId");
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const dashboard = await getBudgetDashboard({
       organizationId,
       projectId,
@@ -16,7 +16,9 @@ export async function GET(request: Request) {
     });
     return NextResponse.json({ success: true, data: dashboard });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "服务异常";
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    const message = error instanceof Error ? error.message : "服务异常";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

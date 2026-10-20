@@ -25,13 +25,19 @@ vi.mock("@ai-novel/db", () => {
   };
 });
 
-vi.mock("../../../server/context", () => ({
-  getOrganizationId: () => "org-1",
-  getUserId: () => "user-1"
-}));
+vi.mock("../../../server/context", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../server/context")>();
+  return {
+    getOrganizationId: vi.fn(async () => "org-1"),
+    getUserId: vi.fn(async () => "user-1"),
+    isUnauthorizedError: actual.isUnauthorizedError,
+    UnauthorizedError: actual.UnauthorizedError
+  };
+});
 
 import { GET, POST } from "./route";
 import { prisma } from "@ai-novel/db";
+import { getOrganizationId, UnauthorizedError } from "../../../server/context";
 
 type MockPrisma = {
   project: { findMany: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
@@ -60,6 +66,14 @@ describe("GET /api/projects", () => {
     p().project.findMany.mockRejectedValue(new Error("db down"));
     const res = await GET();
     expect(res.status).toBe(500);
+  });
+
+  it("returns 401 when the session is missing", async () => {
+    vi.mocked(getOrganizationId).mockRejectedValueOnce(new UnauthorizedError());
+    const res = await GET();
+    const body = await res.json();
+    expect(res.status).toBe(401);
+    expect(body.success).toBe(false);
   });
 });
 

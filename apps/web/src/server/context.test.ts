@@ -1,61 +1,114 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const getSessionMock = vi.fn();
+
+vi.mock("./auth", () => ({
+  getSession: () => getSessionMock()
+}));
+
 import {
   getOrganizationId,
-  safeGetOrganizationId,
+  getSessionContext,
   getUserId,
-  safeGetUserId
+  isUnauthorizedError,
+  safeGetOrganizationId,
+  safeGetUserId,
+  UnauthorizedError
 } from "./context";
 
 describe("server/context", () => {
-  describe("getOrganizationId", () => {
-    it("returns the configured organization id", () => {
-      expect(getOrganizationId({ DEFAULT_ORGANIZATION_ID: "org-1" })).toBe("org-1");
+  beforeEach(() => {
+    getSessionMock.mockReset();
+  });
+
+  describe("getSessionContext", () => {
+    it("returns userId/organizationId/displayName from the session", async () => {
+      getSessionMock.mockResolvedValue({
+        userId: "user-1",
+        organizationId: "org-1",
+        displayName: "张三"
+      });
+
+      await expect(getSessionContext()).resolves.toEqual({
+        userId: "user-1",
+        organizationId: "org-1",
+        displayName: "张三"
+      });
     });
 
-    it("trims whitespace", () => {
-      expect(getOrganizationId({ DEFAULT_ORGANIZATION_ID: "  org-1  " })).toBe("org-1");
+    it("throws UnauthorizedError when there is no session", async () => {
+      getSessionMock.mockResolvedValue(null);
+
+      await expect(getSessionContext()).rejects.toBeInstanceOf(UnauthorizedError);
     });
 
-    it("throws when env value is missing", () => {
-      expect(() => getOrganizationId({})).toThrow(/DEFAULT_ORGANIZATION_ID/);
-    });
+    it("throws UnauthorizedError when the session has no organization", async () => {
+      getSessionMock.mockResolvedValue({
+        userId: "user-1",
+        organizationId: "",
+        displayName: "张三"
+      });
 
-    it("throws when env value is empty string", () => {
-      expect(() => getOrganizationId({ DEFAULT_ORGANIZATION_ID: "   " })).toThrow(/DEFAULT_ORGANIZATION_ID/);
+      await expect(getSessionContext()).rejects.toBeInstanceOf(UnauthorizedError);
     });
   });
 
-  describe("safeGetOrganizationId", () => {
-    it("returns the configured value", () => {
-      expect(safeGetOrganizationId({ DEFAULT_ORGANIZATION_ID: "org-1" })).toBe("org-1");
+  describe("getOrganizationId / getUserId", () => {
+    it("returns the session values", async () => {
+      getSessionMock.mockResolvedValue({
+        userId: "user-1",
+        organizationId: "org-1",
+        displayName: "张三"
+      });
+
+      await expect(getOrganizationId()).resolves.toBe("org-1");
+      await expect(getUserId()).resolves.toBe("user-1");
     });
 
-    it("returns null when missing instead of throwing", () => {
-      expect(safeGetOrganizationId({})).toBeNull();
-    });
+    it("rejects when unauthenticated", async () => {
+      getSessionMock.mockResolvedValue(null);
 
-    it("returns null when blank", () => {
-      expect(safeGetOrganizationId({ DEFAULT_ORGANIZATION_ID: "  " })).toBeNull();
-    });
-  });
-
-  describe("getUserId", () => {
-    it("returns the configured user id", () => {
-      expect(getUserId({ DEFAULT_USER_ID: "user-1" })).toBe("user-1");
-    });
-
-    it("throws when missing", () => {
-      expect(() => getUserId({})).toThrow(/DEFAULT_USER_ID/);
+      await expect(getOrganizationId()).rejects.toBeInstanceOf(UnauthorizedError);
+      await expect(getUserId()).rejects.toBeInstanceOf(UnauthorizedError);
     });
   });
 
-  describe("safeGetUserId", () => {
-    it("returns the configured value", () => {
-      expect(safeGetUserId({ DEFAULT_USER_ID: "user-1" })).toBe("user-1");
+  describe("safe variants", () => {
+    it("returns null instead of throwing when unauthenticated", async () => {
+      getSessionMock.mockResolvedValue(null);
+
+      await expect(safeGetOrganizationId()).resolves.toBeNull();
+      await expect(safeGetUserId()).resolves.toBeNull();
     });
 
-    it("returns null when missing", () => {
-      expect(safeGetUserId({})).toBeNull();
+    it("trims blank values", async () => {
+      getSessionMock.mockResolvedValue({
+        userId: "  ",
+        organizationId: "  ",
+        displayName: "张三"
+      });
+
+      await expect(safeGetOrganizationId()).resolves.toBeNull();
+      await expect(safeGetUserId()).resolves.toBeNull();
+    });
+
+    it("returns real values when present", async () => {
+      getSessionMock.mockResolvedValue({
+        userId: "user-1",
+        organizationId: "org-1",
+        displayName: "张三"
+      });
+
+      await expect(safeGetOrganizationId()).resolves.toBe("org-1");
+      await expect(safeGetUserId()).resolves.toBe("user-1");
+    });
+  });
+
+  describe("isUnauthorizedError", () => {
+    it("narrows UnauthorizedError instances", () => {
+      expect(isUnauthorizedError(new UnauthorizedError())).toBe(true);
+      expect(isUnauthorizedError(new Error("boom"))).toBe(false);
+      expect(isUnauthorizedError(null)).toBe(false);
     });
   });
 });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
-import { getOrganizationId } from "../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../server/context";
 import {
   acknowledgeBudgetNotification,
   listBudgetNotifications,
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const notifications = await listBudgetNotifications({
       organizationId,
       status: status as "open" | "acknowledged" | undefined,
@@ -43,7 +43,7 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const notification = await acknowledgeBudgetNotification({
       organizationId,
       id: body.id,
@@ -56,6 +56,9 @@ export async function PATCH(request: Request) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   const isBadRequest = /必须|范围|不存在/.test(message);
   return NextResponse.json(

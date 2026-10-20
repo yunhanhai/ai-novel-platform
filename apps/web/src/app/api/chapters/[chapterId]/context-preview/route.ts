@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@ai-novel/db";
-import { getOrganizationId } from "../../../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../../../server/context";
 import { buildChapterContextPreview } from "../../../../../server/context-preview";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 
@@ -48,7 +48,7 @@ function validateRawBudgetPreset(value: string | null): NextResponse | null {
 async function respondWithPreview(chapterId: string, rawOptions: ContextOptions) {
   try {
     const preview = await buildChapterContextPreview({
-      organizationId: getOrganizationId(),
+      organizationId: await getOrganizationId(),
       chapterId,
       rawOptions,
       prisma
@@ -58,7 +58,9 @@ async function respondWithPreview(chapterId: string, rawOptions: ContextOptions)
     }
     return NextResponse.json({ success: true, data: preview });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "service error";
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }    const message = error instanceof Error ? error.message : "service error";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@ai-novel/db", () => ({ prisma: {} }));
-vi.mock("../../../server/context", () => ({ getOrganizationId: () => "org-1" }));
+vi.mock("../../../server/context", () => ({getOrganizationId: async () => "org-1", isUnauthorizedError: () => false }));
 vi.mock("../../../server/world-item-drafts", () => ({ draftWorldItems: vi.fn() }));
 vi.mock("../../../server/outline-drafts", () => ({ draftOutlineNodes: vi.fn() }));
 vi.mock("../../../server/plot-thread-drafts", () => ({ draftPlotThreads: vi.fn() }));

@@ -4,7 +4,7 @@ import {
   createProjectMemory,
   findMemoriesByProject
 } from "../../../server/writing-assets";
-import { getOrganizationId } from "../../../server/context";
+import { getOrganizationId, isUnauthorizedError } from "../../../server/context";
 
 const MEMORY_STATUSES = ["proposed", "accepted", "rejected", "superseded"] as const;
 type MemoryStatus = (typeof MEMORY_STATUSES)[number];
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const items = await findMemoriesByProject(
       organizationId,
       projectId,
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const organizationId = getOrganizationId();
+    const organizationId = await getOrganizationId();
     const memory = await createProjectMemory({
       organizationId,
       projectId: body.projectId,
@@ -104,6 +104,9 @@ export async function POST(request: Request) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (isUnauthorizedError(error)) {
+    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+  }
   const message = error instanceof Error ? error.message : "服务异常";
   return NextResponse.json({ success: false, error: message }, { status: 500 });
 }
