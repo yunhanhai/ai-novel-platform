@@ -180,3 +180,56 @@ git diff --check
 - [x] Restore `apps/web/next-env.d.ts` generated route reference to the prior dev form.
 - [x] Update smoke e2e comments to match Playwright `globalSetup` worker startup.
 - [x] Run focused tests, typecheck, full tests, build, diff check, and IDE lints.
+
+## Task 9: 2026-06-07 Current Status Audit
+
+**Files:**
+- Read: `docs/current-progress.md`
+- Read: `apps/web/src/components/workspace/*`
+- Read: `apps/web/src/app/api/*`
+- Read: `apps/worker/src/*`
+- Modify: `docs/current-progress.md`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Confirmed the writing workspace UI exists with editor, chapter list, AI assistant, context composer, diagnostics, DESLOP, memory extraction, versions, outline, character, world, plot thread, memory, style, and methodology panels.
+- [x] Confirmed AI-assisted project setup and asset drafting APIs/components exist.
+- [x] Confirmed `pnpm typecheck` passed across 5 workspace projects.
+- [x] Recorded that `pnpm test:e2e` was blocked because PostgreSQL was not listening on `127.0.0.1:5432`.
+- [x] Recorded that `pnpm test` was blocked by sandbox `spawn EPERM`, and unsandboxed rerun was rejected by the local approval reviewer/proxy.
+- [x] Recorded that real LLM end-to-end verification remains outstanding.
+
+## Task 10: 2026-10-20 P0 Foundation Fixes (migration reconciliation, session auth, job-type alignment)
+
+**Files:**
+- Read: `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/*`, `packages/db/src/generation-jobs.ts`, `apps/web/src/server/context.ts`, `apps/web/src/server/auth.ts`, `apps/web/src/server/users.ts`, `apps/worker/src/index.ts`, `apps/worker/src/handlers.ts`, all `apps/web/src/app/api/**/route.ts`
+- Modify: `packages/db/prisma/migrations/202605210001_add_generation_diagnostics/migration.sql` (new), `packages/db/prisma/migrations/202605280001_add_worker_heartbeats/migration.sql` (new), `packages/db/prisma/migrations/202605280002_add_generation_job_retry_fields/migration.sql` (new), `packages/db/prisma/migrations/202605300001_add_performance_budgets/migration.sql` (new), `packages/db/prisma/migrations/202606010001_add_budget_governance/` (renamed from 202605300001), `packages/db/prisma/schema.prisma`, `packages/db/src/generation-jobs.ts`, `apps/web/src/server/context.ts`, `apps/web/src/server/users.ts`, `apps/web/src/server/api-errors.ts` (new), `apps/web/src/app/api/auth/me/route.ts` (new), `apps/web/src/app/api/settings/runtime/route.ts`, `apps/web/src/app/api/generation-jobs/route.ts`, all `apps/web/src/app/api/**/route.ts` (await + 401 mapping), `apps/worker/src/index.ts`, `.env.example`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+pnpm --filter @ai-novel/db exec prisma migrate status
+pnpm --filter @ai-novel/db exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script
+```
+
+- [x] Rebuilt 4 missing migration SQL files from the live database so `prisma migrate dev` no longer demands a reset; checksums in `_prisma_migrations` updated to real SHA-256 of repo files.
+- [x] Renamed `202605300001_add_budget_governance` to `202606010001` (timestamp collision with applied `add_performance_budgets`); normalized its SQL to Prisma-canonical FK/defaults; tables recreated empty-first.
+- [x] Adopted `generation_jobs.attempt_count/max_attempts/next_run_at`, `worker_heartbeats`, `performance_budgets` + `performance_budget_scope` into `schema.prisma` so future migrate/push cannot silently drop them (reserved for queue robustness).
+- [x] Verified zero drift: `prisma migrate status` = up to date; `migrate diff` = empty migration; 44 projects / 168 jobs intact; budget tables created.
+- [x] Rewrote `server/context.ts` as session-first (async `getOrganizationId/getUserId/safeGet*` reading the session cookie, no env fallback; `getSessionContext/requireSession/UnauthorizedError/isUnauthorizedError` exported).
+- [x] Converted all ~93 API route call sites to `await`; every route catch maps `UnauthorizedError` to 401.
+- [x] Added `GET /api/auth/me` (previously an empty directory).
+- [x] `createUser` now clones the default organization's active `ModelProvider` + org-level `ModelProfile` rows into each newly registered organization (starter assets; settings e2e depends on it).
+- [x] `claimNextJob` organizationId made optional; worker now claims jobs across all organizations (multi-tenant correct; model resolution stays per-job-org).
+- [x] Split API job-type whitelist into `SUPPORTED_JOB_TYPES` (7, handler-backed) vs `PENDING_JOB_TYPES` (5, explicit 400 "尚未开放") — no more enqueue-then-NO_HANDLER failures.
+- [x] Full verification: `pnpm typecheck` 5/5, `pnpm test` 569 tests / 93 files green, `pnpm test:e2e` 2 passed (30.5s), `prisma migrate diff` empty.
+- [x] Recorded remaining tail items (5xx message hardening, proxy.ts defense-in-depth layer, REWRITE/POLISH/CONTINUE_CHAPTER handlers, real LLM e2e, queue retry wiring, legacy `performance_budgets` table removal pending confirmation).

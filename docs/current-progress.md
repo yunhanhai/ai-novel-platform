@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-06-05
+> Last updated: 2026-10-20
 
 ## Completed
 
@@ -597,3 +597,98 @@ pnpm test:e2e        smoke ✓（含新增 DIAGNOSE_CHAPTER 闭环：触发「�
 - ✅ **Worker 写回 `UsageEvent` + 仪表盘联通**：worker 已写回 `apps/worker/src/pipeline/generate-chapter-handler.ts:527`（commit `9c94535`）；仪表盘已聚合读取 `apps/web/src/server/budgets.ts:301`（`aggregateUsageEvents`）。链路完整。唯真实 LLM 下的真实用量数据仍待 A 级验证（fake 模式写的是占位用量）。
 - ✅ **`/settings/budget` 顶部导航入口**：`apps/web/src/components/settings/settings-nav.tsx` 已提供「模型 / 预算与用量」双 tab（commit `6fa05b2`），预算页可达。
 - ⏳ **真实 LLM 端到端验证**：仍未做，见上「已知限制 / 下一步」，待真实 provider 凭据后执行。
+
+---
+
+## 2026-06-07 — 当前完成度状态审计
+
+本次只做状态核对与验证，不改业务代码。
+
+### 核对结论
+
+- 项目不是“全部产品化完成”状态；它已达到 Windows 本地 MVP/工作台可用阶段，但仍有生产化、安全、队列健壮性、真实 LLM 端到端验证等尾项。
+- 半人工写小说工作台已经落地：项目 4 步向导、章节编辑器、AI 生成章节、质量模式、上下文组装、运行诊断、DESLOP、记忆抽取、版本恢复，以及角色/世界观/大纲/伏笔/风格/去 AI 味规则的 AI 草稿入口都已存在。
+- fake-model 本地流程此前已有完整 e2e 通过记录；真实 LLM 路径仍需配置真实 provider 凭据后做一次完整端到端验收。
+- UI 选项已经比较完整，但还能继续丰富：更细的写作策略、章节目标、视角/节奏/爽点/伏笔检查、批量章节规划、编辑器内联 AI 操作、记忆冲突提示、真实模型成本/质量对比等。
+
+### 本次验证
+
+```text
+pnpm typecheck: passed (5 workspace projects)
+pnpm test:e2e: blocked by runtime environment; PostgreSQL 127.0.0.1:5432 was not listening, Prisma reported ECONNREFUSED
+pnpm test: blocked by sandbox; pnpm child process spawn returned EPERM
+Escalation attempts: rejected by local approval reviewer/proxy, so PostgreSQL start and unsandboxed pnpm test were not performed
+```
+
+### 当前运行前提
+
+若要验证“现在立刻可用”，需先启动本机 PostgreSQL，再按顺序运行：
+
+```powershell
+& 'D:\myTool\develop\PostgreSQL\pgsql\bin\pg_ctl.exe' -D 'D:\myTool\develop\PostgreSQL\data' -l 'D:\myTool\develop\PostgreSQL\postgresql.log' start
+```
+
+然后执行：
+
+```bash
+pnpm db:migrate
+pnpm db:seed
+pnpm test:e2e
+```
+
+---
+
+## 2026-10-20 — P0 地基修复：迁移对账 / API 会话鉴权 / job 类型对齐
+
+本次为三项 P0 硬问题的实施会话（基于 2026-10-20 的项目状态审计结论）。
+
+### P0-1 迁移历史漂移对账（此前 `pnpm db:migrate` 只能 reset）
+
+**问题**：数据库有 4 个已应用但仓库缺失的迁移（`202605210001_add_generation_diagnostics`、`202605280001_add_worker_heartbeats`、`202605280002_add_generation_job_retry_fields`、`202605300001_add_performance_budgets`），仓库另有 2 个未应用迁移（`202605300001_add_budget_governance` 与已应用的 `add_performance_budgets` 撞同一时间戳号；`202606040001_add_generation_diagnostics` 为重复项）。且 `_prisma_migrations` 里前两条的 checksum 是伪造的 40 位值。后果：`pnpm db:migrate` 一律要求 reset 数据库；`organization_budget_policies` / `budget_notifications` 两表在库中不存在 → 预算治理页与三个预算 API 一调用即 500。
+
+**修复**：
+- 按真实库结构逆向重建 4 个缺失迁移的 SQL（`packages/db/prisma/migrations/2026052*`、`202605300001_add_performance_budgets`），语义与库内实际状态一致。
+- `add_budget_governance` 改名 `202606010001_add_budget_governance` 并把 SQL 修正为 Prisma 规范形态（FK 补 `ON UPDATE CASCADE`、`updated_at` 去掉 DB DEFAULT）；因两表为空，采用 drop 后重新 `migrate deploy`。
+- `generation_jobs.attempt_count/max_attempts/next_run_at`、`worker_heartbeats`、`performance_budgets` + `performance_budget_scope` enum 全部补进 `schema.prisma`（防止未来 migrate/push 静默删除；这些列/表为队列健壮性预留）。
+- `_prisma_migrations` 的 checksum 逐一更新为仓库文件的真实 SHA-256。
+
+**验证**：`prisma migrate status` → "Database schema is up to date!"；`prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` → 空迁移（零漂移）；44 项目 / 168 job 数据完好；预算两表成功创建。
+
+### P0-2 API 会话鉴权（修复最大的安全洞）
+
+**问题**：45 个 API 路由的组织/用户身份唯一来源是 `process.env.DEFAULT_ORGANIZATION_ID/USER_ID`（`server/context.ts` 旧注释自称"MVP 阶段…接入 auth 后改 session"）。任何人不带 cookie 直接 `curl /api/projects` 即可读写全部数据；且所有登录用户共享默认组织的数据（租户隔离为零）。
+
+**修复**：
+- `server/context.ts` 重写：`getOrganizationId()/getUserId()/safeGetOrganizationId()/safeGetUserId()` 全部改为 **async + 读 session cookie 作为唯一真相源**，彻底移除环境变量回落；新增 `getSessionContext()/requireSession()/UnauthorizedError/isUnauthorizedError`。
+- 约 93 个路由调用点补 `await`（所有 handler 均为 async，`await` 对测试 mock 的同步返回值透明，故 43 个 route.test 的 mock 无需改签名）；所有 catch 分支把 `UnauthorizedError` 映射为 401。
+- 新增 `GET /api/auth/me`（此前只有空目录）；`settings/runtime` 也补会话要求（保持 API 面除 `/api/auth/*` 外全部需要登录）。
+- 注册闭环：`createUser` 为新组织克隆默认组织的 ACTIVE `ModelProvider` + 组织级 `ModelProfile`（启动资产，settings 页新用户可见 seed 供应商，e2e 依赖此行为）。
+- worker 侧配套：`claimNextJob` 的 `organizationId` 改为可选，`apps/worker/src/index.ts` 不再传 → **跨组织认领**（会话隔离的必然推论，也是多租户的正确形态；模型解析本就按 `job.organizationId` 走，不受影响）。
+- `.env.example` 注释更新：`DEFAULT_ORGANIZATION_ID/USER_ID` 现在仅用于 seed 与启动资产克隆来源，web API 不再读取。
+
+**验证**：新增测试 `context.test.ts`（9 例：session 优先/未登录抛 401/safe 变体 trim）、`users.test.ts` 克隆 2 例、`projects` 401 映射 1 例、`generation-jobs` PENDING 400 1 例、db `claimNextJob` 跨组织 1 例。e2e 全绿：注册用户的新组织 → 建项目 → worker 跨组织认领 → 生成 SUCCEEDED（smoke）；新组织克隆的供应商可见 → 测试连接 → 档案 CRUD（settings）。
+
+### P0-3 job 类型白名单与 worker handler 对齐（消除"能点、必失败"）
+
+**问题**：API 放行 12 种 jobType，worker 只注册 7 种 handler；`GENERATE_OUTLINE/CONTINUE_CHAPTER/REWRITE/POLISH/REVIEW` 一旦入队立即 `FAILED / NO_HANDLER`。
+
+**修复**：API 白名单拆为 `SUPPORTED_JOB_TYPES`（7 种，有 handler）与 `PENDING_JOB_TYPES`（5 种）；对未实现类型返回 400 + 明确文案「任务类型 X 尚未开放：worker 暂未实现对应处理逻辑」。
+
+### 本次验证（全绿）
+
+```text
+pnpm typecheck      5/5 workspace 零错误
+pnpm test           569 tests / 93 files（db 14 + shared 28 + model-adapters 37 + worker 118 + web 372）
+pnpm test:e2e       2 passed（30.5s）—— smoke 跨组织认领闭环 + settings 克隆资产 CRUD
+prisma migrate status       "Database schema is up to date!"
+prisma migrate diff         空迁移（库与 schema 零漂移）
+```
+
+### 遗留 / 下一步（按优先级）
+
+1. `errorResponse` 仍把 `error.message` 原样回客户端（DB 连接错误会泄露 host/port）→ 5xx 统一通用文案 + 服务端日志（已有 `server/api-errors.ts` 雏形，`auth/me` 与 `settings/runtime` 已接入，其余 43 路由待推广）。
+2. 未加 Next16 `proxy.ts` 请求级门禁 / 页面未登录重定向 —— 当前防线是 context 层抛 `UnauthorizedError` → 401，建议后续加 proxy 作为纵深防御（注意：不要重蹈旧 middleware 注入非 latin-1 header 的覆辙，只做 gate 不注入）。
+3. `REWRITE / POLISH / CONTINUE_CHAPTER` handler + 编辑器选中即改（第二波产品功能，白名单已就位）。
+4. 真实 LLM 端到端验证（`USE_FAKE_MODEL="false"`，需真实 provider 凭据）。
+5. 队列健壮性：`attempt_count/max_attempts/next_run_at` 已入库入 schema，认领/重试/退避逻辑待接线；`worker_heartbeats` 同理。
+6. `performance_budgets` 是被 `organization_budget_policies` 取代的遗留表（仅 1 条 inactive 行），建议确认后以迁移删除。
