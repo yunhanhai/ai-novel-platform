@@ -233,3 +233,29 @@ pnpm --filter @ai-novel/db exec prisma migrate diff --from-config-datasource --t
 - [x] Split API job-type whitelist into `SUPPORTED_JOB_TYPES` (7, handler-backed) vs `PENDING_JOB_TYPES` (5, explicit 400 "尚未开放") — no more enqueue-then-NO_HANDLER failures.
 - [x] Full verification: `pnpm typecheck` 5/5, `pnpm test` 569 tests / 93 files green, `pnpm test:e2e` 2 passed (30.5s), `prisma migrate diff` empty.
 - [x] Recorded remaining tail items (5xx message hardening, proxy.ts defense-in-depth layer, REWRITE/POLISH/CONTINUE_CHAPTER handlers, real LLM e2e, queue retry wiring, legacy `performance_budgets` table removal pending confirmation).
+
+## Task 11: 2026-10-21 UI Quality Pass + Code Review
+
+**Files:**
+- Modify: `apps/web/src/app/globals.css`, `apps/web/src/app/(app)/layout.tsx`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Extended design tokens: 8 semantic status colors, 3-level shadows, focus ring, z-index scale, transition token; muted contrast 4.6→5.9:1; explicit Chinese font stack.
+- [x] Defined `--foreground`/`--muted-foreground` aliases to fix the wizard/settings indigo drift (fallback `var(--accent, #4f46e5)` was live).
+- [x] Global `:focus-visible` ring + unified 160ms transitions + `prefers-reduced-motion` exemption.
+- [x] Sticky top-bar with shadow; brand-mark gradient; button hover semantics fixed (darken instead of lighten) with shadow/press feedback; ghost button touch target 28→32px.
+- [x] Editor typography: 46em measure, line-height 1.9, larger padding (core writing surface).
+- [x] Chapter active state via inset left bar (removes 1px layout jump on toggle); project/settings cards hover lift without layout shift.
+- [x] Fixed `var(--foreground)` undefined-variable bug in auth-form inputs; auth card shadow.
+- [x] Tokenized 61 scattered status colors (visual no-op governance); settings-form indigo background → accent tint; badge → info tokens.
+- [x] Running-state pulse animation (pipeline dot + running tag), transform/opacity only.
+- [x] Code review: (app) layout now redirects to /login when session expired (page-level 401 boundary); dead branch cleanup.
+- [x] Review verified: all 27 "catch=2 guard=1" routes are helper-pattern (guard inside shared errorResponse) — full 401 coverage; no dangerouslySetInnerHTML / bare target=_blank; job polling has unmount cleanup; e2e hook classes 15/15 intact; CSS braces balanced.
+- [x] Full verification: typecheck 5/5, 569 tests green, e2e 2 passed (53.8s).

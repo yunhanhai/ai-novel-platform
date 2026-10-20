@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-10-20
+> Last updated: 2026-10-21
 
 ## Completed
 
@@ -692,3 +692,56 @@ prisma migrate diff         空迁移（库与 schema 零漂移）
 4. 真实 LLM 端到端验证（`USE_FAKE_MODEL="false"`，需真实 provider 凭据）。
 5. 队列健壮性：`attempt_count/max_attempts/next_run_at` 已入库入 schema，认领/重试/退避逻辑待接线；`worker_heartbeats` 同理。
 6. `performance_budgets` 是被 `organization_budget_policies` 取代的遗留表（仅 1 条 inactive 行），建议确认后以迁移删除。
+
+---
+
+## 2026-10-21 — UI 质量优化 + 代码审查
+
+按 ui-ux-pro-max skill 规则（可达性 CRITICAL：对比度 4.5:1 / focus ring / 触达区；交互 CRITICAL：loading / 错误就近反馈；性能 HIGH：reduced-motion / 防内容跳动）对前端做了一轮审查驱动型优化。全部改动收敛在 `globals.css` + `(app)/layout.tsx`，**未触碰任何 e2e 依赖的类名 / 结构 / 文案**。
+
+### UI 优化（globals.css）
+
+**设计令牌层**：
+- 新增 8 个语义状态 token（`--success/--success-bg/--danger/--danger-bg/--warning-bg/--warning-deep/--accent-soft/--accent-hover`）+ 阴影三级（sm/md/lg）+ focus-ring + z-index 体系（sticky=100/modal=1000）+ `--transition: 160ms`
+- `--muted` 对比度修正：#687385（4.6:1 边缘）→ #5c6674（≈5.9:1，全部说明文字受益）
+- 补中文字体栈：Inter + PingFang SC + Microsoft YaHei 显式声明
+- 定义 `--foreground/--muted-foreground` 别名 → **根治 wizard/settings 区块的 indigo 紫色漂移**（此前 `var(--accent, #4f46e5)` 的 fallback 在生效，与墨绿主题割裂）
+
+**全局交互层**：
+- `:focus-visible` 全局 ring（此前键盘导航完全不可见）
+- 全局 150-300ms 过渡 + `prefers-reduced-motion: reduce` 豁免
+
+**组件层**：
+- top-bar sticky + 阴影；brand-mark 渐变
+- 按钮 hover 语义修正（原 hover 反而变浅）+ 阴影/按压反馈；btn-ghost 28→32px 触达区
+- project-card hover 浮起（transform，无 layout shift）；settings-list-item hover
+- 编辑器排版：46em 行宽居中（中文约 30 字/行）、行高 1.9、内边距加大
+- chapter-item 激活态改 inset 左条（消除原 1px border 切换的布局跳动）
+- auth 卡片阴影；**修复 auth-form input 引用未定义 `var(--foreground)` 的 bug**
+- 61 处散落状态色（9 绿 / 11 红 / 6 橙）token 化，视觉零变化的治理
+- settings-form 的 indigo 底色 → accent 淡底；badge 蓝 → info token
+- 运行态呼吸动画：pipeline 运行点 + tag-job-running 前置呼吸点（transform/opacity only，reduced-motion 下静止）
+
+### 代码审查结论
+
+**本轮修复**：
+- (app) layout 会话过期 → `redirect("/login")`：补上页面级 401 边界（此前会话过期后客户端 fetch 只会显示"请求失败 (401)"，无引导）；顺带清理 layout 死分支
+
+**审查排除项（确认无问题）**：
+- 27 个 `catch=2 guard=1` 的路由文件：精查为 helper 模式（401 guard 集中在共享 `errorResponse` 内），全部 catch 分支可达 → 覆盖完整
+- 无 `dangerouslySetInnerHTML`、无裸 `target="_blank"`
+- workspace 轮询（use-workspace-data 的 setTimeout 递归）有 `stopPolling` + unmount cleanup，无泄漏
+- e2e 钩子 class 15/15 完好；CSS 括号配平 375/375
+
+**遗留建议（不阻塞）**：
+- `deslop-panel.tsx` 451 行为最大组件，建议后续拆分
+- 轮询的 in-flight fetch 无 AbortController（卸载后多一次网络请求，LOW）
+- 5xx 原始 error.message 泄露 DB host/port（上轮已记录，43 路由待推广 `api-errors.ts`）
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5 workspace 零错误
+pnpm test        93 files 全绿（569 tests）
+pnpm test:e2e    2 passed（53.8s，含 layout 重定向后完整流程）
+```
