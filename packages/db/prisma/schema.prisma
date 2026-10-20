@@ -217,6 +217,13 @@ enum BillingSource {
   @@map("billing_source")
 }
 
+enum PerformanceBudgetScope {
+  ORGANIZATION @map("organization")
+  PROJECT      @map("project")
+
+  @@map("performance_budget_scope")
+}
+
 model User {
   id                      String               @id @default(uuid()) @db.Uuid
   email                   String               @unique @db.VarChar(320)
@@ -289,6 +296,8 @@ model Organization {
   usageEvents           UsageEvent[]
   budgetPolicies        OrganizationBudgetPolicy[]
   budgetNotifications   BudgetNotification[]
+  performanceBudgets    PerformanceBudget[]
+  workerHeartbeats      WorkerHeartbeat[]
   auditLogs             AuditLog[]
   characters            Character[]
   characterRelationships CharacterRelationship[]
@@ -371,6 +380,7 @@ model Project {
   usageEvents           UsageEvent[]
   budgetPolicies        OrganizationBudgetPolicy[]
   budgetNotifications   BudgetNotification[]
+  performanceBudgets    PerformanceBudget[]
   characters            Character[]
   characterRelationships CharacterRelationship[]
   worldItems            WorldItem[]
@@ -595,6 +605,9 @@ model GenerationJob {
   progress         Decimal                     @default(0) @db.Decimal(5, 2)
   lockKey          String?                     @map("lock_key") @db.VarChar(160)
   leaseExpiresAt   DateTime?                   @map("lease_expires_at") @db.Timestamptz(6)
+  attemptCount     Int                         @default(0) @map("attempt_count")
+  maxAttempts      Int                         @default(3) @map("max_attempts")
+  nextRunAt        DateTime?                   @map("next_run_at") @db.Timestamptz(6)
   startedAt        DateTime?                   @map("started_at") @db.Timestamptz(6)
   finishedAt       DateTime?                   @map("finished_at") @db.Timestamptz(6)
   createdAt        DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -610,6 +623,7 @@ model GenerationJob {
   @@index([projectId, status, createdAt], map: "idx_generation_jobs_project_status")
   @@index([organizationId, createdAt], map: "idx_generation_jobs_org_created")
   @@index([lockKey, leaseExpiresAt], map: "idx_generation_jobs_lock")
+  @@index([organizationId, status, nextRunAt, createdAt], map: "idx_generation_jobs_org_status_next_run")
   @@map("generation_jobs")
 }
 
@@ -705,6 +719,44 @@ model BudgetNotification {
   @@index([organizationId, status, createdAt], map: "idx_budget_notifications_org_status")
   @@index([organizationId, periodStart], map: "idx_budget_notifications_period")
   @@map("budget_notifications")
+}
+
+model PerformanceBudget {
+  id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  projectId      String?                @map("project_id") @db.Uuid
+  scope          PerformanceBudgetScope
+  warningCents   Int?                   @map("warning_cents")
+  criticalCents  Int?                   @map("critical_cents")
+  isActive       Boolean                @default(true) @map("is_active")
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project?               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, scope, isActive], map: "idx_perf_budgets_org_scope")
+  @@index([projectId, isActive], map: "idx_perf_budgets_project")
+  @@map("performance_budgets")
+}
+
+model WorkerHeartbeat {
+  id               String       @id @db.Uuid
+  organizationId   String       @map("organization_id") @db.Uuid
+  lockKey          String       @unique @map("lock_key") @db.VarChar(160)
+  pid              Int?
+  startedAt        DateTime     @map("started_at") @db.Timestamptz(6)
+  lastSeenAt       DateTime     @map("last_seen_at") @db.Timestamptz(6)
+  pollIntervalMs   Int          @map("poll_interval_ms")
+  leaseDurationMs  Int          @map("lease_duration_ms")
+  lastTickStatus   String?      @map("last_tick_status") @db.VarChar(40)
+  lastTickAt       DateTime?    @map("last_tick_at") @db.Timestamptz(6)
+  metadata         Json?
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, lastSeenAt], map: "idx_worker_heartbeats_org_last_seen")
+  @@map("worker_heartbeats")
 }
 
 model AuditLog {
