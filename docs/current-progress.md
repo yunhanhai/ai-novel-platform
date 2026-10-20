@@ -823,3 +823,30 @@ pnpm test:e2e    2 passed（30.2s）
 ### 备注
 
 `worker_heartbeats` 表仍在 schema 承载但无代码接线——等有 UI 消费者再接（避免为写而写）。
+
+---
+
+## 2026-10-21 — 第四批：REWRITE / POLISH 选中即改（核心写作功能）
+
+关闭产品侧最大的功能缺口：编辑器选中文字 → AI 改写/润色 → 对照确认 → 应用。此前 API 白名单对这两个类型返回"尚未开放"。
+
+### 后端（worker + API）
+
+- **`rewrite-polish-handler`**（新）：REWRITE/POLISH 共用一个 handler，按 jobType 分派中文写作指令（重写=换写法保情节；润色=修错顺句不改内容），支持 `instruction` 附加要求。校验链：`SELECTION_MISSING`（缺选中文本）/ `CHAPTER_NOT_FOUND` / `SELECTION_STALE`（选中文本已不在章节内——防内容漂移）均为确定性失败；模型异常 rethrow 走 poll 重试（上一批建好的机制直接受益）。结果不直接写库：`SUCCEEDED + output.{mode, selectedText, newText}`。
+- API 白名单：REWRITE/POLISH 从 PENDING 移入 SUPPORTED；新增校验——这两个类型必须携带非空 `input.selectedText`（400 快速失败）。PENDING 仅剩 GENERATE_OUTLINE / CONTINUE_CHAPTER / REVIEW。
+
+### 前端（选中即改闭环）
+
+- **`EditorPane`**：完全受控选区（`onSelect` 上报 `{start,end,text}`），选中非空时渲染工具条（已选 N 字 · 改写 · 润色 · 取消）；外部清空选区时同步收起 textarea 原生选中。
+- **workspace 页**：`handleRewrite` 提交任务并保存选区锚点；轮询到 SUCCEEDED 弹出**对照卡**（原文/新文双栏 + 应用/丢弃）；应用时校验 `content.slice(start,end) === selectedText`——原文被手动编辑过则拒绝应用并提示重新选择（与 handler 端 `SELECTION_STALE` 双保险）。应用走现有 `setContent` 自动保存链路。
+- `job-request.ts`：`selectedText/instruction` 仅对 REWRITE/POLISH 附加（与 contextOptions 仅对 GENERATE_CHAPTER 附加同模式）。
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        591 tests（db 16 + shared 28 + ma 37 + worker 129 + web 381）
+pnpm test:e2e    2 passed（30.4s）—— smoke 新增：全选→润色→SUCCEEDED→对照卡→应用→正文含 fake 输出
+```
+
+新增测试：handler 8 例（模式分派/指令注入/三态确定性失败/目标回落/rethrow）、API 3 例（缺 selectedText 400/空白 400/合法 201）、job-request 2 例。

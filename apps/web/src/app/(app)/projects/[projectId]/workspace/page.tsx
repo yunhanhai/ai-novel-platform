@@ -1,17 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import type { QualityMode } from "@ai-novel/shared/generation/performance";
 import { useParams } from "next/navigation";
 import { AssetSidebar } from "../../../../../components/workspace/asset-sidebar";
-import { EditorPane } from "../../../../../components/workspace/editor-pane";
+import { EditorPane, type EditorSelection } from "../../../../../components/workspace/editor-pane";
 import { WorkspaceSideTabs } from "../../../../../components/workspace/workspace-side-tabs";
 import {
   useChapters,
   useChapterContent,
   useJobPolling
 } from "../../../../../components/workspace/use-workspace-data";
+
+const REWRITE_POLISH_JOB_TYPES = new Set(["REWRITE", "POLISH"]);
+
+interface RewriteResult {
+  jobId: string;
+  mode: string;
+  selectedText: string;
+  newText: string;
+  start: number;
+  end: number;
+}
 
 export default function WorkspacePage() {
   const params = useParams<{ projectId: string }>();
@@ -31,16 +42,50 @@ export default function WorkspacePage() {
     useChapterContent(activeChapterId);
   const { job, startJob, isStarting, error: jobError } = useJobPolling();
 
+  const [selection, setSelection] = useState<EditorSelection | null>(null);
+  const [rewriteResult, setRewriteResult] = useState<RewriteResult | null>(null);
+  const [rewriteNotice, setRewriteNotice] = useState<string | null>(null);
+  const selectionRef = useRef<EditorSelection | null>(null);
+  selectionRef.current = selection;
+
   useEffect(() => {
-    if (job?.status === "SUCCEEDED") {
+    if (job?.status === "SUCCEEDED" && !REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
       void reloadChapters();
       void reloadContent();
     }
-  }, [job?.status, reloadChapters, reloadContent]);
+  }, [job?.status, job?.jobType, reloadChapters, reloadContent]);
+
+  useEffect(() => {
+    if (job?.status === "SUCCEEDED" && REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
+      const sel = selectionRef.current;
+      const out = job.output;
+      if (sel && out?.newText && out.selectedText) {
+        setRewriteResult({
+          jobId: job.id,
+          mode: out.mode ?? job.jobType,
+          selectedText: out.selectedText,
+          newText: out.newText,
+          start: sel.start,
+          end: sel.end
+        });
+      } else {
+        setRewriteNotice("任务已完成，但选区已失效，请重新选择文字后再试。");
+      }
+    }
+    if (job?.status === "FAILED" && REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
+      setRewriteNotice(job.errorMessage ?? "改写任务失败");
+    }
+  }, [job?.status, job?.jobType, job?.id, job?.output, job?.errorMessage]);
+
+  const rewriteBusy =
+    isStarting || (job ? ["QUEUED", "RUNNING"].includes(job.status) && REWRITE_POLISH_JOB_TYPES.has(job.jobType) : false);
 
   async function handleSelectChapter(id: string) {
     if (id === activeChapterId) return;
     await flush();
+    setSelection(null);
+    setRewriteResult(null);
+    setRewriteNotice(null);
     setActiveChapterId(id);
   }
 
@@ -68,6 +113,107 @@ export default function WorkspacePage() {
     await startJob(activeChapterId, "EXTRACT_MEMORY");
   }
 
+  const handleRewrite = useCallback(
+    async (jobType: "REWRITE" | "POLISH") => {
+      const sel = selectionRef.current;
+      if (!activeChapterId || !sel || sel.text.trim().length === 0) return;
+      setRewriteResult(null);
+      setRewriteNotice(null);
+      await startJob(activeChapterId, jobType, { selectedText: sel.text });
+    },
+    [activeChapterId, startJob]
+  );
+
+  const applyRewrite = useCallback(() => {
+    const result = rewriteResult;
+    if (!result) return;
+    const current = content;
+    if (current.slice(result.start, result.end) !== result.selectedText) {
+      setRewriteNotice("原文已发生变化，无法应用。请重新选择文字后再试。");
+      setRewriteResult(null);
+      return;
+    }
+    setContent(current.slice(0, result.start) + result.newText + current.slice(result.end));
+    setRewriteResult(null);
+    setRewriteNotice(null);
+    setSelection(null);
+  }, [rewriteResult, content, setContent]);
+
+  const discardRewrite = useCallback(() => {
+    setRewriteResult(null);
+    setRewriteNotice(null);
+  }, []);
+
+  const selectionCount = selection?.text.length ?? 0;
+
+  const selectionToolbar = (
+    <>
+      <span className="selection-toolbar-info">已选中 {selectionCount} 字</span>
+      <button
+        type="button"
+        className="btn-ghost btn-small"
+        onClick={() => void handleRewrite("REWRITE")}
+        disabled={rewriteBusy || !activeChapterId}
+      >
+        改写
+      </button>
+      <button
+        type="button"
+        className="btn-ghost btn-small"
+        onClick={() => void handleRewrite("POLISH")}
+        disabled={rewriteBusy || !activeChapterId}
+      >
+        润色
+      </button>
+      <button
+        type="button"
+        className="btn-ghost btn-small"
+        onClick={() => setSelection(null)}
+        disabled={rewriteBusy}
+        aria-label="取消选择"
+      >
+        取消
+      </button>
+    </>
+  );
+
+  const rewriteCard = rewriteResult ? (
+    <div className="rewrite-result-card">
+      <div className="rewrite-result-head">
+        <strong>{rewriteResult.mode === "POLISH" ? "润色结果" : "改写结果"}</strong>
+        <span className="muted">应用后将替换选中段落</span>
+      </div>
+      <div className="rewrite-result-diff">
+        <div className="rewrite-result-block">
+          <span className="muted">原文</span>
+          <p>{rewriteResult.selectedText}</p>
+        </div>
+        <div className="rewrite-result-block rewrite-result-new">
+          <span className="muted">新文</span>
+          <p>{rewriteResult.newText}</p>
+        </div>
+      </div>
+      <div className="rewrite-result-actions">
+        <button type="button" className="btn-primary btn-small" onClick={applyRewrite}>
+          应用到编辑器
+        </button>
+        <button type="button" className="btn-ghost btn-small" onClick={discardRewrite}>
+          丢弃
+        </button>
+      </div>
+    </div>
+  ) : rewriteBusy ? (
+    <div className="rewrite-result-card">
+      <div className="rewrite-result-head">
+        <strong>{job?.jobType === "POLISH" ? "润色中..." : "改写中..."}</strong>
+      </div>
+    </div>
+  ) : rewriteNotice ? (
+    <div className="rewrite-result-card">
+      <p className="rewrite-result-notice">{rewriteNotice}</p>
+    </div>
+  ) : null;
+
   return (
     <div className="workspace">
       <AssetSidebar
@@ -87,6 +233,10 @@ export default function WorkspacePage() {
         saveStatus={saveStatus}
         isLoadingContent={isLoadingContent}
         disabled={!activeChapterId}
+        selection={selection}
+        onSelectionChange={setSelection}
+        selectionToolbar={selectionToolbar}
+        rewriteCard={rewriteCard}
       />
       <WorkspaceSideTabs
         projectId={projectId}

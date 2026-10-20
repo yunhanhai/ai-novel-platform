@@ -54,10 +54,42 @@ describe("POST /api/generation-jobs", () => {
   });
 
   it("returns 400 when jobType has no worker handler yet", async () => {
-    const res = await POST(req({ chapterId: "ch-1", jobType: "REWRITE" }));
+    const res = await POST(req({ chapterId: "ch-1", jobType: "REVIEW" }));
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toContain("尚未开放");
+  });
+
+  it("returns 400 when REWRITE has no selectedText", async () => {
+    const res = await POST(req({ chapterId: "ch-1", jobType: "REWRITE" }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("selectedText");
+  });
+
+  it("returns 400 when POLISH selectedText is blank", async () => {
+    const res = await POST(req({ chapterId: "ch-1", jobType: "POLISH", input: { selectedText: "   " } }));
+    expect(res.status).toBe(400);
+  });
+
+  it("creates a POLISH job and stores selectedText in input", async () => {
+    p().chapter.findFirst.mockResolvedValue({ id: "ch-1", projectId: "proj-1" });
+    cj().mockResolvedValue({
+      id: "job-1", jobType: "POLISH", status: "QUEUED", projectId: "proj-1"
+    });
+    const res = await POST(req({
+      chapterId: "ch-1",
+      jobType: "POLISH",
+      input: { selectedText: "她坐在窗边，头也不抬。", instruction: "更口语化" }
+    }));
+    expect(res.status).toBe(201);
+    expect(cj()).toHaveBeenCalledWith(expect.objectContaining({
+      jobType: "POLISH",
+      input: expect.objectContaining({
+        selectedText: "她坐在窗边，头也不抬。",
+        instruction: "更口语化"
+      })
+    }));
   });
 
   it("returns 400 when both chapterId and projectId missing", async () => {

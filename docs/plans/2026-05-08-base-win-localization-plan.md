@@ -302,3 +302,24 @@ pnpm test:e2e
 - [x] New tests: claim where-shape lock (zombie branch, backoff filter, attempt increment), requeue field assertions, poller retried/exhausted/NO_HANDLER/legacy-row cases, backoff curve.
 - [x] Verification: typecheck 5/5; 578 tests green (16+28+37+121+376); e2e 2 passed (30.2s).
 - [x] Noted: worker_heartbeats stays schema-only until a consumer exists.
+
+## Task 14: 2026-10-21 Selection Rewrite/Polish (Core Writing Feature)
+
+**Files:**
+- Create: `apps/worker/src/pipeline/rewrite-polish-handler.ts` + test
+- Modify: `apps/worker/src/handlers.ts` + test, `apps/web/src/app/api/generation-jobs/route.ts` + test, `apps/web/src/components/workspace/job-request.ts` + test, `use-workspace-data.ts`, `editor-pane.tsx`, `workspace/page.tsx`, `globals.css`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Shared rewrite/polish handler: mode-dispatched Chinese writing prompts, optional user instruction; SELECTION_MISSING / CHAPTER_NOT_FOUND / SELECTION_STALE are deterministic failures, model errors rethrow into the poller retry path; results return via output.{mode, selectedText, newText} without writing chapter content.
+- [x] API: REWRITE/POLISH moved from PENDING to SUPPORTED with a non-empty input.selectedText requirement (400 otherwise); PENDING left with GENERATE_OUTLINE / CONTINUE_CHAPTER / REVIEW.
+- [x] EditorPane: fully controlled selection reporting, selection toolbar (N chars selected + rewrite/polish/cancel), collapses the native selection when cleared externally.
+- [x] Workspace page: submits the job with the selection anchor, shows a before/after diff card on SUCCEEDED, applies only when content.slice(start,end) still equals selectedText (double guard with the handler-side SELECTION_STALE); apply rides the existing auto-save path.
+- [x] job-request: selectedText/instruction attached only for REWRITE/POLISH, instruction trimmed.
+- [x] Verified: typecheck 5/5; 591 tests green (16+28+37+129+381); e2e 2 passed (30.4s) including a new smoke step: select-all → polish → SUCCEEDED → diff card → apply → content contains the fake model output.

@@ -30,4 +30,29 @@ describe("buildGenerationRequestBody", () => {
     const body = buildGenerationRequestBody({ chapterId: "c1", jobType: "GENERATE_CHAPTER" });
     expect(body.qualityMode).toBeUndefined();
   });
+
+  it("attaches selectedText and instruction only for REWRITE/POLISH", () => {
+    const polish = buildGenerationRequestBody({
+      chapterId: "c1",
+      jobType: "POLISH",
+      selectedText: "她坐在窗边。",
+      instruction: "更口语化"
+    });
+    expect(polish).toMatchObject({
+      chapterId: "c1",
+      jobType: "POLISH",
+      input: { selectedText: "她坐在窗边。", instruction: "更口语化" }
+    });
+
+    const rewrite = buildGenerationRequestBody({ chapterId: "c1", jobType: "REWRITE", selectedText: "片段" });
+    expect(rewrite).toMatchObject({ input: { selectedText: "片段" } });
+
+    expect(buildGenerationRequestBody({ chapterId: "c1", jobType: "DESLOP", selectedText: "片段" }).input).toBeUndefined();
+  });
+
+  it("omits instruction from the input when blank for REWRITE/POLISH", () => {
+    const body = buildGenerationRequestBody({ chapterId: "c1", jobType: "POLISH", selectedText: "片段", instruction: "  " });
+    expect(body).toMatchObject({ input: { selectedText: "片段" } });
+    expect((body.input as Record<string, unknown>).instruction).toBeUndefined();
+  });
 });

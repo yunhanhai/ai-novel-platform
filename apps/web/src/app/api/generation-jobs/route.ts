@@ -36,6 +36,8 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   "GENERATE_CHAPTER",
   "DESLOP",
   "EXTRACT_MEMORY",
+  "REWRITE",
+  "POLISH",
   "DIAGNOSE_CHAPTER",
   "READER_SIMULATION",
   "STYLE_DRIFT_CHECK",
@@ -45,10 +47,10 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
 const PENDING_JOB_TYPES: JobType[] = [
   "GENERATE_OUTLINE",
   "CONTINUE_CHAPTER",
-  "REWRITE",
-  "POLISH",
   "REVIEW"
 ];
+
+const REWRITE_POLISH_JOB_TYPES: JobType[] = ["REWRITE", "POLISH"];
 
 const DIAGNOSTIC_JOB_TYPES: JobType[] = [
   "DIAGNOSE_CHAPTER",
@@ -137,6 +139,17 @@ export async function POST(request: Request) {
   if (!chapterId && !body.projectId) {
     return NextResponse.json(
       { success: false, error: "chapterId 或 projectId 必填" },
+      { status: 400 }
+    );
+  }
+
+  const selectedText =
+    typeof (body.input as { selectedText?: unknown } | undefined)?.selectedText === "string"
+      ? (body.input as { selectedText: string }).selectedText
+      : null;
+  if (REWRITE_POLISH_JOB_TYPES.includes(jobType) && (!selectedText || selectedText.trim().length === 0)) {
+    return NextResponse.json(
+      { success: false, error: "改写/润色任务必须提供非空的选中文本 selectedText" },
       { status: 400 }
     );
   }

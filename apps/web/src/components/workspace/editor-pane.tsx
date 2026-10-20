@@ -1,3 +1,13 @@
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
+
+export interface EditorSelection {
+  start: number;
+  end: number;
+  text: string;
+}
+
 interface EditorPaneProps {
   content: string;
   title: string;
@@ -5,6 +15,10 @@ interface EditorPaneProps {
   saveStatus?: "idle" | "saving" | "saved" | "error";
   isLoadingContent?: boolean;
   disabled?: boolean;
+  selection?: EditorSelection | null;
+  onSelectionChange?: (selection: EditorSelection | null) => void;
+  selectionToolbar?: ReactNode;
+  rewriteCard?: ReactNode;
 }
 
 export function EditorPane({
@@ -13,8 +27,33 @@ export function EditorPane({
   onChange,
   saveStatus = "idle",
   isLoadingContent = false,
-  disabled = false
+  disabled = false,
+  selection = null,
+  onSelectionChange,
+  selectionToolbar,
+  rewriteCard
 }: EditorPaneProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (selection === null && el && el.selectionStart !== el.selectionEnd) {
+      el.setSelectionRange(0, 0);
+    }
+  }, [selection, content]);
+
+  function syncSelection() {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start === end) {
+      onSelectionChange?.(null);
+      return;
+    }
+    onSelectionChange?.({ start, end, text: content.slice(start, end) });
+  }
+
   return (
     <section className="pane editor-pane">
       <div className="editor-header">
@@ -23,13 +62,21 @@ export function EditorPane({
           {labelForSaveStatus(saveStatus)}
         </span>
       </div>
+      {selectionToolbar && selection && selection.text.trim().length > 0 && (
+        <div className="selection-toolbar" role="toolbar" aria-label="选中文字操作">
+          {selectionToolbar}
+        </div>
+      )}
       <textarea
+        ref={textareaRef}
         className="editor-textarea"
         value={content}
         onChange={(e) => onChange(e.target.value)}
+        onSelect={() => syncSelection()}
         placeholder={isLoadingContent ? "加载中..." : "在此输入或等待 AI 生成..."}
         disabled={disabled || isLoadingContent}
       />
+      {rewriteCard && <div className="rewrite-result-wrap">{rewriteCard}</div>}
     </section>
   );
 }

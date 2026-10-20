@@ -88,6 +88,19 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   const editor = page.locator("textarea").first();
   await expect(editor).not.toBeEmpty({ timeout: 10_000 });
 
+  // 8.5 选中全文 → 触发润色（POLISH）→ 应用结果（REWRITE/POLISH 闭环）
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await expect(page.locator(".selection-toolbar")).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: "润色" }).click();
+  await expect(jobTypeCell).toHaveText("润色", { timeout: 10_000 });
+  await expect(jobStatusTag).toHaveText("已完成", { timeout: 30_000 });
+  await expect(page.locator(".rewrite-result-card")).toContainText("润色结果", { timeout: 10_000 });
+  await page.getByRole("button", { name: "应用到编辑器" }).click();
+  await expect(page.locator(".selection-toolbar")).toHaveCount(0);
+  // fake-model 的输出含「林墨推开门」，应用后应出现在正文中
+  await expect(editor).toHaveValue(/林墨推开门/, { timeout: 10_000 });
+
   // 9. 触发 DESLOP
   const deslopBtn = page.getByRole("button", { name: "去 AI 味" });
   await expect(deslopBtn).toBeEnabled({ timeout: 15_000 });

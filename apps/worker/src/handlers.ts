@@ -4,6 +4,7 @@ import type { RuntimeModel } from "./model-runtime";
 import { createGenerateChapterHandler } from "./pipeline/generate-chapter-handler";
 import { createDeslopHandler } from "./pipeline/deslop-handler";
 import { createExtractMemoryHandler } from "./pipeline/extract-memory-handler";
+import { createRewritePolishHandler } from "./pipeline/rewrite-polish-handler";
 import { createDiagnoseChapterHandler, type DiagnosticType } from "./pipeline/diagnose-chapter-handler";
 import { createFakeModel } from "./pipeline/fake-model";
 
@@ -35,6 +36,10 @@ export function createHandlers(deps: HandlerFactoryDeps): Map<string, JobHandler
     ["DESLOP", createDeslopHandler({ ...shared, ...fakeModelDep() })],
     ["EXTRACT_MEMORY", createExtractMemoryHandler({ ...shared, ...fakeModelDep() })]
   ]);
+
+  const rewritePolish = createRewritePolishHandler({ ...shared, ...fakeModelDep() });
+  handlers.set("REWRITE", rewritePolish);
+  handlers.set("POLISH", rewritePolish);
 
   for (const diagnosticType of DIAGNOSTIC_JOB_TYPES) {
     handlers.set(diagnosticType, createDiagnoseChapterHandler({ ...shared, diagnosticType, ...fakeModelDep() }));

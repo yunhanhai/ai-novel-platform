@@ -221,6 +221,9 @@ export interface JobSummary {
     diagnosticSummary?: DiagnosticSummaryView;
     diagnosticDegraded?: boolean;
     diagnosticWarning?: string;
+    mode?: string;
+    selectedText?: string;
+    newText?: string;
   } | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -247,6 +250,8 @@ interface UseJobPollingResult {
 interface StartJobOptions {
   contextOptions?: ContextOptions;
   qualityMode?: QualityMode;
+  selectedText?: string;
+  instruction?: string;
 }
 
 export function useJobPolling(): UseJobPollingResult {
@@ -288,7 +293,9 @@ export function useJobPolling(): UseJobPollingResult {
           chapterId,
           jobType,
           qualityMode: options?.qualityMode,
-          contextOptions: options?.contextOptions
+          contextOptions: options?.contextOptions,
+          selectedText: options?.selectedText,
+          instruction: options?.instruction
         });
         const res = await fetch("/api/generation-jobs", {
           method: "POST",

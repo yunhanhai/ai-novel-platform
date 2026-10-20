@@ -17,6 +17,8 @@ describe("createHandlers", () => {
       "GENERATE_CHAPTER",
       "DESLOP",
       "EXTRACT_MEMORY",
+      "REWRITE",
+      "POLISH",
       "DIAGNOSE_CHAPTER",
       "READER_SIMULATION",
       "STYLE_DRIFT_CHECK",
