@@ -4,6 +4,7 @@ export { prisma } from "./client";
 export {
   createJob,
   claimNextJob,
+  requeueJobForRetry,
   releaseJobLease,
   updateJobStatus,
   createStep,

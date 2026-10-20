@@ -217,7 +217,7 @@ describe("createGenerateChapterHandler", () => {
     expect(tx.contentVersion.create).not.toHaveBeenCalled();
   });
 
-  it("rolls back and marks FINALIZE_FAILED when contentVersion.create throws inside tx", async () => {
+  it("rolls back the finalize tx and rethrows when contentVersion.create throws inside tx", async () => {
     const { prisma, tx } = createPrismaStub({ txThrowsOn: "contentVersion.create" });
     const updateJobStatus = vi.fn().mockResolvedValue({});
 
@@ -227,21 +227,14 @@ describe("createGenerateChapterHandler", () => {
       model: stubModel as never
     });
 
-    await handler(baseJob);
+    await expect(handler(baseJob)).rejects.toThrow("commit failed");
 
     expect(tx.chapter.update).toHaveBeenCalledOnce();
     expect(tx.contentVersion.create).toHaveBeenCalledOnce();
     expect(tx.generationStep.create).not.toHaveBeenCalled();
     expect(tx.generationJob.update).not.toHaveBeenCalled();
 
-    expect(updateJobStatus).toHaveBeenCalledWith(
-      expect.objectContaining({
-        jobId: "job-1",
-        status: "FAILED",
-        errorCode: "FINALIZE_FAILED",
-        errorMessage: expect.stringContaining("commit failed")
-      })
-    );
+    expect(updateJobStatus).not.toHaveBeenCalled();
   });
 
   it("prefers targetEntityId over input.chapterId when resolving chapter", async () => {

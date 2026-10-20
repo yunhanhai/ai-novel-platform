@@ -165,7 +165,8 @@ export function createDiagnoseChapterHandler(deps: HandlerDeps) {
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "diagnose failed";
-      await fail(job.id, ERROR_CODES.HANDLER_ERROR, message);
+      console.error(`[diagnose:${diagnosticType}] failed for job ${job.id}: ${message}`);
+      throw error;
     }
   };
 }

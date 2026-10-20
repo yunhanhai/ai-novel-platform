@@ -200,7 +200,8 @@ ${chapter.content.slice(0, 8000)}
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "extract memory failed";
-      await fail(job.id, ERROR_CODES.HANDLER_ERROR, message);
+      console.error(`[extract-memory] failed for job ${job.id}: ${message}`);
+      throw error;
     }
   };
 }

@@ -79,13 +79,25 @@ export async function createJob(params: CreateJobParams) {
 
 export async function claimNextJob({ organizationId, lockKey, leaseDurationMs, prisma }: ClaimParams) {
   return prisma.$transaction(async (tx: Tx) => {
+    const now = new Date();
     const job = await tx.generationJob.findFirst({
       where: {
         ...(organizationId ? { organizationId } : {}),
-        status: "QUEUED",
         OR: [
-          { leaseExpiresAt: null },
-          { leaseExpiresAt: { lt: new Date() } }
+          {
+            status: "QUEUED",
+            nextRunAt: null,
+            OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lt: now } }]
+          },
+          {
+            status: "QUEUED",
+            nextRunAt: { lte: now },
+            OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lt: now } }]
+          },
+          {
+            status: "RUNNING",
+            leaseExpiresAt: { lt: now }
+          }
         ]
       },
       orderBy: { createdAt: "asc" }
@@ -97,8 +109,37 @@ export async function claimNextJob({ organizationId, lockKey, leaseDurationMs, p
 
     return tx.generationJob.update({
       where: { id: job.id },
-      data: { status: "RUNNING", lockKey, leaseExpiresAt, startedAt: new Date() }
+      data: {
+        status: "RUNNING",
+        lockKey,
+        leaseExpiresAt,
+        startedAt: new Date(),
+        attemptCount: { increment: 1 }
+      }
     });
+  });
+}
+
+interface RequeueParams {
+  jobId: string;
+  attemptCount: number;
+  nextRunAt: Date;
+  errorMessage: string;
+  prisma: PrismaClient;
+}
+
+export async function requeueJobForRetry({ jobId, attemptCount, nextRunAt, errorMessage, prisma }: RequeueParams) {
+  return prisma.generationJob.update({
+    where: { id: jobId },
+    data: {
+      status: "QUEUED",
+      attemptCount,
+      nextRunAt,
+      lockKey: null,
+      leaseExpiresAt: null,
+      errorCode: "HANDLER_RETRY",
+      errorMessage
+    }
   });
 }
 

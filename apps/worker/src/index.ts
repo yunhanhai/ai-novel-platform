@@ -1,5 +1,5 @@
-import { prisma, claimNextJob, updateJobStatus } from "@ai-novel/db";
-import { createPoller, type UpdateStatusFn } from "./poll";
+import { prisma, claimNextJob, requeueJobForRetry, updateJobStatus } from "@ai-novel/db";
+import { createPoller, type RequeueForRetryFn, type UpdateStatusFn } from "./poll";
 import { createHandlers } from "./handlers";
 import { createJobModelResolver } from "./model-runtime";
 
@@ -10,6 +10,8 @@ const USE_FAKE_MODEL = process.env.USE_FAKE_MODEL === "true";
 
 const updateJobStatusFn: UpdateStatusFn = (params) =>
   updateJobStatus({ ...params, prisma } as Parameters<typeof updateJobStatus>[0]);
+
+const requeueForRetryFn: RequeueForRetryFn = (params) => requeueJobForRetry({ ...params, prisma });
 
 const resolveModel = createJobModelResolver({ prisma, useFakeModel: USE_FAKE_MODEL });
 
@@ -28,6 +30,7 @@ const poller = createPoller({
       prisma
     }) as ReturnType<typeof claimNextJob>,
   updateJobStatus: updateJobStatusFn,
+  requeueForRetry: requeueForRetryFn,
   pollIntervalMs: POLL_INTERVAL_MS,
   handlers
 });

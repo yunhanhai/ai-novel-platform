@@ -84,8 +84,8 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
     try {
       pipelineResult = await runPipelineForContentWithContext({ prisma, job, model, chapterId });
     } catch (error: unknown) {
-      await fail(job.id, ERROR_CODES.HANDLER_ERROR, errorMessage(error, "pipeline failed"));
-      return;
+      console.error(`[generate-chapter] pipeline failed for job ${job.id}: ${errorMessage(error, "pipeline failed")}`);
+      throw error;
     }
 
     if (!pipelineResult.content) {
@@ -109,7 +109,8 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
         await enqueueDeepDiagnostic({ prisma, job, chapterId: chapter.id, finalOutput });
       }
     } catch (error: unknown) {
-      await fail(job.id, ERROR_CODES.FINALIZE_FAILED, errorMessage(error, "finalize transaction failed"));
+      console.error(`[generate-chapter] finalize failed for job ${job.id}: ${errorMessage(error, "finalize transaction failed")}`);
+      throw error;
     }
   };
 }

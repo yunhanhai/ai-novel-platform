@@ -281,3 +281,24 @@ pnpm test:e2e
 - [x] Layout polish: auth page radial-gradient backdrop, sticky settings-nav, wizard content shadow, top-bar wrap.
 - [x] Data race guard for chapter list reloads (sequence ref).
 - [x] Verification: typecheck 5/5, 573 tests green, e2e 2 passed (28.6s), live proxy 401 check.
+
+## Task 13: 2026-10-21 Queue Robustness (Self-directed)
+
+**Files:**
+- Modify: `packages/db/src/generation-jobs.ts`, `packages/db/src/index.ts`, `apps/worker/src/poll.ts`, `apps/worker/src/index.ts`, four pipeline handlers + their tests
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] claimNextJob now reclaims orphaned RUNNING jobs whose lease expired (a worker killed mid-run no longer strands jobs forever) and honors nextRunAt backoff gating; every claim increments attemptCount.
+- [x] poll.ts retry branch: unexpected handler exceptions requeue with exponential backoff (15s × 2^n, capped 10min) while attempts remain (default maxAttempts 3); exhausted attempts mark FAILED with a retry-count suffix; NO_HANDLER stays FAILED without retrying.
+- [x] Handler error contract unified: deterministic failures (CHAPTER_NOT_FOUND / NO_MODEL_PROFILE / empty output) still finalize FAILED inside the handler; unexpected exceptions (LLM network blips, finalize transaction conflicts) now rethrow so the poller owns the retry decision — previously the most retryable failures were swallowed as terminal FAILED.
+- [x] requeueJobForRetry exported from @ai-novel/db; finalize is a single atomic transaction so retries are safe (versionNo recompute is idempotent).
+- [x] New tests: claim where-shape lock (zombie branch, backoff filter, attempt increment), requeue field assertions, poller retried/exhausted/NO_HANDLER/legacy-row cases, backoff curve.
+- [x] Verification: typecheck 5/5; 578 tests green (16+28+37+121+376); e2e 2 passed (30.2s).
+- [x] Noted: worker_heartbeats stays schema-only until a consumer exists.

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createJob, claimNextJob, releaseJobLease, updateJobStatus, createStep, updateStep } from "./generation-jobs";
+import { createJob, claimNextJob, requeueJobForRetry, releaseJobLease, updateJobStatus, createStep, updateStep } from "./generation-jobs";
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
   return {
@@ -110,6 +110,61 @@ describe("generation-jobs", () => {
 
       expect(result).not.toBeNull();
       expect(result!.organizationId).toBe("org1");
+    });
+
+    it("only claims due or orphaned work and increments attemptCount", async () => {
+      const txFindFirst = vi.fn().mockResolvedValue(job);
+      const txUpdate = vi.fn().mockResolvedValue({ ...job, status: "RUNNING", lockKey: "worker-1", attemptCount: 1 });
+      const prisma = mockPrisma({
+        $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+          cb({
+            generationJob: { findFirst: txFindFirst, update: txUpdate }
+          } as never)
+        )
+      });
+
+      await claimNextJob({ lockKey: "worker-1", leaseDurationMs: 60_000, prisma });
+
+      const where = (txFindFirst.mock.calls[0]![0] as { where: { OR: Array<Record<string, unknown>> } }).where;
+      const shapes = JSON.stringify(where.OR);
+      expect(shapes).toContain('"status":"QUEUED"');
+      expect(shapes).toContain('"nextRunAt":null');
+      expect(shapes).toContain('"nextRunAt":{"lte"');
+      expect(shapes).toContain('"status":"RUNNING","leaseExpiresAt":{"lt"');
+
+      const updateArgs = txUpdate.mock.calls[0]![0] as { data: Record<string, unknown> };
+      expect(updateArgs.data.attemptCount).toEqual({ increment: 1 });
+      expect(updateArgs.data.status).toBe("RUNNING");
+    });
+  });
+
+  describe("requeueJobForRetry", () => {
+    it("requeues with attempt count, backoff time and cleared lease", async () => {
+      const update = vi.fn().mockResolvedValue({ ...job, status: "QUEUED", attemptCount: 1 });
+      const prisma = mockPrisma({ generationJob: { update } });
+      const nextRunAt = new Date(Date.now() + 15_000);
+
+      const result = await requeueJobForRetry({
+        jobId: "j1",
+        attemptCount: 1,
+        nextRunAt,
+        errorMessage: "boom",
+        prisma
+      });
+
+      expect(result).toEqual(expect.objectContaining({ status: "QUEUED" }));
+      expect(update).toHaveBeenCalledWith({
+        where: { id: "j1" },
+        data: {
+          status: "QUEUED",
+          attemptCount: 1,
+          nextRunAt,
+          lockKey: null,
+          leaseExpiresAt: null,
+          errorCode: "HANDLER_RETRY",
+          errorMessage: "boom"
+        }
+      });
     });
   });
 

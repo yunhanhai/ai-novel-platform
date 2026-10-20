@@ -126,7 +126,8 @@ ${chapter.content.slice(0, 8000)}
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "deslop failed";
-      await fail(job.id, ERROR_CODES.HANDLER_ERROR, message);
+      console.error(`[deslop] failed for job ${job.id}: ${message}`);
+      throw error;
     }
   };
 }

@@ -782,3 +782,44 @@ pnpm test        573 tests（db 14 + shared 28 + ma 37 + worker 118 + web 376）
 pnpm test:e2e    2 passed（28.6s，proxy 生效后完整流程）
 proxy 实机验证   无 cookie /api/** → 401 ✓
 ```
+
+---
+
+## 2026-10-21 — 第三批：队列健壮性（自主选题）
+
+关闭文档挂账两个会话的"队列健壮性"遗留项。`attempt_count/max_attempts/next_run_at` 三个字段自 2026-05-28 起躺在库里，本批全部接线。
+
+### 1. 僵尸 RUNNING 任务回收（最关键的可靠性缺口）
+
+`claimNextJob` 认领条件扩展：此前只查 `QUEUED`，worker 被 kill 后卡在 `RUNNING` 的任务**永远无法恢复**（e2e 的 globalTeardown 每次都 kill worker，本地实测必现孤儿）。现在：
+
+```sql
+(status = 'QUEUED' AND (nextRunAt IS NULL OR nextRunAt <= now) AND 租约可用)
+OR (status = 'RUNNING' AND leaseExpiresAt < now)   -- 僵尸回收
+```
+
+认领（含僵尸回收）时 `attemptCount += 1`——"开始一次执行"即为一次尝试，crash 也计数。
+
+### 2. 失败重试与指数退避
+
+`poll.ts` 失败分支重做：handler 意外异常且 `attemptCount < maxAttempts`（默认 3）→ `requeueJobForRetry`（回到 QUEUED、`errorCode=HANDLER_RETRY`、记录上次错误、清租约）+ 指数退避 `min(15s × 2^(n-1), 10min)`；次数耗尽 → FAILED + `（已重试 N 次后放弃）`。`NO_HANDLER` 保持直接 FAILED 不重试。
+
+### 3. handler 错误契约重构（四个 handler 统一）
+
+- **确定性失败**（CHAPTER_NOT_FOUND / NO_MODEL_PROFILE / 模型无输出）：保持 handler 内部定稿 FAILED，不重试——重试也不会变好
+- **意外异常**（pipeline LLM 网络抖动、finalize 事务瞬时冲突）：四个 handler 的 catch 由"内部吞掉定稿"改为 **rethrow**，交 poll 统一决策——此前最该重试的瞬时故障恰恰被 handler 吃掉永远 FAILED
+- finalize 是单事务（全回滚），重试安全（versionNo MAX+1 重算幂等）
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        578 tests（db 16 + shared 28 + ma 37 + worker 121 + web 376）
+pnpm test:e2e    2 passed（30.2s）
+```
+
+新增测试：db claim 认领条件形状锁（僵尸分支/退避过滤/attemptCount 自增）+ requeue 字段断言；poll 重试/耗尽/NO_HANDLER 不重试/无元数据兼容/退避曲线。
+
+### 备注
+
+`worker_heartbeats` 表仍在 schema 承载但无代码接线——等有 UI 消费者再接（避免为写而写）。
