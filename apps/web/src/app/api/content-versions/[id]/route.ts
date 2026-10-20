@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeServerMessage } from "../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import {
   getChapterVersion,
@@ -49,8 +50,9 @@ function errorResponse(error: unknown): NextResponse {
   }
   const message = error instanceof Error ? error.message : "服务异常";
   const isNotFound = /不存在|P2025/.test(message);
+  if (!isNotFound) console.error("[api] content-versions/[id] failed", error);
   return NextResponse.json(
-    { success: false, error: message },
+    { success: false, error: isNotFound ? message : sanitizeServerMessage(message) },
     { status: isNotFound ? 404 : 500 }
   );
 }

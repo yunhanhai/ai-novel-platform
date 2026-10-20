@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeServerMessage } from "../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
 
@@ -50,7 +51,8 @@ export async function GET(_request: Request, context: RouteContext) {
   } catch (error: unknown) {
   if (isUnauthorizedError(error)) {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
-  }    const message = error instanceof Error ? error.message : "Service error";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }    const message = error instanceof Error ? error.message : "服务异常";
+    console.error("[api] generation-jobs/[id] failed", error);
+  return NextResponse.json({ success: false, error: sanitizeServerMessage(message) }, { status: 500 });
   }
 }

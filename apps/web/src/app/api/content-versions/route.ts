@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeServerMessage } from "../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../server/context";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
   if (isUnauthorizedError(error)) {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }    const message = error instanceof Error ? error.message : "服务异常";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    console.error("[api] content-versions failed", error);
+  return NextResponse.json({ success: false, error: sanitizeServerMessage(message) }, { status: 500 });
   }
 }

@@ -745,3 +745,40 @@ pnpm typecheck   5/5 workspace 零错误
 pnpm test        93 files 全绿（569 tests）
 pnpm test:e2e    2 passed（53.8s，含 layout 重定向后完整流程）
 ```
+
+---
+
+## 2026-10-21 — 第二批：5xx 泄露修复 / proxy 网关 / 布局微调
+
+### 1. 5xx 错误信息泄露修复（34 个路由）
+
+**问题**：纯 CRUD 路由把原始 `error.message` 回传客户端——Prisma `ECONNREFUSED` 会把 DB host/port 直接暴露给浏览器。
+
+**方案（CJK 判别）**：`server/api-errors.ts` 新增 `sanitizeServerMessage`——服务层用 `throw new Error("中文校验文案")` 传递用户可见业务错误（含 CJK → 原样返回）；基础设施异常（纯英文技术栈信息 → 统一"服务器内部错误" + `console.error` 落服务端日志）。
+
+**关键约束**：路由的 404/409/400 状态分类依赖**英文信号**（`P2025`/`P2002`/`CHAPTER_CONTENT_STALE`/`not found`）——分类判断保留原始 message，**只有 500 出口**做 sanitize。第一批一刀切方案破坏了 8 个测试（分类失效变 500），已按此原则重做。
+
+**保留原样的路由**（错误信息即产品反馈，且不涉 DB 凭据）：asset-drafts 6 个、wizard 2 个（LLM 草稿失败原因）、model-providers/[id]/test（连接诊断）、auth 系列。
+
+### 2. proxy.ts 请求级 API 网关（纵深防御）
+
+- `server/session-token.ts` 抽取：signSession/verifySession/COOKIE 常量（纯 Web Crypto，零 next/headers 依赖）；`auth.ts` 改为 re-export + cookie 操作。
+- `apps/web/src/proxy.ts`（Next16 约定）：`/api/**` 除 `/api/auth/**` 外一律校验 session cookie，无效即 401。只做 gate、不注入请求头（避免重蹈旧 middleware 的非 latin-1 header 崩溃）。
+- **实机验证**：dev server 下无 cookie `GET/POST /api/**` → 401；`/api/auth/me` 走豁免 + 自身 401 语义 ✓。
+
+### 3. 排版布局微调
+
+- auth 页背景径向渐变质感；settings-nav sticky（跟随滚动）；wizard-content 阴影；top-bar-right 换行防窄屏挤压。
+
+### 4. 数据层加固
+
+- `useChapters.reload` 加请求序号守卫（projectId 切换时旧响应晚到不再覆盖新列表）。
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        573 tests（db 14 + shared 28 + ma 37 + worker 118 + web 376）
+pnpm test:e2e    2 passed（28.6s，proxy 生效后完整流程）
+proxy 实机验证   无 cookie /api/** → 401 ✓
+```

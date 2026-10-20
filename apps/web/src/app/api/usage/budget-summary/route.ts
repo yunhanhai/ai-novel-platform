@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeServerMessage } from "../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
 import { getBudgetDashboard, type BudgetPrismaClient } from "../../../../server/budgets";
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
   if (isUnauthorizedError(error)) {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }    const message = error instanceof Error ? error.message : "服务异常";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    console.error("[api] usage/budget-summary failed", error);
+  return NextResponse.json({ success: false, error: sanitizeServerMessage(message) }, { status: 500 });
   }
 }

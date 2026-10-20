@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeServerMessage } from "../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import {
   createStyleProfile,
@@ -89,6 +90,7 @@ function errorResponse(error: unknown): NextResponse {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }
   const message = error instanceof Error ? error.message : "服务异常";
+  console.error("[api] style-profiles failed", error);
   const status = /已存在/.test(message) ? 409 : 500;
-  return NextResponse.json({ success: false, error: message }, { status });
+  return NextResponse.json({ success: false, error: status === 500 ? sanitizeServerMessage(message) : message }, { status });
 }

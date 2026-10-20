@@ -259,3 +259,25 @@ pnpm test:e2e
 - [x] Code review: (app) layout now redirects to /login when session expired (page-level 401 boundary); dead branch cleanup.
 - [x] Review verified: all 27 "catch=2 guard=1" routes are helper-pattern (guard inside shared errorResponse) — full 401 coverage; no dangerouslySetInnerHTML / bare target=_blank; job polling has unmount cleanup; e2e hook classes 15/15 intact; CSS braces balanced.
 - [x] Full verification: typecheck 5/5, 569 tests green, e2e 2 passed (53.8s).
+
+## Task 12: 2026-10-21 5xx Leak Fix, Proxy Gateway, Layout Polish
+
+**Files:**
+- Create: `apps/web/src/server/session-token.ts`, `apps/web/src/proxy.ts`, `apps/web/src/server/api-errors.test.ts`
+- Modify: `apps/web/src/server/auth.ts`, `apps/web/src/server/api-errors.ts`, 34 API route files, `apps/web/src/components/workspace/use-workspace-data.ts`, `apps/web/src/app/globals.css`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Added `sanitizeServerMessage` (CJK heuristic): Chinese operational messages stay visible; pure-ASCII infrastructure details become a generic message with `console.error` server logs.
+- [x] Applied 500-exit-only sanitization across 34 CRUD routes; status classification (404/409/400 via P2025/P2002/CHAPTER_CONTENT_STALE/not-found signals) keeps the raw message. First blanket attempt broke 8 tests and was redone correctly.
+- [x] Kept raw messages where the error is the product (asset-drafts, wizard drafts, provider connection test, auth flows).
+- [x] Extracted pure Web Crypto session token module; auth.ts re-exports; proxy.ts gates `/api/**` (except `/api/auth/**`) with 401 — verified live: no-cookie requests get 401, no header injection.
+- [x] Layout polish: auth page radial-gradient backdrop, sticky settings-nav, wizard content shadow, top-bar wrap.
+- [x] Data race guard for chapter list reloads (sequence ref).
+- [x] Verification: typecheck 5/5, 573 tests green, e2e 2 passed (28.6s), live proxy 401 check.

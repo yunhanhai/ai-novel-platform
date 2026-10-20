@@ -1393,7 +1393,9 @@ select {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: var(--background);
+  background:
+    radial-gradient(1200px 480px at 50% -10%, color-mix(in oklab, var(--accent) 10%, transparent), transparent 70%),
+    var(--background);
 }
 
 .auth-card {
@@ -1462,6 +1464,8 @@ select {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .user-tag {
@@ -1595,6 +1599,7 @@ select {
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
 }
 
 .wizard-step-body {
@@ -1730,11 +1735,16 @@ select {
 
 /* Settings models page + banner */
 .settings-nav {
+  position: sticky;
+  top: 64px;
+  z-index: calc(var(--z-sticky) - 1);
   display: flex;
   gap: 8px;
   max-width: 960px;
   margin: 0 auto;
-  padding: 20px 24px 0;
+  padding: 20px 24px 12px;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
 }
 
 .settings-nav-tab {

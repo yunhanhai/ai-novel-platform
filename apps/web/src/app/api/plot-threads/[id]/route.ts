@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeServerMessage } from "../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import { deletePlotThread, updatePlotThread } from "../../../../server/writing-assets";
 import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
@@ -45,9 +46,10 @@ function errorResponse(error: unknown): NextResponse {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }
   const message = error instanceof Error ? error.message : "服务异常";
+  console.error("[api] plot-threads/[id] failed", error);
   const isNotFound = /P2025|not found|不存在/i.test(message);
   return NextResponse.json(
-    { success: false, error: isNotFound ? "伏笔不存在" : message },
+    { success: false, error: isNotFound ? "伏笔不存在" : sanitizeServerMessage(message) },
     { status: isNotFound ? 404 : 500 }
   );
 }

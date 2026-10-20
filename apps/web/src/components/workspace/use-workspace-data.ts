@@ -33,20 +33,24 @@ export function useChapters(projectId: string | null): UseChaptersResult {
   const [chapters, setChapters] = useState<ChapterItem[]>([]);
   const [isLoading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reloadSeqRef = useRef(0);
 
   const reload = useCallback(async () => {
     if (!projectId) return;
+    const seq = ++reloadSeqRef.current;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/projects/${projectId}/chapters`);
       const json = (await res.json()) as ApiEnvelope<ChapterItem[]>;
       if (!res.ok || !json.success) throw new Error(json.error ?? `请求失败 (${res.status})`);
+      if (reloadSeqRef.current !== seq) return;
       setChapters(json.data ?? []);
     } catch (err: unknown) {
+      if (reloadSeqRef.current !== seq) return;
       setError(err instanceof Error ? err.message : "章节加载失败");
     } finally {
-      setLoading(false);
+      if (reloadSeqRef.current === seq) setLoading(false);
     }
   }, [projectId]);
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeServerMessage } from "../../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import { createChapter, findChaptersByProject } from "../../../../../server/chapters";
 import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../../../server/context";
@@ -77,6 +78,7 @@ function errorResponse(error: unknown): NextResponse {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }
   const message = error instanceof Error ? error.message : "服务异常";
+  console.error("[api] projects/[projectId]/chapters failed", error);
   const status = /unique|已存在|P2002/i.test(message) ? 409 : 500;
-  return NextResponse.json({ success: false, error: message }, { status });
+  return NextResponse.json({ success: false, error: status === 500 ? sanitizeServerMessage(message) : message }, { status });
 }

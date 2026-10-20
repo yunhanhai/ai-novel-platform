@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeServerMessage } from "../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import { createProject, findProjectsByOrganization, type WizardExtras, type WizardOutlineNode } from "../../../server/projects";
 import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../server/context";

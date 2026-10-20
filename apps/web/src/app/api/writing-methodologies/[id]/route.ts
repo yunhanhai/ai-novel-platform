@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeServerMessage } from "../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import {
   deactivateMethodology,
@@ -56,9 +57,10 @@ function errorResponse(error: unknown): NextResponse {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }
   const message = error instanceof Error ? error.message : "服务异常";
+  console.error("[api] writing-methodologies/[id] failed", error);
   const isNotFound = /not found|不存在|P2025/i.test(message);
   return NextResponse.json(
-    { success: false, error: isNotFound ? "方法论不存在" : message },
+    { success: false, error: isNotFound ? "方法论不存在" : sanitizeServerMessage(message) },
     { status: isNotFound ? 404 : 500 }
   );
 }
