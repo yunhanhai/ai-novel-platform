@@ -473,3 +473,22 @@ pnpm test:e2e
 - [x] Chapter paging: normalizePaging (page >= 1, pageSize clamped 1-200, default 50) and findChapterPage (count + page query in parallel). The chapters endpoint stays backward compatible — no paging params returns the full array; paging params return an envelope.
 - [x] useChapters gains loadMore/hasMore/isLoadingMore/total with id-deduplicated incremental appends so scroll position is preserved.
 - [x] Verified: typecheck 5/5; 674 tests green (16+28+37+156+437); e2e 2 passed (42.0s) — smoke opens the versions tab, compares against current, and waits for the diff summary.
+
+## Task 22: 2026-10-21 Stats Panel and Project Progress
+
+**Files:**
+- Create: `apps/web/src/components/workspace/stats-panel.tsx`
+- Modify: `workspace-side-tabs.tsx`, `projects/page.tsx`, `project-list.tsx`, `globals.css`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] New stats tab: three KPI cards (chapters / total words / average per chapter) with tabular numerals, longest and shortest chapter, and a five-bucket length distribution rendered as pure-CSS bars normalized to the largest bucket (no chart library).
+- [x] Empty projects get guidance copy and every view has an explicit refresh action.
+- [x] Project list shows progress: loadProjects reuses the existing groupBy and adds _sum.wordCount at zero extra query cost, so cards display 「N 章 · X 字」.
+- [x] Verified: typecheck 5/5; 674 tests green (16+28+37+156+437); e2e 2 passed (47.9s) — smoke opens the stats tab and asserts 3 KPIs plus 5 distribution rows.

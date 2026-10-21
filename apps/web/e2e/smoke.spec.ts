@@ -161,6 +161,12 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(page.locator(".version-diff-summary")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("tab", { name: "AI", exact: true }).click();
 
+  // 12.6 统计 tab：KPI 与字数分布应渲染
+  await page.getByRole("tab", { name: "统计" }).click();
+  await expect(page.locator(".stats-kpi")).toHaveCount(3, { timeout: 15_000 });
+  await expect(page.locator(".stats-bar-row")).toHaveCount(5);
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
+
   // 13. 导出作品（TXT 附件下载）
   const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
   await page.getByRole("link", { name: "导出" }).click();

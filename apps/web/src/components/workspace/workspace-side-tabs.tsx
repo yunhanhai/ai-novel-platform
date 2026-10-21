@@ -11,6 +11,7 @@ import { MemoriesPanel } from "./memories-panel";
 import { VersionsPanel } from "./versions-panel";
 import { DeslopPanel } from "./deslop-panel";
 import { ReviewPanel } from "./review-panel";
+import { StatsPanel } from "./stats-panel";
 import { OutlinePanel } from "./outline-panel";
 import type { JobSummary } from "./use-workspace-data";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
@@ -18,7 +19,7 @@ import type { QualityMode } from "@ai-novel/shared/generation/performance";
 
 type TabKey =
   | "ai" | "characters" | "world" | "threads" | "memories"
-  | "style" | "methodology" | "versions" | "deslop" | "outline" | "review";
+  | "style" | "methodology" | "versions" | "deslop" | "outline" | "review" | "stats";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "ai", label: "AI" },
@@ -26,6 +27,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "versions", label: "版本" },
   { key: "review", label: "审校" },
   { key: "deslop", label: "去 AI 味" },
+  { key: "stats", label: "统计" },
   { key: "characters", label: "角色" },
   { key: "world", label: "世界观" },
   { key: "threads", label: "伏笔" },
@@ -110,6 +112,7 @@ export function WorkspaceSideTabs({
         {active === "outline" && (
           <OutlinePanel projectId={projectId} job={job} isStarting={isStarting} onGenerateOutline={onGenerateOutline} />
         )}
+        {active === "stats" && <StatsPanel projectId={projectId} />}
         {active === "review" && (
           <ReviewPanel
             chapterId={chapterId}

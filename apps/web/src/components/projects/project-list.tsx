@@ -10,6 +10,7 @@ interface ProjectItem {
   status: string;
   updatedAt: string;
   chapterCount: number;
+  totalWords?: number;
 }
 
 export function ProjectList({ projects }: { projects: ProjectItem[] }) {
@@ -33,9 +34,12 @@ export function ProjectList({ projects }: { projects: ProjectItem[] }) {
               </span>
             </div>
             <div className="project-card-meta">
-              <span>{p.type === "LONG_NOVEL" ? "长篇小说" : "短篇故事"}</span>
+              <span>{p.type === "LONG_NOVEL" ? "长篇连载" : "短篇作品"}</span>
               {p.genre && <span>{p.genre}</span>}
               <span>{p.chapterCount} 章</span>
+              {typeof p.totalWords === "number" && p.totalWords > 0 && (
+                <span>{p.totalWords.toLocaleString()} 字</span>
+              )}
             </div>
           </Link>
         </li>

@@ -39,9 +39,11 @@ async function loadProjects(organizationId: string) {
       projectId: { in: projects.map((p) => p.id) },
       deletedAt: null
     },
-    _count: { _all: true }
+    _count: { _all: true },
+    _sum: { wordCount: true }
   });
   const countMap = new Map(counts.map((c) => [c.projectId, c._count._all]));
+  const wordMap = new Map(counts.map((c) => [c.projectId, c._sum.wordCount ?? 0]));
 
   return projects.map((p) => ({
     id: p.id,
@@ -51,6 +53,7 @@ async function loadProjects(organizationId: string) {
     genre: p.genre,
     status: p.status,
     updatedAt: p.updatedAt.toISOString(),
-    chapterCount: countMap.get(p.id) ?? 0
+    chapterCount: countMap.get(p.id) ?? 0,
+    totalWords: wordMap.get(p.id) ?? 0
   }));
 }
