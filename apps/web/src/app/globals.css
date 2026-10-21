@@ -1445,7 +1445,7 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin: 0 0 4px;
+  margin: 0;
   padding: 4px 6px;
   border-left: 2px solid var(--accent);
   font-size: 11px;
@@ -1453,6 +1453,46 @@ select {
   color: var(--accent-strong);
   background: color-mix(in oklab, var(--accent) 6%, transparent);
   border-radius: 0 4px 4px 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.chapter-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.chapter-group-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.chapter-group:hover .chapter-group-actions,
+.chapter-group-actions:focus-within {
+  opacity: 1;
+}
+
+.chapter-group-edit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.chapter-group-edit input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
 }
 
 .chapter-group-count {

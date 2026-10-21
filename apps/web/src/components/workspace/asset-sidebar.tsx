@@ -84,6 +84,9 @@ export function AssetSidebar({
   const [assigningChapterId, setAssigningChapterId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingChapterId, setDeletingChapterId] = useState<string | null>(null);
+  const [editingVolumeId, setEditingVolumeId] = useState<string | null>(null);
+  const [volumeEditTitle, setVolumeEditTitle] = useState("");
+  const [confirmDeleteVolumeId, setConfirmDeleteVolumeId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nextChapterNo = chapters.length === 0
@@ -226,6 +229,53 @@ export function AssetSidebar({
       setVolumeError(e instanceof Error ? e.message : "移动章节失败");
     } finally {
       setAssigningChapterId(null);
+    }
+  }
+
+  // 重命名分卷：只改标题，不动章节归属。
+  async function handleRenameVolume(volumeId: string) {
+    const title = volumeEditTitle.trim();
+    if (!title) return;
+    setVolumeBusy(true);
+    setVolumeError(null);
+    try {
+      const res = await fetch(`/api/volumes/${volumeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title })
+      });
+      const json = (await res.json()) as ApiEnvelope<{ id: string; title: string }>;
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? `重命名失败 (${res.status})`);
+      }
+      setVolumes((prev) =>
+        prev.map((volume) => (volume.id === volumeId ? { ...volume, title } : volume))
+      );
+      setEditingVolumeId(null);
+    } catch (e: unknown) {
+      setVolumeError(e instanceof Error ? e.message : "重命名分卷失败");
+    } finally {
+      setVolumeBusy(false);
+    }
+  }
+
+  // 删除分卷：后端先把章节移出分卷再删卷，正文不受影响。
+  async function handleDeleteVolume(volumeId: string) {
+    setVolumeBusy(true);
+    setVolumeError(null);
+    try {
+      const res = await fetch(`/api/volumes/${volumeId}`, { method: "DELETE" });
+      const json = (await res.json()) as ApiEnvelope<unknown>;
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? `删除分卷失败 (${res.status})`);
+      }
+      setVolumes((prev) => prev.filter((volume) => volume.id !== volumeId));
+      setConfirmDeleteVolumeId(null);
+      onChapterMoved?.();
+    } catch (e: unknown) {
+      setVolumeError(e instanceof Error ? e.message : "删除分卷失败");
+    } finally {
+      setVolumeBusy(false);
     }
   }
 
@@ -446,10 +496,88 @@ export function AssetSidebar({
           {groupedChapters.map((group) => (
             <div key={group.volumeId ?? "__none__"} className="chapter-group">
               {group.volumeTitle && (
-                <p className="chapter-group-title">
-                  {group.volumeTitle}
-                  <span className="chapter-group-count">{group.chapters.length}</span>
-                </p>
+                <div className="chapter-group-header">
+                  {editingVolumeId === group.volumeId ? (
+                    <form
+                      className="chapter-group-edit"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void handleRenameVolume(group.volumeId!);
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={volumeEditTitle}
+                        onChange={(e) => setVolumeEditTitle(e.target.value)}
+                        autoFocus
+                        required
+                      />
+                      <button type="submit" className="btn-ghost btn-small" disabled={volumeBusy}>
+                        保存
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-small"
+                        onClick={() => setEditingVolumeId(null)}
+                      >
+                        取消
+                      </button>
+                    </form>
+                  ) : (
+                    <p className="chapter-group-title">
+                      {group.volumeTitle}
+                      <span className="chapter-group-count">{group.chapters.length}</span>
+                    </p>
+                  )}
+                  {group.volumeId && editingVolumeId !== group.volumeId && (
+                    <div className="chapter-group-actions">
+                      <button
+                        type="button"
+                        className="btn-ghost btn-small"
+                        onClick={() => {
+                          setEditingVolumeId(group.volumeId);
+                          setVolumeEditTitle(group.volumeTitle ?? "");
+                        }}
+                        title="重命名分卷"
+                      >
+                        改名
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-small danger"
+                        onClick={() => setConfirmDeleteVolumeId(group.volumeId)}
+                        title="删除分卷（章节保留）"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {confirmDeleteVolumeId === group.volumeId && group.volumeId && (
+                <div className="chapter-delete-confirm">
+                  <p className="form-error">
+                    删除分卷「{group.volumeTitle}」？卷内 {group.chapters.length} 个章节会移出分卷，正文不会被删除。
+                  </p>
+                  <div className="chapter-create-actions">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => setConfirmDeleteVolumeId(null)}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost danger"
+                      onClick={() => void handleDeleteVolume(group.volumeId!)}
+                      disabled={volumeBusy}
+                    >
+                      {volumeBusy ? "删除中..." : "确认删除"}
+                    </button>
+                  </div>
+                </div>
               )}
               <ul className="chapter-list">
                 {group.chapters.map((ch) => (

@@ -571,3 +571,23 @@ pnpm test:e2e
 - [x] New 「作品」 tab edits all five fields and confirms that later generations will use the new settings — premise and styleBrief feed context assembly directly.
 - [x] Delete buttons are opacity 0 until hover or keyboard focus, keeping the sidebar visually quiet.
 - [x] Verified: typecheck 5/5; 687 tests green (16+28+37+156+450); e2e 2 passed + 1 skipped (53.8s) covering premise edit + save confirmation and hover-delete with confirmation.
+
+## Task 27: 2026-10-21 Volume Rename and Delete
+
+**Files:**
+- Create: `api/volumes/[volumeId]/route.test.ts`
+- Modify: `asset-sidebar.tsx`, `globals.css`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Rename a volume inline from the group header (auto-focused input, save/cancel), patching the title and updating it locally without a page reload.
+- [x] Delete a volume with an inline confirm that states the N chapters will be detached while their prose is preserved; afterwards the group disappears and chapters return to 未分卷.
+- [x] Group action buttons stay at opacity 0 until the group is hovered or focused, matching the chapter delete button.
+- [x] Group title became flex:1 to accommodate the new action buttons.
+- [x] Verified: typecheck 5/5; 693 tests green (16+28+37+156+456); e2e 2 passed + 1 skipped (1.0m) covering rename, delete and chapter survival.

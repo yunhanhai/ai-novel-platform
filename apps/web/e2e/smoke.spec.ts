@@ -175,6 +175,27 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await page.getByLabel(/移动到分卷/).first().selectOption({ label: "第一卷 风起" });
   await expect(page.locator(".chapter-group-title").first()).toContainText("第一卷 风起", { timeout: 15_000 });
 
+  // 12.8 分卷改名与删除（删除后章节保留、回到未分卷）
+  const volumeGroup = page.locator(".chapter-group").filter({ hasText: "第一卷 风起" }).first();
+  await volumeGroup.hover();
+  await volumeGroup.getByRole("button", { name: "改名" }).click();
+  const volumeInput = page.locator(".chapter-group-edit input").first();
+  await volumeInput.fill("第一卷 改名后");
+  await volumeGroup.getByRole("button", { name: "保存" }).click();
+  await expect(page.locator(".chapter-group-title").first()).toContainText("第一卷 改名后", {
+    timeout: 15_000
+  });
+
+  const renamedGroup = page.locator(".chapter-group").filter({ hasText: "第一卷 改名后" }).first();
+  await renamedGroup.hover();
+  await renamedGroup.locator(".chapter-group-actions").getByRole("button", { name: "删除" }).click();
+  await page.getByRole("button", { name: "确认删除" }).click();
+  await expect(page.locator(".chapter-group-title").filter({ hasText: "第一卷 改名后" })).toHaveCount(0, {
+    timeout: 15_000
+  });
+  // 章节本身必须还在
+  await expect(page.locator(".chapter-list-item").filter({ hasText: CHAPTER_TITLE })).toHaveCount(1);
+
   // 13. 导出作品（TXT 附件下载）
   const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
   await page.getByRole("link", { name: "导出" }).click();
