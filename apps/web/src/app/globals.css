@@ -1406,6 +1406,30 @@ select {
   color: var(--muted);
 }
 
+.chapter-list-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chapter-list-item .chapter-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.chapter-volume-select {
+  flex-shrink: 0;
+  max-width: 76px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
 /* Writing stats panel */
 
 .stats-kpi-grid {

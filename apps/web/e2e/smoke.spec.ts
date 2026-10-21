@@ -167,6 +167,14 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(page.locator(".stats-bar-row")).toHaveCount(5);
   await page.getByRole("tab", { name: "AI", exact: true }).click();
 
+  // 12.7 分卷：新建分卷后章节可移入，侧栏出现分组标题
+  await page.getByRole("button", { name: "+ 卷" }).click();
+  await page.getByPlaceholder("分卷标题（如：第一卷 风起）").fill("第一卷 风起");
+  await page.getByRole("button", { name: "创建", exact: true }).click();
+  await expect(page.locator(".chapter-group-title").first()).toContainText("第一卷 风起", { timeout: 15_000 });
+  await page.getByLabel(/移动到分卷/).first().selectOption({ label: "第一卷 风起" });
+  await expect(page.locator(".chapter-group-title").first()).toContainText("第一卷 风起", { timeout: 15_000 });
+
   // 13. 导出作品（TXT 附件下载）
   const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
   await page.getByRole("link", { name: "导出" }).click();

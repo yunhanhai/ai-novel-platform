@@ -50,6 +50,7 @@ interface AssetSidebarProps {
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
+  onChapterMoved?: () => void;
 }
 
 export function AssetSidebar({
@@ -62,7 +63,8 @@ export function AssetSidebar({
   projectId = null,
   hasMore = false,
   isLoadingMore = false,
-  onLoadMore
+  onLoadMore,
+  onChapterMoved
 }: AssetSidebarProps) {
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
@@ -75,6 +77,11 @@ export function AssetSidebar({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [volumes, setVolumes] = useState<VolumeItem[]>([]);
+  const [creatingVolume, setCreatingVolume] = useState(false);
+  const [volumeTitle, setVolumeTitle] = useState("");
+  const [volumeBusy, setVolumeBusy] = useState(false);
+  const [volumeError, setVolumeError] = useState<string | null>(null);
+  const [assigningChapterId, setAssigningChapterId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nextChapterNo = chapters.length === 0
@@ -172,6 +179,54 @@ export function AssetSidebar({
 
   const showingSearch = hits !== null;
 
+  async function handleCreateVolume(event: React.FormEvent) {
+    event.preventDefault();
+    const title = volumeTitle.trim();
+    if (!projectId || !title) return;
+    setVolumeBusy(true);
+    setVolumeError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/volumes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title })
+      });
+      const json = (await res.json()) as ApiEnvelope<VolumeItem>;
+      if (!res.ok || !json.success || !json.data) {
+        throw new Error(json.error ?? `创建分卷失败 (${res.status})`);
+      }
+      setVolumes((prev) => [...prev, json.data!]);
+      setVolumeTitle("");
+      setCreatingVolume(false);
+    } catch (e: unknown) {
+      setVolumeError(e instanceof Error ? e.message : "创建分卷失败");
+    } finally {
+      setVolumeBusy(false);
+    }
+  }
+
+  // 把章节移动到指定分卷（空字符串表示移出分卷）。
+  async function handleAssignVolume(chapterId: string, volumeId: string) {
+    setAssigningChapterId(chapterId);
+    setVolumeError(null);
+    try {
+      const res = await fetch(`/api/chapters/${chapterId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ volumeId: volumeId || null })
+      });
+      const json = (await res.json()) as ApiEnvelope<unknown>;
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? `移动章节失败 (${res.status})`);
+      }
+      onChapterMoved?.();
+    } catch (e: unknown) {
+      setVolumeError(e instanceof Error ? e.message : "移动章节失败");
+    } finally {
+      setAssigningChapterId(null);
+    }
+  }
+
   // 按分卷分组：未归属分卷的章节单独成组（不显示标题），
   // 分卷顺序按 orderIndex，组内章节按 chapterNo。
   const groupedChapters = (() => {
@@ -214,6 +269,16 @@ export function AssetSidebar({
               导出
             </a>
           )}
+          {projectId && !creatingVolume && (
+            <button
+              type="button"
+              className="btn-ghost btn-small"
+              onClick={() => setCreatingVolume(true)}
+              title="新建分卷"
+            >
+              + 卷
+            </button>
+          )}
           {onCreate && !creating && (
             <button type="button" className="btn-ghost btn-small" onClick={() => setCreating(true)}>
               + 新建
@@ -221,6 +286,30 @@ export function AssetSidebar({
           )}
         </div>
       </div>
+
+      {creatingVolume && (
+        <form className="chapter-create-form" onSubmit={handleCreateVolume}>
+          <span className="muted">新建分卷</span>
+          <input
+            type="text"
+            value={volumeTitle}
+            onChange={(e) => setVolumeTitle(e.target.value)}
+            placeholder="分卷标题（如：第一卷 风起）"
+            required
+            autoFocus
+          />
+          <div className="chapter-create-actions">
+            <button type="button" className="btn-ghost" onClick={() => setCreatingVolume(false)}>
+              取消
+            </button>
+            <button type="submit" className="btn-primary" disabled={volumeBusy || !volumeTitle.trim()}>
+              {volumeBusy ? "创建中" : "创建"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {volumeError && <p className="form-error">{volumeError}</p>}
 
       {stats && (
         <p className="sidebar-stats muted">
@@ -321,7 +410,7 @@ export function AssetSidebar({
               )}
               <ul className="chapter-list">
                 {group.chapters.map((ch) => (
-                  <li key={ch.id}>
+                  <li key={ch.id} className="chapter-list-item">
                     <button
                       className={`chapter-item ${ch.id === activeChapterId ? "active" : ""}`}
                       onClick={() => onSelect(ch.id)}
@@ -330,6 +419,23 @@ export function AssetSidebar({
                       <span className="chapter-title">{ch.title}</span>
                       <span className="chapter-status">{labelForChapterStatus(ch.status)}</span>
                     </button>
+                    {volumes.length > 0 && (
+                      <select
+                        className="chapter-volume-select"
+                        aria-label={`将「${ch.title}」移动到分卷`}
+                        value={ch.volumeId ?? ""}
+                        disabled={assigningChapterId === ch.id}
+                        onChange={(e) => void handleAssignVolume(ch.id, e.target.value)}
+                        title="移动到分卷"
+                      >
+                        <option value="">未分卷</option>
+                        {volumes.map((volume) => (
+                          <option key={volume.id} value={volume.id}>
+                            {volume.title}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </li>
                 ))}
               </ul>

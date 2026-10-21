@@ -512,3 +512,21 @@ pnpm test:e2e
 - [x] Chapter PATCH accepts volumeId (including null to unassign) and the chapter list returns volumeId.
 - [x] Sidebar groups chapters by volume with a colored group header and count; unassigned chapters fall under 「未分卷」; with no volumes at all the flat list is unchanged (fully backward compatible).
 - [x] Verified: typecheck 5/5; 679 tests green (16+28+37+156+442); e2e 2 passed (52.6s).
+
+## Task 24: 2026-10-21 Volume Management UI
+
+**Files:**
+- Modify: `asset-sidebar.tsx`, `workspace/page.tsx`, `globals.css`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Create volume inline from the sidebar header (「+ 卷」): title required, submit disabled while creating, errors shown in place, new volume appended without a full refresh.
+- [x] Move chapters between volumes via a compact per-chapter select (未分卷 + each volume), patching volumeId and reloading groups on success. The select renders only when volumes exist, so projects without volumes look unchanged; the row's select is disabled while its move is in flight.
+- [x] Volume and chapter-move errors surface in one place at the top of the sidebar.
+- [x] Verified: typecheck 5/5; 679 tests green; e2e 2 passed (50.9s) — smoke creates a volume, asserts the group header, then moves a chapter into it.

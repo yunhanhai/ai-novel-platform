@@ -270,6 +270,7 @@ export default function WorkspacePage() {
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         onLoadMore={() => void loadMore()}
+        onChapterMoved={() => void reloadChapters()}
       />
       <EditorPane
         title={activeChapter?.title ?? "未选择章节"}
