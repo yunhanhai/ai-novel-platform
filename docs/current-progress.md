@@ -1158,3 +1158,29 @@ pnpm test        679 tests（db 16 + shared 28 + ma 37 + worker 156 + web 442）
 pnpm test:e2e    2 passed + 1 skipped（47.5s）—— smoke 新增：切 390×844 视口后断言
                  编辑器 y 坐标小于侧栏、出现「回到正文」、无横向溢出
 ```
+
+---
+
+## 2026-10-21 — 第十六批：章节删除与作品信息编辑
+
+两个日常操作缺口：写废的章节无法删除；梗概与风格基调只在创建向导时能填，之后无法调整——而这两项正是生成上下文的核心输入。
+
+### 实现
+
+- **章节软删除**：`softDeleteChapter`（只置 `deletedAt`，正文与版本链完整保留）+ `DELETE /api/chapters/[chapterId]`；侧栏章节行悬停显示删除按钮 → 内联二次确认（提示"历史版本仍保留"）→ 删除后刷新列表
+- **作品信息编辑**：
+  - `GET/PATCH /api/projects/[projectId]`：读取详情、更新标题/题材/状态/风格基调/梗概；状态与空标题校验，`P2025` 映射 404
+  - `DELETE /api/projects/[projectId]`：软删除作品
+  - 新增「作品」tab：五个字段可编辑，保存后提示"后续生成会使用新的设定"——因为 `premise` / `styleBrief` 直接进入上下文组装
+- 删除按钮默认 `opacity: 0`，悬停或键盘聚焦才显示，避免侧栏视觉噪音
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        687 tests（db 16 + shared 28 + ma 37 + worker 156 + web 450）
+pnpm test:e2e    2 passed + 1 skipped（53.8s）—— smoke 新增：改梗概并保存 → 提示出现；
+                 悬停章节 → 删除 → 二次确认 → 列表消失
+```
+
+新增测试 8 例：项目详情 404/正常（2）、更新校验与字段裁剪与 404（3）、软删除与重复删除（2），另有 1 例为既有断言更新。

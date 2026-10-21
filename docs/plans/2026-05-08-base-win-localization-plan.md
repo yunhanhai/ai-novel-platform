@@ -551,3 +551,23 @@ pnpm test:e2e
 - [x] Gave the sidebar an explicit asset-sidebar class (it only had the generic pane class) so layout has a stable hook.
 - [x] Lesson recorded: a separate mobile spec ran in parallel with smoke/settings against the same dev server and database, turning all three red (404 pages). The assertions were folded into the end of smoke using page.setViewportSize() instead.
 - [x] Verified: typecheck 5/5; 679 tests green; e2e 2 passed + 1 skipped (47.5s) asserting editor y < sidebar y at 390x844, the jump button visible, and no horizontal overflow.
+
+## Task 26: 2026-10-21 Chapter Delete and Project Info Editing
+
+**Files:**
+- Create: `api/projects/[projectId]/route.ts` + test, `project-info-panel.tsx`
+- Modify: `server/chapters.ts`, `api/chapters/[chapterId]/route.ts`, `asset-sidebar.tsx`, `workspace-side-tabs.tsx`, `globals.css`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Chapter soft delete: softDeleteChapter only stamps deletedAt so prose and the version chain survive; DELETE /api/chapters/[chapterId] exposes it. The sidebar row shows a delete button on hover, an inline confirm warns that history is kept, and the list reloads after deletion.
+- [x] Project editing: GET/PATCH /api/projects/[projectId] read and update title/genre/status/styleBrief/premise with status and blank-title validation and P2025 mapped to 404; DELETE soft-deletes the project.
+- [x] New 「作品」 tab edits all five fields and confirms that later generations will use the new settings — premise and styleBrief feed context assembly directly.
+- [x] Delete buttons are opacity 0 until hover or keyboard focus, keeping the sidebar visually quiet.
+- [x] Verified: typecheck 5/5; 687 tests green (16+28+37+156+450); e2e 2 passed + 1 skipped (53.8s) covering premise edit + save confirmation and hover-delete with confirmation.

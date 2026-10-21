@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { sanitizeServerMessage } from "../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
-import { updateChapterContent } from "../../../../server/chapters";
+import { softDeleteChapter, updateChapterContent } from "../../../../server/chapters";
 import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../../server/context";
 
 interface RouteContext {
@@ -87,6 +87,35 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ success: true, data: fresh });
   } catch (error: unknown) {
     return errorResponse(error);
+  }
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const { chapterId } = await context.params;
+
+  try {
+    const organizationId = await getOrganizationId();
+    const existing = await prisma.chapter.findFirst({
+      where: { id: chapterId, organizationId, deletedAt: null },
+      select: { id: true }
+    });
+    if (!existing) {
+      return NextResponse.json({ success: false, error: "章节不存在" }, { status: 404 });
+    }
+
+    await softDeleteChapter(organizationId, chapterId, prisma);
+    return NextResponse.json({ success: true, data: { id: chapterId } });
+  } catch (error: unknown) {
+    if (isUnauthorizedError(error)) {
+      return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
+    }
+    const message = error instanceof Error ? error.message : "服务异常";
+    const isNotFound = /P2025|不存在|not found/i.test(message);
+    if (!isNotFound) console.error("[api] chapter delete failed", error);
+    return NextResponse.json(
+      { success: false, error: isNotFound ? "章节不存在" : sanitizeServerMessage(message) },
+      { status: isNotFound ? 404 : 500 }
+    );
   }
 }
 

@@ -82,6 +82,8 @@ export function AssetSidebar({
   const [volumeBusy, setVolumeBusy] = useState(false);
   const [volumeError, setVolumeError] = useState<string | null>(null);
   const [assigningChapterId, setAssigningChapterId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingChapterId, setDeletingChapterId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nextChapterNo = chapters.length === 0
@@ -227,6 +229,25 @@ export function AssetSidebar({
     }
   }
 
+  // 软删除章节：后端只置 deletedAt，正文与版本链保留。
+  async function handleDeleteChapter(chapterId: string) {
+    setDeletingChapterId(chapterId);
+    setVolumeError(null);
+    try {
+      const res = await fetch(`/api/chapters/${chapterId}`, { method: "DELETE" });
+      const json = (await res.json()) as ApiEnvelope<unknown>;
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? `删除章节失败 (${res.status})`);
+      }
+      setConfirmDeleteId(null);
+      onChapterMoved?.();
+    } catch (e: unknown) {
+      setVolumeError(e instanceof Error ? e.message : "删除章节失败");
+    } finally {
+      setDeletingChapterId(null);
+    }
+  }
+
   // 按分卷分组：未归属分卷的章节单独成组（不显示标题），
   // 分卷顺序按 orderIndex，组内章节按 chapterNo。
   const groupedChapters = (() => {
@@ -310,6 +331,28 @@ export function AssetSidebar({
       )}
 
       {volumeError && <p className="form-error">{volumeError}</p>}
+
+      {confirmDeleteId && (
+        <div className="chapter-delete-confirm">
+          <p className="form-error">
+            确认删除「{chapters.find((c) => c.id === confirmDeleteId)?.title ?? "该章节"}」？正文会被标记删除，
+            历史版本仍保留在版本记录中。
+          </p>
+          <div className="chapter-create-actions">
+            <button type="button" className="btn-ghost" onClick={() => setConfirmDeleteId(null)}>
+              取消
+            </button>
+            <button
+              type="button"
+              className="btn-ghost danger"
+              onClick={() => void handleDeleteChapter(confirmDeleteId)}
+              disabled={deletingChapterId === confirmDeleteId}
+            >
+              {deletingChapterId === confirmDeleteId ? "删除中..." : "确认删除"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {stats && (
         <p className="sidebar-stats muted">
@@ -436,6 +479,16 @@ export function AssetSidebar({
                         ))}
                       </select>
                     )}
+                    <button
+                      type="button"
+                      className="chapter-delete"
+                      aria-label={`删除章节「${ch.title}」`}
+                      title="删除章节"
+                      disabled={deletingChapterId === ch.id}
+                      onClick={() => setConfirmDeleteId(ch.id)}
+                    >
+                      ×
+                    </button>
                   </li>
                 ))}
               </ul>

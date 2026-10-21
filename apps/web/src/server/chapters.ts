@@ -65,6 +65,18 @@ export async function createVolume({ organizationId, projectId, title, orderInde
   });
 }
 
+// 软删除章节：保留正文与版本链，避免误删后无法恢复。
+export async function softDeleteChapter(
+  organizationId: string,
+  chapterId: string,
+  prisma: PrismaClient
+) {
+  return prisma.chapter.update({
+    where: { id: chapterId, organizationId },
+    data: { deletedAt: new Date() }
+  });
+}
+
 export async function findVolumesByProject(organizationId: string, projectId: string, prisma: PrismaClient) {
   return prisma.volume.findMany({
     where: { organizationId, projectId },

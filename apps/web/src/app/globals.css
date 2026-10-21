@@ -1485,6 +1485,48 @@ select {
   cursor: pointer;
 }
 
+.chapter-delete {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition), background-color var(--transition);
+}
+
+.chapter-list-item:hover .chapter-delete,
+.chapter-delete:focus-visible {
+  opacity: 1;
+}
+
+.chapter-delete:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.chapter-delete-confirm {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--danger-bg);
+}
+
+.chapter-delete-confirm p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 /* Writing stats panel */
 
 .stats-kpi-grid {

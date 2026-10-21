@@ -181,7 +181,25 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.txt$/);
 
-  // 14. 窄屏布局：编辑器优先于侧栏，且出现「回到正文」快捷按钮
+  // 14. 作品信息编辑：改梗概后保存，重载仍生效
+  await page.getByRole("tab", { name: "作品", exact: true }).click();
+  const premiseBox = page.getByPlaceholder(/主角、冲突、走向/);
+  await expect(premiseBox).toBeVisible({ timeout: 15_000 });
+  await premiseBox.fill("E2E 更新后的梗概：少年入京，卷入旧案。");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText("已保存，后续生成会使用新的设定。")).toBeVisible({ timeout: 15_000 });
+
+  // 15. 章节删除：删除后侧栏不再出现该章节
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
+  const chapterRow = page.locator(".chapter-list-item").filter({ hasText: CHAPTER_TITLE });
+  await chapterRow.hover();
+  await page.getByLabel(`删除章节「${CHAPTER_TITLE}」`).click();
+  await page.getByRole("button", { name: "确认删除" }).click();
+  await expect(page.locator(".chapter-list-item").filter({ hasText: CHAPTER_TITLE })).toHaveCount(0, {
+    timeout: 15_000
+  });
+
+  // 16. 窄屏布局：编辑器优先于侧栏，且出现「回到正文」快捷按钮
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
   const editorBox = await page.locator(".editor-textarea").boundingBox();
