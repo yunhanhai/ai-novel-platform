@@ -492,3 +492,23 @@ pnpm test:e2e
 - [x] Empty projects get guidance copy and every view has an explicit refresh action.
 - [x] Project list shows progress: loadProjects reuses the existing groupBy and adds _sum.wordCount at zero extra query cost, so cards display 「N 章 · X 字」.
 - [x] Verified: typecheck 5/5; 674 tests green (16+28+37+156+437); e2e 2 passed (47.9s) — smoke opens the stats tab and asserts 3 KPIs plus 5 distribution rows.
+
+## Task 23: 2026-10-21 Volume Management
+
+**Files:**
+- Modify: `apps/web/src/server/chapters.ts`, `apps/web/src/server/chapter-paging.ts`, `api/projects/[projectId]/chapters/route.ts`, `api/chapters/[chapterId]/route.ts`, `asset-sidebar.tsx`, `globals.css`
+- Create: `api/projects/[projectId]/volumes/route.ts` + test, `api/volumes/[volumeId]/route.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Service layer gains findVolumesByProject / updateVolume / deleteVolume / assignChapterVolume. deleteVolume clears chapter.volumeId inside a transaction before deleting the volume, so chapters are never destroyed. VolumeStatus is PLANNED/DRAFTING/FINISHED per the real schema (not DONE).
+- [x] Volume APIs: list and create (auto orderIndex = max + 1, 409 on unique conflict), patch (title/summary/status) and delete.
+- [x] Chapter PATCH accepts volumeId (including null to unassign) and the chapter list returns volumeId.
+- [x] Sidebar groups chapters by volume with a colored group header and count; unassigned chapters fall under 「未分卷」; with no volumes at all the flat list is unchanged (fully backward compatible).
+- [x] Verified: typecheck 5/5; 679 tests green (16+28+37+156+442); e2e 2 passed (52.6s).

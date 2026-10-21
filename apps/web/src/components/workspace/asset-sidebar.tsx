@@ -9,6 +9,7 @@ interface ChapterItem {
   title: string;
   status: string;
   wordCount: number;
+  volumeId?: string | null;
 }
 
 interface SearchHit {
@@ -23,6 +24,13 @@ interface ProjectStats {
   chapterCount: number;
   totalWords: number;
   averageWords: number;
+}
+
+interface VolumeItem {
+  id: string;
+  title: string;
+  orderIndex: number;
+  status: string;
 }
 
 interface ApiEnvelope<T> {
@@ -66,6 +74,7 @@ export function AssetSidebar({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [stats, setStats] = useState<ProjectStats | null>(null);
+  const [volumes, setVolumes] = useState<VolumeItem[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nextChapterNo = chapters.length === 0
@@ -107,11 +116,20 @@ export function AssetSidebar({
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(`/api/projects/${projectId}/stats`);
-        const json = (await res.json()) as ApiEnvelope<ProjectStats>;
-        if (!cancelled && res.ok && json.success && json.data) setStats(json.data);
+        const [statsRes, volumesRes] = await Promise.all([
+          fetch(`/api/projects/${projectId}/stats`),
+          fetch(`/api/projects/${projectId}/volumes`)
+        ]);
+        const statsJson = (await statsRes.json()) as ApiEnvelope<ProjectStats>;
+        if (!cancelled && statsRes.ok && statsJson.success && statsJson.data) {
+          setStats(statsJson.data);
+        }
+        const volumesJson = (await volumesRes.json()) as ApiEnvelope<VolumeItem[]>;
+        if (!cancelled && volumesRes.ok && volumesJson.success && volumesJson.data) {
+          setVolumes(volumesJson.data);
+        }
       } catch {
-        // 统计信息是辅助展示，失败时静默降级
+        // 统计与分卷信息是辅助展示，失败时静默降级
       }
     })();
     return () => {
@@ -153,6 +171,38 @@ export function AssetSidebar({
   }
 
   const showingSearch = hits !== null;
+
+  // 按分卷分组：未归属分卷的章节单独成组（不显示标题），
+  // 分卷顺序按 orderIndex，组内章节按 chapterNo。
+  const groupedChapters = (() => {
+    if (volumes.length === 0) {
+      return [{ volumeId: null as string | null, volumeTitle: null as string | null, chapters }];
+    }
+    const byVolume = new Map<string, ChapterItem[]>();
+    const ungrouped: ChapterItem[] = [];
+    for (const chapter of chapters) {
+      if (chapter.volumeId && volumes.some((volume) => volume.id === chapter.volumeId)) {
+        const list = byVolume.get(chapter.volumeId) ?? [];
+        list.push(chapter);
+        byVolume.set(chapter.volumeId, list);
+      } else {
+        ungrouped.push(chapter);
+      }
+    }
+    const groups = volumes.map((volume) => ({
+      volumeId: volume.id as string | null,
+      volumeTitle: volume.title as string | null,
+      chapters: (byVolume.get(volume.id) ?? []).sort((a, b) => a.chapterNo - b.chapterNo)
+    }));
+    if (ungrouped.length > 0) {
+      groups.push({
+        volumeId: null,
+        volumeTitle: volumes.length > 0 ? "未分卷" : null,
+        chapters: ungrouped.sort((a, b) => a.chapterNo - b.chapterNo)
+      });
+    }
+    return groups.filter((group) => group.chapters.length > 0 || group.volumeTitle !== null);
+  })();
 
   return (
     <aside className="pane pane-muted stack" aria-label="章节目录">
@@ -261,20 +311,30 @@ export function AssetSidebar({
         <p className="muted">暂无章节</p>
       ) : (
         <>
-          <ul className="chapter-list">
-            {chapters.map((ch) => (
-              <li key={ch.id}>
-                <button
-                  className={`chapter-item ${ch.id === activeChapterId ? "active" : ""}`}
-                  onClick={() => onSelect(ch.id)}
-                >
-                  <span className="chapter-no">第{ch.chapterNo}章</span>
-                  <span className="chapter-title">{ch.title}</span>
-                  <span className="chapter-status">{labelForChapterStatus(ch.status)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          {groupedChapters.map((group) => (
+            <div key={group.volumeId ?? "__none__"} className="chapter-group">
+              {group.volumeTitle && (
+                <p className="chapter-group-title">
+                  {group.volumeTitle}
+                  <span className="chapter-group-count">{group.chapters.length}</span>
+                </p>
+              )}
+              <ul className="chapter-list">
+                {group.chapters.map((ch) => (
+                  <li key={ch.id}>
+                    <button
+                      className={`chapter-item ${ch.id === activeChapterId ? "active" : ""}`}
+                      onClick={() => onSelect(ch.id)}
+                    >
+                      <span className="chapter-no">第{ch.chapterNo}章</span>
+                      <span className="chapter-title">{ch.title}</span>
+                      <span className="chapter-status">{labelForChapterStatus(ch.status)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
           {hasMore && onLoadMore && (
             <button
               type="button"

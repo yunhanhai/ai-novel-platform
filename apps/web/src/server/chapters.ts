@@ -65,6 +65,63 @@ export async function createVolume({ organizationId, projectId, title, orderInde
   });
 }
 
+export async function findVolumesByProject(organizationId: string, projectId: string, prisma: PrismaClient) {
+  return prisma.volume.findMany({
+    where: { organizationId, projectId },
+    orderBy: { orderIndex: "asc" },
+    select: {
+      id: true,
+      title: true,
+      summary: true,
+      orderIndex: true,
+      status: true,
+      createdAt: true
+    }
+  });
+}
+
+interface UpdateVolumeInput {
+  title?: string;
+  summary?: string;
+  status?: "PLANNED" | "DRAFTING" | "FINISHED";
+}
+
+export async function updateVolume(
+  organizationId: string,
+  volumeId: string,
+  data: UpdateVolumeInput,
+  prisma: PrismaClient
+) {
+  return prisma.volume.update({
+    where: { id: volumeId, organizationId },
+    data
+  });
+}
+
+// 删除分卷只解除章节归属，不删章节本身——避免误删正文。
+export async function deleteVolume(organizationId: string, volumeId: string, prisma: PrismaClient) {
+  return prisma.$transaction(async (tx) => {
+    await tx.chapter.updateMany({
+      where: { volumeId, organizationId },
+      data: { volumeId: null }
+    });
+    return tx.volume.delete({ where: { id: volumeId, organizationId } });
+  });
+}
+
+// 把章节移动到指定分卷（volumeId 传 null 表示移出分卷）。
+export async function assignChapterVolume(
+  organizationId: string,
+  chapterId: string,
+  volumeId: string | null,
+  prisma: PrismaClient
+) {
+  return prisma.chapter.update({
+    where: { id: chapterId, organizationId },
+    data: { volumeId }
+  });
+}
+
 export async function createChapter({ organizationId, projectId, volumeId, chapterNo, title, createdById, prisma }: CreateChapterParams) {
   return prisma.chapter.create({
     data: {

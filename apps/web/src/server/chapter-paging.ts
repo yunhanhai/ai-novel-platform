@@ -15,6 +15,7 @@ export interface ChapterPage {
     title: string;
     status: string;
     wordCount: number;
+    volumeId: string | null;
     content: string | null;
     updatedAt: Date;
   }>;
@@ -58,6 +59,7 @@ export async function findChapterPage({
         title: true,
         status: true,
         wordCount: true,
+        volumeId: true,
         content: true,
         updatedAt: true
       }

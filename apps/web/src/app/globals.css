@@ -1379,6 +1379,33 @@ select {
   margin-top: 8px;
 }
 
+/* Volume grouping in the chapter sidebar */
+
+.chapter-group {
+  margin-bottom: 10px;
+}
+
+.chapter-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 4px;
+  padding: 4px 6px;
+  border-left: 2px solid var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-strong);
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
+  border-radius: 0 4px 4px 0;
+}
+
+.chapter-group-count {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
 /* Writing stats panel */
 
 .stats-kpi-grid {

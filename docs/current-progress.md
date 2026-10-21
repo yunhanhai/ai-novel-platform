@@ -1083,3 +1083,30 @@ pnpm typecheck   5/5
 pnpm test        674 tests（db 16 + shared 28 + ma 37 + worker 156 + web 437）
 pnpm test:e2e    2 passed（47.9s）—— smoke 新增：统计 tab → 3 个 KPI + 5 个分布条渲染
 ```
+
+---
+
+## 2026-10-21 — 第十三批：分卷管理
+
+`Volume` 表从建库起就在 schema 里，`createVolume` 服务也早就有，但**没有任何 API 路由和 UI**——长篇作品的章节始终是扁平一列。本批把它接通。
+
+### 实现
+
+- **服务层**（`server/chapters.ts`）：新增 `findVolumesByProject`、`updateVolume`、`deleteVolume`、`assignChapterVolume`
+  - `deleteVolume` 在事务里先把章节的 `volumeId` 置空**再删分卷**——避免误删正文
+  - `VolumeStatus` 实际枚举是 `PLANNED/DRAFTING/FINISHED`（不是 DONE），按真实 schema 对齐
+- **API**：
+  - `GET/POST /api/projects/[projectId]/volumes`：列表与创建；创建时若未指定 `orderIndex` 自动取当前最大值 +1；唯一约束冲突返回 409
+  - `PATCH/DELETE /api/volumes/[volumeId]`：改标题/摘要/状态、删除（解除章节归属）
+  - 章节 `PATCH` 支持 `volumeId`（含 `null` 表示移出分卷）；章节列表接口返回 `volumeId`
+- **UI**：侧栏章节按分卷分组展示，分组标题带左侧色条与章节计数；未归属章节归入「未分卷」；无分卷时退化为原来的平铺列表（完全向后兼容）
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        679 tests（db 16 + shared 28 + ma 37 + worker 156 + web 442）
+pnpm test:e2e    2 passed（52.6s）
+```
+
+新增测试 5 例：分卷列表、空标题拒绝、orderIndex 自动续号、首卷从 1 开始、唯一冲突 409。

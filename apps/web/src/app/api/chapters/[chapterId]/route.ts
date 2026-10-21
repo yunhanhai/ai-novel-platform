@@ -13,6 +13,7 @@ interface PatchBody {
   content?: string;
   title?: string;
   status?: "PLANNED" | "DRAFT" | "REVIEWING" | "FINAL";
+  volumeId?: string | null;
 }
 
 export async function GET(_request: Request, context: RouteContext) {
@@ -70,12 +71,13 @@ export async function PATCH(request: Request, context: RouteContext) {
         prisma
       });
     }
-    if (body.title !== undefined || body.status !== undefined) {
+    if (body.title !== undefined || body.status !== undefined || body.volumeId !== undefined) {
       await prisma.chapter.update({
         where: { id: chapterId },
         data: {
           ...(body.title !== undefined ? { title: body.title } : {}),
           ...(body.status !== undefined ? { status: body.status } : {}),
+          ...(body.volumeId !== undefined ? { volumeId: body.volumeId } : {}),
           updatedById
         }
       });

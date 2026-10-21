@@ -33,6 +33,7 @@ export async function GET(request: Request, context: RouteContext) {
           title: c.title,
           status: c.status,
           wordCount: c.wordCount,
+          volumeId: c.volumeId,
           content: c.content,
           updatedAt: c.updatedAt.toISOString()
         }))
@@ -51,6 +52,7 @@ export async function GET(request: Request, context: RouteContext) {
           title: c.title,
           status: c.status,
           wordCount: c.wordCount,
+          volumeId: c.volumeId,
           content: c.content,
           updatedAt: c.updatedAt.toISOString()
         })),
