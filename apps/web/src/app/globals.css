@@ -1146,6 +1146,23 @@ select {
   font-size: 12px;
 }
 
+/* Worker health */
+
+.worker-status-card code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.form-hint code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-muted);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  color: var(--text);
+}
+
 /* Sidebar header + chapter create form */
 
 .sidebar-header {

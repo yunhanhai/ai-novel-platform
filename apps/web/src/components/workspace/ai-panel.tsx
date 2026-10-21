@@ -136,6 +136,11 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onDeslop, onExtrac
             </span>
           </div>
           {job.errorMessage && <p className="form-error">{job.errorMessage}</p>}
+          {job.status === "QUEUED" && (
+            <p className="form-hint">
+              任务排队中。若长时间无进展，请到「设置 → 模型设置」确认 worker 是否在线。
+            </p>
+          )}
           {job.output?.contextSummary && (
             <div className="context-job-summary">
               <span>上下文 {job.output.contextSummary.budgetPreset}</span>

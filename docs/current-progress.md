@@ -936,3 +936,31 @@ pnpm test:e2e    2 passed（32.8s）—— smoke 新增：大纲 tab → 点「�
 ```
 
 新增测试 8 例：章数夹紧、细纲清洗（缺 title 丢弃 + 截断）、prompt 组装、orderIndex 接续与 parent/metadata、超量截断、空输出、项目缺失、rethrow。
+
+---
+
+## 2026-10-21 — 第八批：worker 心跳与健康可见 + 轮询健壮性
+
+真实 LLM 验收仍缺凭据（环境变量 / .env / DB 三处均无 key），改做一件一直被搁置的运维能力：**worker 到底有没有在跑**。此前 worker 没启动时，用户点生成只会看到永远「排队中」，无从判断原因；`worker_heartbeats` 表在 schema 里闲置已久。
+
+### 实现
+
+- **worker 心跳**（`apps/worker/src/heartbeat.ts`）：
+  - 启动 upsert（lock_key 唯一），每轮 tick 后更新 `lastSeenAt / lastTickStatus / lastTickAt`，优雅退出时删除本行
+  - `DEFAULT_ORGANIZATION_ID` 缺失或非 UUID 时降级为 no-op 并告警（心跳写的是部署级归属组织）
+  - 启动时清理超过 1 小时的僵尸心跳（被强杀进程留下的）
+  - 心跳失败被完全吞掉，绝不影响任务主循环
+- **轮询健壮性修复**：`poller.start` 原先 `await tick()` 直接抛错会让进程退出——数据库瞬时不可用就会杀死整个 worker。现在 tick 异常被捕获记录后继续循环，心跳等旁路副作用同样隔离。
+- **`GET /api/worker/health`**：登录后可读，返回 `anyOnline` + worker 列表（pid / 轮询间隔 / 租约 / 最后心跳 / 最近 tick 状态 / 在线判定）。**不做组织过滤**——worker 是跨组织认领任务的部署级共享进程；带 5 分钟时间窗过滤，避免强杀留下的僵尸行堆积。
+- **设置页**新增「生成 worker」卡片（10 秒轮询）：无 worker 时明确提示「任务会一直停留在排队中，请运行 `pnpm dev:worker`」；有 worker 时展示 pid / 间隔 / 最近心跳 / 最近状态。
+- **AI 面板**：任务 `QUEUED` 时附一行提示，指向设置页确认 worker 状态。
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        625 tests（db 16 + shared 28 + ma 37 + worker 156 + web 388）
+pnpm test:e2e    2 passed（33.0s）—— settings 新增断言：e2e 启动的 worker 在设置页显示「在线」
+```
+
+新增测试 9 例：心跳注册 / beat 更新 / 优雅退出清理 / 非法组织降级 no-op（worker 侧 4 例），health 接口未登录 401 / 新鲜心跳在线 / 过期离线 / 空列表 / 时间窗过滤（web 侧 5 例）。

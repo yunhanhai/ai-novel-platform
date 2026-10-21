@@ -388,3 +388,25 @@ pnpm test:e2e
 - [x] PENDING_JOB_TYPES and its 400 branch removed entirely — all 12 job types are now handler-backed.
 - [x] Real defect caught by e2e (unit tests passed): Project has no `storyLine` field, so the Prisma query failed at runtime; switched to the real `genre` column. Recorded as a concrete example of the mock-testing blind spot. Also confirmed the retry mechanism engages on such failures (HANDLER_RETRY recorded).
 - [x] Verified: typecheck 5/5; 616 tests green (16+28+37+152+383); e2e 2 passed (32.8s).
+
+## Task 18: 2026-10-21 Worker Heartbeat, Health Visibility, Poller Resilience
+
+**Files:**
+- Create: `apps/worker/src/heartbeat.ts` + test, `apps/web/src/app/api/worker/health/route.ts` + test, `apps/web/src/components/settings/worker-status-card.tsx`
+- Modify: `apps/worker/src/index.ts`, `apps/worker/src/poll.ts`, `apps/web/src/app/(app)/settings/models/page.tsx`, `ai-panel.tsx`, `globals.css`, `e2e/settings.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Worker heartbeat: upsert on start, update lastSeenAt/lastTickStatus/lastTickAt every tick, delete own row on graceful shutdown; degrades to a no-op with a warning when DEFAULT_ORGANIZATION_ID is missing or not a UUID; purges heartbeats older than 1 hour at startup.
+- [x] Poller resilience fix: a throwing `await tick()` used to kill the whole worker process (a brief DB outage would stop all processing). Tick errors are now caught and logged, and side effects like heartbeats are isolated so they can never break the loop.
+- [x] `GET /api/worker/health`: authenticated, returns anyOnline + worker list (pid / poll interval / lease / last heartbeat / last tick status / online). Deliberately not organization-scoped because the worker is a deployment-wide shared process, and filtered to a 5-minute window so SIGKILLed workers don't pile up.
+- [x] Settings page gains a 「生成 worker」 card polling every 10s: explicit guidance when no worker is running, full status when one is.
+- [x] AI panel shows a hint while a job is QUEUED, pointing at the settings page.
+- [x] Verified: typecheck 5/5; 625 tests green (16+28+37+156+388); e2e 2 passed (33.0s) with a new settings assertion that the e2e-started worker shows as online.
+- [x] Noted: real-LLM acceptance still blocked — no provider key in env, .env, or DB (0 of 70 provider rows have a key).

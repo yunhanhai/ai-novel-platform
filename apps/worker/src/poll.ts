@@ -44,15 +44,17 @@ interface PollerDeps {
   handlers: Map<string, JobHandler>;
 }
 
+export type TickResult = "processed" | "no_job" | "no_handler" | "retried" | "error";
+
 interface Poller {
-  tick: () => Promise<"processed" | "no_job" | "no_handler" | "retried" | "error">;
-  start: (signal: AbortSignal) => Promise<void>;
+  tick: () => Promise<TickResult>;
+  start: (signal: AbortSignal, onTick?: (result: TickResult) => void | Promise<void>) => Promise<void>;
 }
 
 export function createPoller(deps: PollerDeps): Poller {
   const { claimNext, updateJobStatus, requeueForRetry, handlers } = deps;
 
-  async function tick(): Promise<"processed" | "no_job" | "no_handler" | "retried" | "error"> {
+  async function tick(): Promise<TickResult> {
     const job = await claimNext();
     if (!job) return "no_job";
 
@@ -95,9 +97,25 @@ export function createPoller(deps: PollerDeps): Poller {
     }
   }
 
-  async function start(signal: AbortSignal) {
+  async function start(signal: AbortSignal, onTick?: (result: TickResult) => void | Promise<void>) {
     while (!signal.aborted) {
-      await tick();
+      // 单次 tick 失败（例如数据库瞬时不可用）不能让整个 worker 退出，
+      // 否则一次连接抖动就会导致进程死亡、任务全部停滞。
+      let result: TickResult = "error";
+      try {
+        result = await tick();
+      } catch (error: unknown) {
+        console.error("[worker] poll tick failed:", error instanceof Error ? error.message : error);
+      }
+
+      if (onTick) {
+        try {
+          await onTick(result);
+        } catch {
+          // 心跳等旁路副作用失败同样不能影响主循环。
+        }
+      }
+
       await sleep(deps.pollIntervalMs, signal);
     }
   }

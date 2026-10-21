@@ -1,6 +1,7 @@
 import { FakeModelBanner } from "../../../../components/settings/fake-model-banner";
 import { ProvidersList } from "../../../../components/settings/providers-list";
 import { ProfilesList } from "../../../../components/settings/profiles-list";
+import { WorkerStatusCard } from "../../../../components/settings/worker-status-card";
 
 /**
  * 模型设置页
@@ -18,6 +19,8 @@ export default function SettingsModelsPage() {
       </div>
 
       <FakeModelBanner initial={{ useFakeModel, encryptionKeyConfigured }} />
+
+      <WorkerStatusCard />
 
       <ProvidersList encryptionKeyConfigured={encryptionKeyConfigured} />
       <ProfilesList />

@@ -41,6 +41,12 @@ test("模型设置：banner / 测试连接 / 编辑供应商 / 档案 CRUD", asy
   const banner = page.locator(".settings-page").first();
   await expect(banner).toContainText(/演示模式|fake|USE_FAKE_MODEL/i);
 
+  // 3.5 worker 心跳：e2e globalSetup 已启动 worker，设置页应显示在线
+  const workerCard = page
+    .locator(".settings-card")
+    .filter({ has: page.getByRole("heading", { name: "生成 worker" }) });
+  await expect(workerCard).toContainText("在线", { timeout: 15_000 });
+
   // 4. seed 默认供应商应在列表里
   await expect(page.getByRole("heading", { name: "模型供应商" })).toBeVisible();
   // 用标题锚定供应商卡：档案卡空状态提示「请先创建模型供应商…」含同名子串，
