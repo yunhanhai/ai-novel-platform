@@ -305,6 +305,16 @@ export default function WorkspacePage() {
           void reloadChapters();
         }}
       />
+      <button
+        type="button"
+        className="mobile-editor-jump"
+        onClick={() => {
+          const editor = document.querySelector(".editor-textarea");
+          if (editor instanceof HTMLElement) editor.scrollIntoView({ behavior: "smooth", block: "center" });
+        }}
+      >
+        回到正文
+      </button>
     </div>
   );
 }

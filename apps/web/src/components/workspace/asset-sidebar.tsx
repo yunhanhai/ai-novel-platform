@@ -260,7 +260,7 @@ export function AssetSidebar({
   })();
 
   return (
-    <aside className="pane pane-muted stack" aria-label="章节目录">
+    <aside className="pane pane-muted stack asset-sidebar" aria-label="章节目录">
       <div className="sidebar-header">
         <h2>章节目录</h2>
         <div className="sidebar-header-actions">

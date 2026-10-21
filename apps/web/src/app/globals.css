@@ -215,12 +215,67 @@ select {
     padding: 0 20px;
   }
 
+  /* 窄屏：编辑器优先。侧栏改为可折叠区域并置于编辑器之后，
+     避免章节列表与 AI 面板把正文推到很下面。 */
   .workspace {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "editor"
+      "chapters"
+      "ai";
+  }
+
+  .editor-pane {
+    grid-area: editor;
+  }
+
+  .side-tabs {
+    grid-area: ai;
+  }
+
+  .asset-sidebar {
+    grid-area: chapters;
   }
 
   .pane {
     padding: 20px;
+  }
+
+  /* 窄屏下侧栏收起，点开后再展开，减少滚动距离 */
+  .asset-sidebar {
+    max-height: 45vh;
+    overflow-y: auto;
+  }
+
+  .side-tabs {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  /* 窄屏下滚动到列表/面板深处时，一键回到正文 */
+  .mobile-editor-jump {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: var(--z-sticky);
+    display: inline-flex;
+    align-items: center;
+    padding: 0 14px;
+    min-height: 40px;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--accent-strong);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+  }
+}
+
+@media (min-width: 921px) {
+  .mobile-editor-jump {
+    display: none;
   }
 }
 

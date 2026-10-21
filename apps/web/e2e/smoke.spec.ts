@@ -181,5 +181,19 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.txt$/);
 
+  // 14. 窄屏布局：编辑器优先于侧栏，且出现「回到正文」快捷按钮
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  const editorBox = await page.locator(".editor-textarea").boundingBox();
+  const sidebarBox = await page.locator(".asset-sidebar").boundingBox();
+  expect(editorBox).not.toBeNull();
+  expect(sidebarBox).not.toBeNull();
+  expect(editorBox!.y).toBeLessThan(sidebarBox!.y);
+  await expect(page.getByRole("button", { name: "回到正文" })).toBeVisible();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+
   console.log(`✓ smoke 通过: 用户=${EMAIL} 项目=${PROJECT_TITLE}`);
 });

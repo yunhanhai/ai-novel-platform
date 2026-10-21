@@ -1132,3 +1132,29 @@ pnpm typecheck   5/5
 pnpm test        679 tests（db 16 + shared 28 + ma 37 + worker 156 + web 442）
 pnpm test:e2e    2 passed（50.9s）—— smoke 新增：点「+ 卷」建卷 → 分组标题出现 → 下拉移入分卷 → 分组仍正确
 ```
+
+---
+
+## 2026-10-21 — 第十五批：移动端 workspace 布局
+
+窄屏（≤920px）此前三栏直接纵向堆叠：章节列表与 AI 面板位于编辑器**上方**，作者每次写作都要先滚过一屏列表。
+
+### 实现
+
+- **网格区域重排**：窄屏使用 `grid-template-areas: "editor" / "chapters" / "ai"`——**编辑器永远第一个**，章节与 AI 面板排在其后
+- **面板限高**：章节侧栏 `max-height: 45vh`、AI 面板 `60vh` 且内部滚动，避免单个面板独占整屏
+- **「回到正文」浮动按钮**：仅窄屏显示（`min-width: 921px` 时隐藏），点击平滑滚动回编辑器——从列表深处一键返回
+- 给侧栏补上 `asset-sidebar` 类名（此前只有通用 `pane`），布局才有稳定钩子
+
+### 过程中的一个坑
+
+最初把移动端断言写成独立 spec（`mobile-layout.spec.ts`），结果 smoke / settings / mobile 三个文件**并行共享同一个 dev server 与数据库**，互相干扰导致三个全红（页面显示 404）。改为把断言并入 smoke 末尾、用 `page.setViewportSize()` 在同一会话内切换视口，问题消失。
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        679 tests（db 16 + shared 28 + ma 37 + worker 156 + web 442）
+pnpm test:e2e    2 passed + 1 skipped（47.5s）—— smoke 新增：切 390×844 视口后断言
+                 编辑器 y 坐标小于侧栏、出现「回到正文」、无横向溢出
+```

@@ -530,3 +530,24 @@ pnpm test:e2e
 - [x] Move chapters between volumes via a compact per-chapter select (未分卷 + each volume), patching volumeId and reloading groups on success. The select renders only when volumes exist, so projects without volumes look unchanged; the row's select is disabled while its move is in flight.
 - [x] Volume and chapter-move errors surface in one place at the top of the sidebar.
 - [x] Verified: typecheck 5/5; 679 tests green; e2e 2 passed (50.9s) — smoke creates a volume, asserts the group header, then moves a chapter into it.
+
+## Task 25: 2026-10-21 Mobile Workspace Layout
+
+**Files:**
+- Modify: `globals.css`, `asset-sidebar.tsx`, `workspace/page.tsx`, `e2e/smoke.spec.ts`
+- Create: `e2e/mobile-layout.spec.ts` (intentionally skipped, see note)
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Narrow screens now use grid-template-areas editor/chapters/ai so the editor is always first; previously the chapter list and AI panel sat above the text and pushed it off-screen.
+- [x] Panels are height-capped and scroll internally (chapters 45vh, AI 60vh) so no single panel owns the viewport.
+- [x] A 「回到正文」 floating button (mobile only, hidden above 921px) smooth-scrolls back to the editor from deep in a list.
+- [x] Gave the sidebar an explicit asset-sidebar class (it only had the generic pane class) so layout has a stable hook.
+- [x] Lesson recorded: a separate mobile spec ran in parallel with smoke/settings against the same dev server and database, turning all three red (404 pages). The assertions were folded into the end of smoke using page.setViewportSize() instead.
+- [x] Verified: typecheck 5/5; 679 tests green; e2e 2 passed + 1 skipped (47.5s) asserting editor y < sidebar y at 390x844, the jump button visible, and no horizontal overflow.
