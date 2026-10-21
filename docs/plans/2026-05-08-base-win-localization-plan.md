@@ -431,3 +431,24 @@ pnpm test:e2e
 - [x] Book export: GET /api/projects/[projectId]/export streams a text/plain attachment built from chapters ordered by chapterNo, with Content-Disposition carrying both an ASCII fallback and a UTF-8 filename (Chinese titles survive), CRLF newlines, illegal filename characters replaced, and a blank-title fallback.
 - [x] Workspace chapter sidebar gains an export link that only appears when chapters exist.
 - [x] Verified: typecheck 5/5; 640 tests green (16+28+37+156+403); e2e 2 passed (37.5s) including a new .txt download assertion.
+
+## Task 20: 2026-10-21 Full-book Search and Writing Stats
+
+**Files:**
+- Create: `apps/web/src/server/search.ts` + test, `apps/web/src/server/project-stats.ts` + test, `apps/web/src/app/api/projects/[projectId]/search/route.ts`, `.../stats/route.ts`
+- Modify: `asset-sidebar.tsx`, `workspace/page.tsx`, `globals.css`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Search service: buildSnippet (first match with 40-char context and edge ellipses, case-insensitive match preserving original casing), countMatches (non-overlapping), searchChapters (Prisma contains + insensitive, ordered by chapter number).
+- [x] Search API: limit clamped 1-100 (default 30); a blank query returns an empty result without touching the database.
+- [x] Sidebar search box with 300ms debounce: results show chapter + hit count + highlighted snippet; clicking jumps to the chapter and clears the search; distinct empty and error states.
+- [x] Stats service: chapter count, total words, average, longest/shortest chapter, and five length buckets.
+- [x] Stats API and a persistent sidebar line (共 N 章 · X 字 · 均 Y 字/章) that refreshes as chapters change and degrades silently on failure.
+- [x] Verified: typecheck 5/5; 653 tests green (16+28+37+156+416); e2e 2 passed (40.4s) — smoke searches 林墨, asserts one hit with highlight, then clears.

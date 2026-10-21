@@ -147,7 +147,14 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   // 诊断结果块渲染（性能摘要 + 诊断评分）
   await expect(page.locator(".diagnostic-summary")).toBeVisible({ timeout: 10_000 });
 
-  // 12. 导出作品（TXT 附件下载）
+  // 12. 全书搜索：应命中已生成的正文并高亮关键词
+  await page.getByLabel("搜索全书内容").fill("林墨");
+  await expect(page.locator(".search-hit")).toHaveCount(1, { timeout: 15_000 });
+  await expect(page.locator(".search-hit-snippet mark").first()).toHaveText("林墨");
+  await page.getByRole("button", { name: "清空搜索" }).click();
+  await expect(page.locator(".search-hit")).toHaveCount(0);
+
+  // 13. 导出作品（TXT 附件下载）
   const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
   await page.getByRole("link", { name: "导出" }).click();
   const download = await downloadPromise;
