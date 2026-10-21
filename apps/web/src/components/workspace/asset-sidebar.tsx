@@ -17,6 +17,7 @@ interface AssetSidebarProps {
   onSelect: (id: string) => void;
   onCreate?: (input: { chapterNo: number; title: string }) => Promise<unknown>;
   isLoading?: boolean;
+  exportHref?: string | null;
 }
 
 export function AssetSidebar({
@@ -24,7 +25,8 @@ export function AssetSidebar({
   activeChapterId,
   onSelect,
   onCreate,
-  isLoading = false
+  isLoading = false,
+  exportHref = null
 }: AssetSidebarProps) {
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
@@ -55,11 +57,18 @@ export function AssetSidebar({
     <aside className="pane pane-muted stack" aria-label="章节目录">
       <div className="sidebar-header">
         <h2>章节目录</h2>
-        {onCreate && !creating && (
-          <button type="button" className="btn-ghost" onClick={() => setCreating(true)}>
-            + 新建
-          </button>
-        )}
+        <div className="sidebar-header-actions">
+          {exportHref && chapters.length > 0 && (
+            <a className="btn-ghost btn-small" href={exportHref} download>
+              导出
+            </a>
+          )}
+          {onCreate && !creating && (
+            <button type="button" className="btn-ghost btn-small" onClick={() => setCreating(true)}>
+              + 新建
+            </button>
+          )}
+        </div>
       </div>
 
       {creating && (

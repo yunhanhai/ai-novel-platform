@@ -410,3 +410,24 @@ pnpm test:e2e
 - [x] AI panel shows a hint while a job is QUEUED, pointing at the settings page.
 - [x] Verified: typecheck 5/5; 625 tests green (16+28+37+156+388); e2e 2 passed (33.0s) with a new settings assertion that the e2e-started worker shows as online.
 - [x] Noted: real-LLM acceptance still blocked — no provider key in env, .env, or DB (0 of 70 provider rows have a key).
+
+## Task 19: 2026-10-21 Login Rate Limit, Error Boundaries, Book Export
+
+**Files:**
+- Create: `apps/web/src/server/rate-limit.ts`, `apps/web/src/server/export-book.ts` + test, `apps/web/src/app/error.tsx`, `global-error.tsx`, `not-found.tsx`, `loading.tsx`, `apps/web/src/app/api/projects/[projectId]/export/route.ts` + test
+- Modify: `apps/web/src/app/api/auth/login/route.ts` + test, `asset-sidebar.tsx`, `workspace/page.tsx`, `globals.css`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Login rate limiting: in-memory sliding window with dual keys (per IP, per email), 10 failures per 15 minutes → 15-minute block returning 429 + Retry-After. Successful login clears both counters; a blocked window rejects even correct passwords; missing-account and wrong-password share one message so account existence does not leak.
+- [x] Login 500s now return a generic message with server-side logging instead of echoing the raw error.
+- [x] Error boundaries: app-level error card with retry and back-to-projects, root global-error, 404 page, and a loading spinner with role="status" (respects reduced motion).
+- [x] Book export: GET /api/projects/[projectId]/export streams a text/plain attachment built from chapters ordered by chapterNo, with Content-Disposition carrying both an ASCII fallback and a UTF-8 filename (Chinese titles survive), CRLF newlines, illegal filename characters replaced, and a blank-title fallback.
+- [x] Workspace chapter sidebar gains an export link that only appears when chapters exist.
+- [x] Verified: typecheck 5/5; 640 tests green (16+28+37+156+403); e2e 2 passed (37.5s) including a new .txt download assertion.

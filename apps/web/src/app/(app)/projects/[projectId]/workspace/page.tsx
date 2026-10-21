@@ -257,6 +257,7 @@ export default function WorkspacePage() {
           if (created) setActiveChapterId(created.id);
         }}
         isLoading={chaptersLoading}
+        exportHref={projectId ? `/api/projects/${projectId}/export` : null}
       />
       <EditorPane
         title={activeChapter?.title ?? "未选择章节"}

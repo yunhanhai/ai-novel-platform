@@ -147,5 +147,11 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   // 诊断结果块渲染（性能摘要 + 诊断评分）
   await expect(page.locator(".diagnostic-summary")).toBeVisible({ timeout: 10_000 });
 
+  // 12. 导出作品（TXT 附件下载）
+  const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
+  await page.getByRole("link", { name: "导出" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.txt$/);
+
   console.log(`✓ smoke 通过: 用户=${EMAIL} 项目=${PROJECT_TITLE}`);
 });

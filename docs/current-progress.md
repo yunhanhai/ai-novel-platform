@@ -964,3 +964,43 @@ pnpm test:e2e    2 passed（33.0s）—— settings 新增断言：e2e 启动的
 ```
 
 新增测试 9 例：心跳注册 / beat 更新 / 优雅退出清理 / 非法组织降级 no-op（worker 侧 4 例），health 接口未登录 401 / 新鲜心跳在线 / 过期离线 / 空列表 / 时间窗过滤（web 侧 5 例）。
+
+---
+
+## 2026-10-21 — 第九批：登录限流 / 错误边界 / 作品导出
+
+### 1. 登录速率限制（安全）
+
+此前 `/api/auth/login` 完全没有限流，可无限次尝试密码。新增 `server/rate-limit.ts`（单实例内存滑动窗口）+ 双维度限流：按 IP（防同源批量爆破）与按邮箱（防分布式爆破单账号），**15 分钟 10 次失败即锁定 15 分钟**，返回 429 + `Retry-After`。
+
+- 成功登录清空两端计数
+- 锁定期内即使密码正确也直接 429（不给试探窗口）
+- 账号不存在与密码错误返回**同一文案**（不泄露账号是否存在）
+- 同时把 login 的 500 兜底改为通用文案 + 服务端日志（此前会把原始异常回传）
+
+### 2. 错误边界与加载态（体验兜底）
+
+此前任何渲染异常都落到 Next 默认错误页（开发模式整屏红字）。补齐：
+
+- `app/error.tsx`：页内错误卡片，含「重试」与「返回作品列表」，提示内容已自动保存
+- `app/global-error.tsx`：根级致命错误（自带 html/body）
+- `app/not-found.tsx`：404 页
+- `app/loading.tsx`：spinner + 语义化 `role="status"`（受 `prefers-reduced-motion` 约束）
+
+### 3. 作品导出 TXT（功能闭环）
+
+作者此前写完整本书只能手动复制。新增：
+
+- `GET /api/projects/[projectId]/export`：按 `chapterNo` 升序拼接全书，返回 `text/plain` 附件，`Content-Disposition` 同时给 ASCII 兜底名与 UTF-8 文件名（中文标题不乱码）
+- `server/export-book.ts`：`collectProjectForExport` / `renderPlainText` / `buildExportFilename`（非法文件名字符替换、空标题兜底、CRLF 换行使 Windows 记事本正常显示）
+- 工作台章节栏新增「导出」按钮（有章节时才显示）
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        640 tests（db 16 + shared 28 + ma 37 + worker 156 + web 403）
+pnpm test:e2e    2 passed（37.5s）—— smoke 新增：点击「导出」触发 .txt 附件下载
+```
+
+新增测试 15 例：限流锁定/成功后清零/不泄露账号存在性（3）、导出采集与渲染与文件名（7）、导出 API 401/404/400/200/组织隔离（5）。
