@@ -7,6 +7,7 @@ import { createExtractMemoryHandler } from "./pipeline/extract-memory-handler";
 import { createRewritePolishHandler } from "./pipeline/rewrite-polish-handler";
 import { createContinueChapterHandler } from "./pipeline/continue-chapter-handler";
 import { createReviewHandler } from "./pipeline/review-handler";
+import { createGenerateOutlineHandler } from "./pipeline/generate-outline-handler";
 import { createDiagnoseChapterHandler, type DiagnosticType } from "./pipeline/diagnose-chapter-handler";
 import { createFakeModel } from "./pipeline/fake-model";
 
@@ -44,6 +45,7 @@ export function createHandlers(deps: HandlerFactoryDeps): Map<string, JobHandler
   handlers.set("POLISH", rewritePolish);
   handlers.set("CONTINUE_CHAPTER", createContinueChapterHandler({ ...shared, ...fakeModelDep() }));
   handlers.set("REVIEW", createReviewHandler({ ...shared, ...fakeModelDep() }));
+  handlers.set("GENERATE_OUTLINE", createGenerateOutlineHandler({ ...shared, ...fakeModelDep() }));
 
   for (const diagnosticType of DIAGNOSTIC_JOB_TYPES) {
     handlers.set(diagnosticType, createDiagnoseChapterHandler({ ...shared, diagnosticType, ...fakeModelDep() }));

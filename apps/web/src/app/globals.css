@@ -1118,6 +1118,34 @@ select {
   justify-content: flex-end;
 }
 
+/* Outline batch generation */
+
+.outline-batch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--accent) 5%, var(--surface));
+  font-size: 12px;
+}
+
+.outline-batch-label {
+  font-weight: 600;
+}
+
+.outline-batch select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
 /* Sidebar header + chapter create form */
 
 .sidebar-header {

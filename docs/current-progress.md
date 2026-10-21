@@ -905,3 +905,34 @@ pnpm test:e2e    2 passed（30.3s）—— smoke 新增：切审校 tab → 开�
 ```
 
 新增测试 8 例：验真命中/未命中、计数正确、代码围栏、散文降级、非法枚举回落、缺 quote 丢弃、章节缺失、rethrow。
+
+---
+
+## 2026-10-21 — 第七批：GENERATE_OUTLINE（PENDING 清零）
+
+**12 种任务类型全部实现**，API 的 `PENDING_JOB_TYPES` 常量与分支一并删除（不再有"能点必失败"的类型）。
+
+### 实现
+
+- **`generate-outline-handler`**（新，项目级任务，无 chapterId）：
+  - 读项目 `premise` / `genre` / `styleBrief` + 已有 CHAPTER 级细纲 + 角色名（≤20）+ 世界观条目名（≤20）
+  - prompt 要求逐章给出标题 + 80-150 字细纲，且**接续已有细纲、不推翻已发生情节**
+  - `chapterCount` 默认 5、上限 20，模型多返回时按请求数截断
+  - 写入 `outlines` 表：`level=CHAPTER`、`orderIndex` 从现有最大值继续、`parentId` 挂第一个 `VOLUME`、`metadata={source, jobId}` 可追溯，整体单事务批量创建
+  - 解析容错同前（代码围栏 / JSON 块提取 / 缺 title 丢弃）；无可解析章节 → `EMPTY_OUTPUT` 定稿
+- **前端**：大纲 tab 新增「AI 批量生成细纲」区块（3/5/8/10 章可选），生成中禁用按钮，成功后自动刷新列表，失败显示原因。
+- `job-request` / `startJob` 扩展出项目级调用路径（`chapterId` 可为 null + 传 `projectId`）。
+
+### 过程中抓到的真实缺陷
+
+`Project` 模型没有 `storyLine` 字段（按语义猜的），Prisma 校验在真实库上失败。**单测全绿但 e2e 立刻暴露**——mock 的 prisma 接受任意字段，这是 mock 测试的固有盲区。已改用真实存在的 `genre`。顺带验证了上一批的重试机制确实在工作：该 job 被重试并记录 `HANDLER_RETRY`（确定性错误也会重试 3 次，可接受但已知）。
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        616 tests（db 16 + shared 28 + ma 37 + worker 152 + web 383）
+pnpm test:e2e    2 passed（32.8s）—— smoke 新增：大纲 tab → 点「生成细纲」→ 失败提示正常回显（fake 模型返回散文，走 EMPTY_OUTPUT 分支）
+```
+
+新增测试 8 例：章数夹紧、细纲清洗（缺 title 丢弃 + 截断）、prompt 组装、orderIndex 接续与 parent/metadata、超量截断、空输出、项目缺失、rethrow。

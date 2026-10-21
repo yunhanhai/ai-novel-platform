@@ -42,6 +42,7 @@ interface Props {
   onDiagnose: (qualityMode: QualityMode) => void;
   onContinue: () => void;
   onReview: () => void;
+  onGenerateOutline: (chapterCount: number) => void;
   onApplyReviewReplacement: (quote: string, replacement: string) => boolean;
   onDeslop: () => void;
   onExtractMemory: () => void;
@@ -60,6 +61,7 @@ export function WorkspaceSideTabs({
   onDiagnose,
   onContinue,
   onReview,
+  onGenerateOutline,
   onApplyReviewReplacement,
   onDeslop,
   onExtractMemory,
@@ -105,7 +107,9 @@ export function WorkspaceSideTabs({
         {active === "versions" && (
           <VersionsPanel chapterId={chapterId} onRestored={onChapterContentRefreshed} />
         )}
-        {active === "outline" && <OutlinePanel projectId={projectId} />}
+        {active === "outline" && (
+          <OutlinePanel projectId={projectId} job={job} isStarting={isStarting} onGenerateOutline={onGenerateOutline} />
+        )}
         {active === "review" && (
           <ReviewPanel
             chapterId={chapterId}

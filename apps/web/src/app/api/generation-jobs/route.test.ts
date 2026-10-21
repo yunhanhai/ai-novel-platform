@@ -53,11 +53,21 @@ describe("POST /api/generation-jobs", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when jobType has no worker handler yet", async () => {
-    const res = await POST(req({ chapterId: "ch-1", jobType: "GENERATE_OUTLINE" }));
+  it("returns 400 for an unknown jobType", async () => {
+    const res = await POST(req({ chapterId: "ch-1", jobType: "NOT_A_JOB" }));
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toContain("尚未开放");
+    expect(body.error).toContain("jobType");
+  });
+
+  it("creates a GENERATE_OUTLINE job at project level", async () => {
+    cj().mockResolvedValue({ id: "job-1", jobType: "GENERATE_OUTLINE", status: "QUEUED", projectId: "proj-1" });
+    const res = await POST(req({ projectId: "proj-1", jobType: "GENERATE_OUTLINE", input: { chapterCount: 3 } }));
+    expect(res.status).toBe(201);
+    expect(cj()).toHaveBeenCalledWith(expect.objectContaining({
+      jobType: "GENERATE_OUTLINE",
+      projectId: "proj-1"
+    }));
   });
 
   it("creates a REVIEW job", async () => {

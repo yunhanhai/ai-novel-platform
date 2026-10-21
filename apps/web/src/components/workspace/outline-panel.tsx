@@ -24,6 +24,10 @@ interface OutlineItem {
 
 interface Props {
   projectId: string | null;
+  job?: import("./use-workspace-data").JobSummary | null;
+  isStarting?: boolean;
+  onGenerateOutline?: (chapterCount: number) => void;
+  onGenerated?: () => void;
 }
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -47,7 +51,8 @@ const DRAFT_FIELDS: ReadonlyArray<FieldSpec<OutlineDraft>> = [
   { key: "summary", label: "摘要", control: "textarea", rows: 3 }
 ];
 
-export function OutlinePanel({ projectId }: Props) {
+export function OutlinePanel({ projectId, job = null, isStarting = false, onGenerateOutline, onGenerated }: Props) {
+  const [batchCount, setBatchCount] = useState(5);
   const [items, setItems] = useState<OutlineItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +85,13 @@ export function OutlinePanel({ projectId }: Props) {
   useEffect(() => {
     if (projectId) void reload();
   }, [projectId, reload]);
+
+  useEffect(() => {
+    if (job?.jobType === "GENERATE_OUTLINE" && job.status === "SUCCEEDED") {
+      void reload();
+      onGenerated?.();
+    }
+  }, [job?.jobType, job?.status, job?.id, reload, onGenerated]);
 
   function resetForm() {
     setFormLevel("CHAPTER");
@@ -158,6 +170,10 @@ export function OutlinePanel({ projectId }: Props) {
   if (!projectId) return <p className="muted">请先选择一个项目</p>;
 
   const itemsByLevel = groupBy(items, (i) => i.level);
+  const isOutlineJob = job?.jobType === "GENERATE_OUTLINE";
+  const outlineRunning = Boolean(isOutlineJob && job && ["QUEUED", "RUNNING"].includes(job.status));
+  const outlineBusy = isStarting || outlineRunning;
+  const outlineFailed = Boolean(isOutlineJob && job?.status === "FAILED");
 
   return (
     <div className="resource-panel">
@@ -175,6 +191,33 @@ export function OutlinePanel({ projectId }: Props) {
 
       {error && <p className="form-error">{error}</p>}
       {loading && <p className="muted">加载中...</p>}
+
+      {onGenerateOutline && (
+        <div className="outline-batch">
+          <span className="muted outline-batch-label">AI 批量生成细纲</span>
+          <select
+            aria-label="生成章节数"
+            value={batchCount}
+            onChange={(e) => setBatchCount(Number(e.target.value))}
+            disabled={outlineBusy}
+          >
+            {[3, 5, 8, 10].map((count) => (
+              <option key={count} value={count}>
+                {count} 章
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn-ghost btn-small"
+            onClick={() => onGenerateOutline(batchCount)}
+            disabled={outlineBusy}
+          >
+            {outlineBusy ? "生成中..." : "生成细纲"}
+          </button>
+          {outlineFailed && <span className="form-error">{job?.errorMessage ?? "生成失败"}</span>}
+        </div>
+      )}
 
       {showForm && (
         <form className="resource-form" onSubmit={(e) => void handleSave(e)}>

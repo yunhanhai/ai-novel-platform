@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import type { QualityMode } from "@ai-novel/shared/generation/performance";
@@ -258,7 +258,7 @@ export interface JobSummary {
 
 interface UseJobPollingResult {
   job: JobSummary | null;
-  startJob: (chapterId: string, jobType?: string, options?: StartJobOptions) => Promise<JobSummary | null>;
+  startJob: (chapterId: string | null, jobType?: string, options?: StartJobOptions) => Promise<JobSummary | null>;
   isStarting: boolean;
   error: string | null;
 }
@@ -268,6 +268,8 @@ interface StartJobOptions {
   qualityMode?: QualityMode;
   selectedText?: string;
   instruction?: string;
+  projectId?: string;
+  chapterCount?: number;
 }
 
 export function useJobPolling(): UseJobPollingResult {
@@ -301,17 +303,19 @@ export function useJobPolling(): UseJobPollingResult {
   useEffect(() => stopPolling, [stopPolling]);
 
   const startJob = useCallback(
-    async (chapterId: string, jobType: string = "GENERATE_CHAPTER", options?: StartJobOptions): Promise<JobSummary | null> => {
+    async (chapterId: string | null, jobType: string = "GENERATE_CHAPTER", options?: StartJobOptions): Promise<JobSummary | null> => {
       setStarting(true);
       setError(null);
       try {
         const body = buildGenerationRequestBody({
           chapterId,
+          projectId: options?.projectId,
           jobType,
           qualityMode: options?.qualityMode,
           contextOptions: options?.contextOptions,
           selectedText: options?.selectedText,
-          instruction: options?.instruction
+          instruction: options?.instruction,
+          chapterCount: options?.chapterCount
         });
         const res = await fetch("/api/generation-jobs", {
           method: "POST",

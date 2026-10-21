@@ -117,6 +117,13 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(page.locator(".review-summary")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("tab", { name: "AI", exact: true }).click();
 
+  // 8.8 大纲 tab：AI 批量生成细纲入口可用（fake 模型返回散文，应看到明确的失败提示而非崩溃）
+  await page.getByRole("tab", { name: "大纲" }).click();
+  await expect(page.locator(".outline-batch")).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("button", { name: "生成细纲" }).click();
+  await expect(page.locator(".outline-batch .form-error")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
+
   // 9. 触发 DESLOP
   const deslopBtn = page.getByRole("button", { name: "去 AI 味" });
   await expect(deslopBtn).toBeEnabled({ timeout: 15_000 });

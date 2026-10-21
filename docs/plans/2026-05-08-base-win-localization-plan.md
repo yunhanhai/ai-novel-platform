@@ -366,3 +366,25 @@ pnpm test:e2e
 - [x] Apply re-checks `indexOf` against live content (guards against edits made after the review ran), then rides the existing auto-save path; applied items are marked and disabled.
 - [x] Verified: typecheck 5/5; 607 tests green (16+28+37+144+382); e2e 2 passed (30.3s) with a new smoke step that opens the review tab and waits for the result panel (fake model returns prose → exercises the degraded branch).
 - [x] Remaining PENDING job type: GENERATE_OUTLINE only.
+
+## Task 17: 2026-10-21 GENERATE_OUTLINE (PENDING cleared)
+
+**Files:**
+- Create: `apps/worker/src/pipeline/generate-outline-handler.ts` + test
+- Modify: `apps/worker/src/handlers.ts` + test, `apps/web/src/app/api/generation-jobs/route.ts` + test, `job-request.ts`, `use-workspace-data.ts`, `outline-panel.tsx`, `workspace-side-tabs.tsx`, `workspace/page.tsx`, `globals.css`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] New project-level outline handler: reads premise/genre/styleBrief plus existing chapter outlines, character names and world items; asks for per-chapter titles + 80-150 char summaries that continue the existing outline without contradicting it.
+- [x] chapterCount defaults to 5 and caps at 20; over-long model responses are truncated. Outlines are written in one transaction with orderIndex continuing from the current max, parentId attached to the first VOLUME, and metadata {source, jobId} for traceability.
+- [x] Frontend: outline tab gains an AI batch section (3/5/8/10 chapters), disables while running, reloads on success, surfaces the failure reason.
+- [x] job-request/startJob extended with a project-level path (null chapterId + projectId), needed because this job has no chapter.
+- [x] PENDING_JOB_TYPES and its 400 branch removed entirely — all 12 job types are now handler-backed.
+- [x] Real defect caught by e2e (unit tests passed): Project has no `storyLine` field, so the Prisma query failed at runtime; switched to the real `genre` column. Recorded as a concrete example of the mock-testing blind spot. Also confirmed the retry mechanism engages on such failures (HANDLER_RETRY recorded).
+- [x] Verified: typecheck 5/5; 616 tests green (16+28+37+152+383); e2e 2 passed (32.8s).

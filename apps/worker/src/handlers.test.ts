@@ -14,6 +14,7 @@ describe("createHandlers", () => {
   it("registers a handler for every supported job type", () => {
     const handlers = build(true);
     const expected = [
+      "GENERATE_OUTLINE",
       "GENERATE_CHAPTER",
       "CONTINUE_CHAPTER",
       "DESLOP",

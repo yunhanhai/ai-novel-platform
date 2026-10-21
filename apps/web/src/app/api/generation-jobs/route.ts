@@ -33,6 +33,7 @@ interface CreateJobBody {
 }
 
 const SUPPORTED_JOB_TYPES: JobType[] = [
+  "GENERATE_OUTLINE",
   "GENERATE_CHAPTER",
   "CONTINUE_CHAPTER",
   "DESLOP",
@@ -44,10 +45,6 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   "READER_SIMULATION",
   "STYLE_DRIFT_CHECK",
   "CONTINUITY_CHECK"
-];
-
-const PENDING_JOB_TYPES: JobType[] = [
-  "GENERATE_OUTLINE"
 ];
 
 const REWRITE_POLISH_JOB_TYPES: JobType[] = ["REWRITE", "POLISH"];
@@ -112,12 +109,6 @@ export async function POST(request: Request) {
   const { chapterId, jobType: rawJobType } = body;
   const jobType = rawJobType ?? "GENERATE_CHAPTER";
 
-  if (PENDING_JOB_TYPES.includes(jobType)) {
-    return NextResponse.json(
-      { success: false, error: `任务类型 ${jobType} 尚未开放：worker 暂未实现对应处理逻辑` },
-      { status: 400 }
-    );
-  }
   if (!SUPPORTED_JOB_TYPES.includes(jobType)) {
     return NextResponse.json(
       { success: false, error: `jobType 必须为 ${SUPPORTED_JOB_TYPES.join(", ")} 之一` },

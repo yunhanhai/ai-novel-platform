@@ -119,6 +119,12 @@ export default function WorkspacePage() {
     await startJob(activeChapterId, "REVIEW");
   }
 
+  async function handleGenerateOutline(chapterCount: number) {
+    if (!projectId) return;
+    await flush();
+    await startJob(null, "GENERATE_OUTLINE", { projectId, chapterCount });
+  }
+
   // 审校建议的「应用替换」：按引证原文定位并替换。
   // 引证已由 worker 端核对过存在性，这里再做一次当前正文的实时校验，
   // 防止审校后用户手动改过正文导致替换错位。
@@ -272,6 +278,7 @@ export default function WorkspacePage() {
         onDiagnose={handleDiagnose}
         onContinue={handleContinue}
         onReview={() => void handleReview()}
+        onGenerateOutline={(count) => void handleGenerateOutline(count)}
         onApplyReviewReplacement={applyReviewReplacement}
         onDeslop={handleDeslop}
         onExtractMemory={handleExtractMemory}
