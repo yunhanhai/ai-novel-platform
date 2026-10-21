@@ -10,6 +10,7 @@ import { PlotThreadsPanel } from "./plot-threads-panel";
 import { MemoriesPanel } from "./memories-panel";
 import { VersionsPanel } from "./versions-panel";
 import { DeslopPanel } from "./deslop-panel";
+import { ReviewPanel } from "./review-panel";
 import { OutlinePanel } from "./outline-panel";
 import type { JobSummary } from "./use-workspace-data";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
@@ -17,18 +18,19 @@ import type { QualityMode } from "@ai-novel/shared/generation/performance";
 
 type TabKey =
   | "ai" | "characters" | "world" | "threads" | "memories"
-  | "style" | "methodology" | "versions" | "deslop" | "outline";
+  | "style" | "methodology" | "versions" | "deslop" | "outline" | "review";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "ai", label: "AI" },
   { key: "outline", label: "大纲" },
   { key: "versions", label: "版本" },
+  { key: "review", label: "审校" },
   { key: "deslop", label: "去 AI 味" },
   { key: "characters", label: "角色" },
-  { key: "world", label: "世界" },
+  { key: "world", label: "世界观" },
   { key: "threads", label: "伏笔" },
   { key: "memories", label: "记忆" },
-  { key: "style", label: "风格" },
+  { key: "style", label: "文风" },
   { key: "methodology", label: "方法论" }
 ];
 
@@ -39,6 +41,8 @@ interface Props {
   onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions) => void;
   onDiagnose: (qualityMode: QualityMode) => void;
   onContinue: () => void;
+  onReview: () => void;
+  onApplyReviewReplacement: (quote: string, replacement: string) => boolean;
   onDeslop: () => void;
   onExtractMemory: () => void;
   isStarting: boolean;
@@ -55,6 +59,8 @@ export function WorkspaceSideTabs({
   onGenerate,
   onDiagnose,
   onContinue,
+  onReview,
+  onApplyReviewReplacement,
   onDeslop,
   onExtractMemory,
   isStarting,
@@ -100,6 +106,16 @@ export function WorkspaceSideTabs({
           <VersionsPanel chapterId={chapterId} onRestored={onChapterContentRefreshed} />
         )}
         {active === "outline" && <OutlinePanel projectId={projectId} />}
+        {active === "review" && (
+          <ReviewPanel
+            chapterId={chapterId}
+            chapterContent={currentChapterText}
+            job={job}
+            onRun={onReview}
+            isStarting={isStarting}
+            onApplyReplacement={onApplyReviewReplacement}
+          />
+        )}
         {active === "deslop" && (
           <DeslopPanel
             projectId={projectId}

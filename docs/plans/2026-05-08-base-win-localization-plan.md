@@ -344,3 +344,25 @@ pnpm test:e2e
 - [x] UI: AI panel gains a 「继续写」 button with submitting/continuing states; content reloads on SUCCEEDED.
 - [x] Verified: typecheck 5/5; 599 tests green (16+28+37+137+381); e2e 2 passed (41.2s) with a new smoke assertion that the chapter grows after continuing.
 - [x] Noted: real-LLM acceptance remains blocked on missing credentials (no API key / ENCRYPTION_KEY; all DB provider keys are NULL).
+
+## Task 16: 2026-10-21 REVIEW with Citation Verification
+
+**Files:**
+- Create: `apps/worker/src/pipeline/review-handler.ts` + test, `apps/web/src/components/workspace/review-panel.tsx`
+- Modify: `apps/worker/src/handlers.ts` + test, `apps/web/src/app/api/generation-jobs/route.ts` + test, `workspace-side-tabs.tsx`, `workspace/page.tsx`, `use-workspace-data.ts`, `globals.css`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] New review handler returning structured JSON (summary / passed / suggestions with quote + problem + suggestion + replacement).
+- [x] Citation verification (`verifySuggestions`, exported): every quote must exist verbatim in the chapter; unverified entries stay visible but cannot be applied — guards against the model inventing evidence.
+- [x] Robust parsing: code fences, JSON extraction from prose, invalid enum fallback, entries missing a quote dropped, `degraded` only when parsing truly failed.
+- [x] Review panel tab: summary, pass/needs-work badge, verified/unverified counts, per-item severity color bar, quote block, replacement preview, single-item apply.
+- [x] Apply re-checks `indexOf` against live content (guards against edits made after the review ran), then rides the existing auto-save path; applied items are marked and disabled.
+- [x] Verified: typecheck 5/5; 607 tests green (16+28+37+144+382); e2e 2 passed (30.3s) with a new smoke step that opens the review tab and waits for the result panel (fake model returns prose → exercises the degraded branch).
+- [x] Remaining PENDING job type: GENERATE_OUTLINE only.

@@ -879,3 +879,29 @@ pnpm test:e2e    2 passed（41.2s）—— smoke 新增：点「继续写」→ 
 ```
 
 新增测试 8 例：拼接与版本落库/空章节/代码围栏剥离/长章节截尾/长度夹紧/章节缺失/空输出/rethrow。
+
+---
+
+## 2026-10-21 — 第六批：REVIEW 审校（引证验真 + 逐条采纳）
+
+10 种任务类型现在只剩 `GENERATE_OUTLINE` 未实现。本批的差异化点是**引证验真**——审校模型编造引文是常见失效模式，本项目对每条建议强制核对原文。
+
+### 实现
+
+- **`review-handler`**（新）：单次 LLM 调用，要求模型返回结构化 JSON（summary / passed / suggestions[]），每条必须带 `quote`（逐字复制的连续原文 10-80 字）+ `problem` + `suggestion` + `replacement`（可直接替换的文本，无法局部替换时为空）。
+  - **`verifySuggestions`（导出，可独立测试）**：`quote` 必须在章节正文中真实存在才算 `verified`，未通过的条目仍展示但**禁用采纳**
+  - 容错：JSON 可带 markdown 围栏、可从散文里提取 JSON 块、非法 `issueType/severity` 回落到安全默认值、缺 `quote` 的条目丢弃
+  - `degraded` 精确判定为「解析失败且模型确实返回了文本」，不会把"没问题"误判为降级
+  - 模型异常 rethrow → poll 重试
+- **审校面板**（新 tab）：结果摘要 + 通过/待修改标记 + 已核对/未核对计数 + 逐条卡片（严重度左侧色条、引文引用块、问题、建议、替换预览）+ 单条「应用替换」。
+- **应用替换**：worker 已核对过引证存在性，前端再做一次实时 `indexOf` 校验（防审校后用户改过正文导致错位），替换后走既有自动保存链路，条目置灰标记「已应用」。
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        607 tests（db 16 + shared 28 + ma 37 + worker 144 + web 382）
+pnpm test:e2e    2 passed（30.3s）—— smoke 新增：切审校 tab → 开始审校 → 结果面板出现（fake 模型返回散文，正确走 degraded 分支而非崩溃）
+```
+
+新增测试 8 例：验真命中/未命中、计数正确、代码围栏、散文降级、非法枚举回落、缺 quote 丢弃、章节缺失、rethrow。

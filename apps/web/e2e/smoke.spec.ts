@@ -110,6 +110,13 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
     .poll(async () => (await editor.inputValue()).length, { timeout: 15_000 })
     .toBeGreaterThan(lengthBeforeContinue);
 
+  // 8.7 审校（REVIEW）：切到审校 tab 触发，等待结果面板出现
+  //     job-status-card 只在 AI tab 渲染，因此这里以审校面板自身作为完成信号
+  await page.getByRole("tab", { name: "审校" }).click();
+  await page.getByRole("button", { name: "开始审校" }).click();
+  await expect(page.locator(".review-summary")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
+
   // 9. 触发 DESLOP
   const deslopBtn = page.getByRole("button", { name: "去 AI 味" });
   await expect(deslopBtn).toBeEnabled({ timeout: 15_000 });

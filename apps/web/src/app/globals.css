@@ -973,6 +973,151 @@ select {
   color: var(--warning-deep);
 }
 
+/* Review panel */
+
+.review-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.review-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-panel-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.review-empty {
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.review-summary {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.review-summary-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.review-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.review-degraded {
+  margin: 0;
+  font-size: 12px;
+  color: var(--warning-deep);
+}
+
+.review-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.review-item.review-severity-error {
+  border-left-color: var(--danger);
+}
+
+.review-item.review-severity-warning {
+  border-left-color: var(--warning);
+}
+
+.review-item.review-severity-info {
+  border-left-color: var(--accent);
+}
+
+.review-item.review-applied {
+  opacity: 0.65;
+}
+
+.review-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.review-issue-type {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.review-quote {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  background: var(--surface-muted);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.review-problem {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.review-suggestion {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.review-replacement {
+  display: grid;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in oklab, var(--success) 40%, var(--border));
+  border-radius: 6px;
+  background: var(--success-bg);
+  font-size: 12px;
+}
+
+.review-replacement p {
+  margin: 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.review-item-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* Sidebar header + chapter create form */
 
 .sidebar-header {

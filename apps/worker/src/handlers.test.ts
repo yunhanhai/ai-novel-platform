@@ -20,6 +20,7 @@ describe("createHandlers", () => {
       "EXTRACT_MEMORY",
       "REWRITE",
       "POLISH",
+      "REVIEW",
       "DIAGNOSE_CHAPTER",
       "READER_SIMULATION",
       "STYLE_DRIFT_CHECK",

@@ -224,6 +224,22 @@ export interface JobSummary {
     mode?: string;
     selectedText?: string;
     newText?: string;
+    review?: {
+      summary: string;
+      passed: boolean;
+      suggestions: Array<{
+        issueType: string;
+        severity: "info" | "warning" | "error";
+        quote: string;
+        problem: string;
+        suggestion: string;
+        replacement?: string;
+        verified: boolean;
+      }>;
+      verifiedCount: number;
+      unverifiedCount: number;
+      degraded: boolean;
+    };
   } | null;
   startedAt: string | null;
   finishedAt: string | null;

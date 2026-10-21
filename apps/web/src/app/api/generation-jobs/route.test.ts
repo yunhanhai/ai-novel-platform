@@ -54,10 +54,18 @@ describe("POST /api/generation-jobs", () => {
   });
 
   it("returns 400 when jobType has no worker handler yet", async () => {
-    const res = await POST(req({ chapterId: "ch-1", jobType: "REVIEW" }));
+    const res = await POST(req({ chapterId: "ch-1", jobType: "GENERATE_OUTLINE" }));
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toContain("尚未开放");
+  });
+
+  it("creates a REVIEW job", async () => {
+    p().chapter.findFirst.mockResolvedValue({ id: "ch-1", projectId: "proj-1" });
+    cj().mockResolvedValue({ id: "job-1", jobType: "REVIEW", status: "QUEUED", projectId: "proj-1" });
+    const res = await POST(req({ chapterId: "ch-1", jobType: "REVIEW" }));
+    expect(res.status).toBe(201);
+    expect(cj()).toHaveBeenCalledWith(expect.objectContaining({ jobType: "REVIEW" }));
   });
 
   it("returns 400 when REWRITE has no selectedText", async () => {

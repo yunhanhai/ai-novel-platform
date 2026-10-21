@@ -113,6 +113,26 @@ export default function WorkspacePage() {
     await startJob(activeChapterId, "CONTINUE_CHAPTER");
   }
 
+  async function handleReview() {
+    if (!activeChapterId) return;
+    await flush();
+    await startJob(activeChapterId, "REVIEW");
+  }
+
+  // 审校建议的「应用替换」：按引证原文定位并替换。
+  // 引证已由 worker 端核对过存在性，这里再做一次当前正文的实时校验，
+  // 防止审校后用户手动改过正文导致替换错位。
+  const applyReviewReplacement = useCallback(
+    (quote: string, replacement: string): boolean => {
+      if (!quote) return false;
+      const index = content.indexOf(quote);
+      if (index < 0) return false;
+      setContent(content.slice(0, index) + replacement + content.slice(index + quote.length));
+      return true;
+    },
+    [content, setContent]
+  );
+
   async function handleExtractMemory() {
     if (!activeChapterId) return;
     await flush();
@@ -251,6 +271,8 @@ export default function WorkspacePage() {
         onGenerate={handleGenerate}
         onDiagnose={handleDiagnose}
         onContinue={handleContinue}
+        onReview={() => void handleReview()}
+        onApplyReviewReplacement={applyReviewReplacement}
         onDeslop={handleDeslop}
         onExtractMemory={handleExtractMemory}
         isStarting={isStarting}
