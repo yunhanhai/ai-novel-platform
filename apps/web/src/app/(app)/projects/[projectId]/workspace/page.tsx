@@ -107,6 +107,12 @@ export default function WorkspacePage() {
     await startJob(activeChapterId, "DESLOP");
   }
 
+  async function handleContinue() {
+    if (!activeChapterId) return;
+    await flush();
+    await startJob(activeChapterId, "CONTINUE_CHAPTER");
+  }
+
   async function handleExtractMemory() {
     if (!activeChapterId) return;
     await flush();
@@ -244,6 +250,7 @@ export default function WorkspacePage() {
         currentChapterText={content}
         onGenerate={handleGenerate}
         onDiagnose={handleDiagnose}
+        onContinue={handleContinue}
         onDeslop={handleDeslop}
         onExtractMemory={handleExtractMemory}
         isStarting={isStarting}

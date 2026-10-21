@@ -13,6 +13,7 @@ import {
 interface AiPanelProps {
   onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions) => void;
   onDiagnose: (qualityMode: QualityMode) => void;
+  onContinue: () => void;
   onDeslop: () => void;
   onExtractMemory: () => void;
   isStarting: boolean;
@@ -24,7 +25,7 @@ interface AiPanelProps {
 
 const QUALITY_MODES: QualityMode[] = ["fast", "balanced", "deep"];
 
-export function AiPanel({ onGenerate, onDiagnose, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId }: AiPanelProps) {
+export function AiPanel({ onGenerate, onDiagnose, onContinue, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId }: AiPanelProps) {
   const isRunning = job ? ["QUEUED", "RUNNING"].includes(job.status) : false;
   const [contextOptions, setContextOptions] = useState<ContextOptions | undefined>(undefined);
   const [qualityMode, setQualityMode] = useState<QualityMode>("balanced");
@@ -42,6 +43,11 @@ export function AiPanel({ onGenerate, onDiagnose, onDeslop, onExtractMemory, isS
     : "运行诊断";
   const deslopLabel = isStarting && job?.jobType === "DESLOP" ? "提交中..." : "去 AI 味";
   const extractLabel = isStarting && job?.jobType === "EXTRACT_MEMORY" ? "提交中..." : "抽取记忆";
+  const continueLabel = isStarting && job?.jobType === "CONTINUE_CHAPTER"
+    ? "提交中..."
+    : isRunning && job?.jobType === "CONTINUE_CHAPTER"
+    ? "续写中..."
+    : "继续写";
 
   return (
     <div className="ai-panel-content" aria-label="AI 面板">
@@ -73,6 +79,13 @@ export function AiPanel({ onGenerate, onDiagnose, onDeslop, onExtractMemory, isS
           disabled={busy}
         >
           {generateLabel}
+        </button>
+        <button
+          className="btn-ghost"
+          onClick={onContinue}
+          disabled={busy}
+        >
+          {continueLabel}
         </button>
         <button
           className="btn-ghost"

@@ -38,6 +38,7 @@ interface Props {
   currentChapterText: string;
   onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions) => void;
   onDiagnose: (qualityMode: QualityMode) => void;
+  onContinue: () => void;
   onDeslop: () => void;
   onExtractMemory: () => void;
   isStarting: boolean;
@@ -53,6 +54,7 @@ export function WorkspaceSideTabs({
   currentChapterText,
   onGenerate,
   onDiagnose,
+  onContinue,
   onDeslop,
   onExtractMemory,
   isStarting,
@@ -84,6 +86,7 @@ export function WorkspaceSideTabs({
           <AiPanel
             onGenerate={onGenerate}
             onDiagnose={onDiagnose}
+            onContinue={onContinue}
             onDeslop={onDeslop}
             onExtractMemory={onExtractMemory}
             isStarting={isStarting}

@@ -101,6 +101,15 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   // fake-model 的输出含「林墨推开门」，应用后应出现在正文中
   await expect(editor).toHaveValue(/林墨推开门/, { timeout: 10_000 });
 
+  // 8.6 继续写（CONTINUE_CHAPTER）：正文应追加变长
+  const lengthBeforeContinue = (await editor.inputValue()).length;
+  await page.getByRole("button", { name: "继续写" }).click();
+  await expect(jobTypeCell).toHaveText("续写章节", { timeout: 10_000 });
+  await expect(jobStatusTag).toHaveText("已完成", { timeout: 30_000 });
+  await expect
+    .poll(async () => (await editor.inputValue()).length, { timeout: 15_000 })
+    .toBeGreaterThan(lengthBeforeContinue);
+
   // 9. 触发 DESLOP
   const deslopBtn = page.getByRole("button", { name: "去 AI 味" });
   await expect(deslopBtn).toBeEnabled({ timeout: 15_000 });

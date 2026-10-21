@@ -850,3 +850,32 @@ pnpm test:e2e    2 passed（30.4s）—— smoke 新增：全选→润色→SUCC
 ```
 
 新增测试：handler 8 例（模式分派/指令注入/三态确定性失败/目标回落/rethrow）、API 3 例（缺 selectedText 400/空白 400/合法 201）、job-request 2 例。
+
+---
+
+## 2026-10-21 — 第五批：CONTINUE_CHAPTER 续写
+
+真实 LLM 验收因缺凭据（无 API key / ENCRYPTION_KEY，DB 内 provider key 全 NULL）暂缓，改推进 PENDING 中价值次高的一项：**续写**。作者写了一半的章节，可以点「继续写」让 AI 从末尾接续，结果**直接写库**（与整章生成一致，区别于改写/润色的建议式）。
+
+### 实现
+
+- **`continue-chapter-handler`**（新，单次 LLM 调用）：
+  - 只取章节末尾 1500 字作上下文（长章节不爆 prompt）
+  - prompt 强调延续人称/语气/文风、不重复已有内容、推动情节
+  - `targetLength` 支持（默认 600，上限 3000，越界自动夹紧）
+  - 输出剥离 markdown 代码围栏；空输出 → `EMPTY_OUTPUT` 定稿
+  - 复用 `commitFinalize`（单事务：章节更新 + contentVersion + step + job 状态 + usageEvent），与整章生成共享版本链
+  - 拼接规则：原文非空且不以换行结尾时补 `\n\n`，空章节则直接写入
+  - 模型异常 rethrow → 走 poll 重试
+- API：CONTINUE_CHAPTER 移入 SUPPORTED；PENDING 仅剩 GENERATE_OUTLINE / REVIEW
+- 前端：AI 面板新增「继续写」按钮（含提交中/续写中状态），完成后自动 reload 正文
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        599 tests（db 16 + shared 28 + ma 37 + worker 137 + web 381）
+pnpm test:e2e    2 passed（41.2s）—— smoke 新增：点「继续写」→ 续写章节 SUCCEEDED → 正文长度增长
+```
+
+新增测试 8 例：拼接与版本落库/空章节/代码围栏剥离/长章节截尾/长度夹紧/章节缺失/空输出/rethrow。

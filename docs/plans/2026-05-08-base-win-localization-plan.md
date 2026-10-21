@@ -323,3 +323,24 @@ pnpm test:e2e
 - [x] Workspace page: submits the job with the selection anchor, shows a before/after diff card on SUCCEEDED, applies only when content.slice(start,end) still equals selectedText (double guard with the handler-side SELECTION_STALE); apply rides the existing auto-save path.
 - [x] job-request: selectedText/instruction attached only for REWRITE/POLISH, instruction trimmed.
 - [x] Verified: typecheck 5/5; 591 tests green (16+28+37+129+381); e2e 2 passed (30.4s) including a new smoke step: select-all → polish → SUCCEEDED → diff card → apply → content contains the fake model output.
+
+## Task 15: 2026-10-21 CONTINUE_CHAPTER (Continue Writing)
+
+**Files:**
+- Create: `apps/worker/src/pipeline/continue-chapter-handler.ts` + test
+- Modify: `apps/worker/src/handlers.ts` + test, `apps/web/src/app/api/generation-jobs/route.ts`, `ai-panel.tsx`, `workspace-side-tabs.tsx`, `workspace/page.tsx`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] New single-call continue handler: feeds only the chapter tail (1500 chars) into the prompt, enforces continuity of voice/person and forbids repetition, supports a clamped targetLength (600 default, 3000 max), strips code fences, and finalizes through the shared commitFinalize transaction (chapter + contentVersion + step + job + usageEvent) so continuations join the same version chain as full generations.
+- [x] Continuation is written directly (like GENERATE_CHAPTER), unlike the advisory rewrite/polish flow.
+- [x] API: CONTINUE_CHAPTER moved into SUPPORTED; PENDING now only GENERATE_OUTLINE / REVIEW.
+- [x] UI: AI panel gains a 「继续写」 button with submitting/continuing states; content reloads on SUCCEEDED.
+- [x] Verified: typecheck 5/5; 599 tests green (16+28+37+137+381); e2e 2 passed (41.2s) with a new smoke assertion that the chapter grows after continuing.
+- [x] Noted: real-LLM acceptance remains blocked on missing credentials (no API key / ENCRYPTION_KEY; all DB provider keys are NULL).

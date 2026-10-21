@@ -15,6 +15,7 @@ describe("createHandlers", () => {
     const handlers = build(true);
     const expected = [
       "GENERATE_CHAPTER",
+      "CONTINUE_CHAPTER",
       "DESLOP",
       "EXTRACT_MEMORY",
       "REWRITE",

@@ -34,6 +34,7 @@ interface CreateJobBody {
 
 const SUPPORTED_JOB_TYPES: JobType[] = [
   "GENERATE_CHAPTER",
+  "CONTINUE_CHAPTER",
   "DESLOP",
   "EXTRACT_MEMORY",
   "REWRITE",
@@ -46,7 +47,6 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
 
 const PENDING_JOB_TYPES: JobType[] = [
   "GENERATE_OUTLINE",
-  "CONTINUE_CHAPTER",
   "REVIEW"
 ];
 
