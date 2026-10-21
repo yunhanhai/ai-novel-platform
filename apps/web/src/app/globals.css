@@ -1336,6 +1336,49 @@ select {
   border-radius: 2px;
 }
 
+/* Version diff */
+
+.version-diff {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.version-diff-summary {
+  margin: 0 0 6px;
+  font-size: 11px;
+}
+
+.version-diff-body {
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.version-diff-body ins {
+  background: var(--success-bg);
+  color: var(--success);
+  text-decoration: none;
+  border-radius: 2px;
+}
+
+.version-diff-body del {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-radius: 2px;
+}
+
+.chapter-load-more {
+  width: 100%;
+  justify-content: center;
+  margin-top: 8px;
+}
+
 .chapter-create-form {
   display: grid;
   gap: 6px;

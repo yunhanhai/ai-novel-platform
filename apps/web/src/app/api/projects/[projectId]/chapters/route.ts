@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sanitizeServerMessage } from "../../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import { createChapter, findChaptersByProject } from "../../../../../server/chapters";
+import { findChapterPage, normalizePaging } from "../../../../../server/chapter-paging";
 import { getOrganizationId, getUserId, isUnauthorizedError } from "../../../../../server/context";
 
 interface RouteContext {
@@ -14,23 +15,50 @@ interface CreateChapterBody {
   volumeId?: string;
 }
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { projectId } = await context.params;
+  const { searchParams } = new URL(request.url);
+  const wantsPaging = searchParams.has("page") || searchParams.has("pageSize");
 
   try {
     const organizationId = await getOrganizationId();
-    const chapters = await findChaptersByProject(organizationId, projectId, prisma);
+
+    if (!wantsPaging) {
+      const chapters = await findChaptersByProject(organizationId, projectId, prisma);
+      return NextResponse.json({
+        success: true,
+        data: chapters.map((c) => ({
+          id: c.id,
+          chapterNo: c.chapterNo,
+          title: c.title,
+          status: c.status,
+          wordCount: c.wordCount,
+          content: c.content,
+          updatedAt: c.updatedAt.toISOString()
+        }))
+      });
+    }
+
+    const { page, pageSize } = normalizePaging(searchParams.get("page"), searchParams.get("pageSize"));
+    const result = await findChapterPage({ organizationId, projectId, page, pageSize, prisma });
+
     return NextResponse.json({
       success: true,
-      data: chapters.map((c) => ({
-        id: c.id,
-        chapterNo: c.chapterNo,
-        title: c.title,
-        status: c.status,
-        wordCount: c.wordCount,
-        content: c.content,
-        updatedAt: c.updatedAt.toISOString()
-      }))
+      data: {
+        items: result.items.map((c) => ({
+          id: c.id,
+          chapterNo: c.chapterNo,
+          title: c.title,
+          status: c.status,
+          wordCount: c.wordCount,
+          content: c.content,
+          updatedAt: c.updatedAt.toISOString()
+        })),
+        page: result.page,
+        pageSize: result.pageSize,
+        total: result.total,
+        totalPages: result.totalPages
+      }
     });
   } catch (error: unknown) {
     return errorResponse(error);

@@ -452,3 +452,24 @@ pnpm test:e2e
 - [x] Stats service: chapter count, total words, average, longest/shortest chapter, and five length buckets.
 - [x] Stats API and a persistent sidebar line (共 N 章 · X 字 · 均 Y 字/章) that refreshes as chapters change and degrades silently on failure.
 - [x] Verified: typecheck 5/5; 653 tests green (16+28+37+156+416); e2e 2 passed (40.4s) — smoke searches 林墨, asserts one hit with highlight, then clears.
+
+## Task 21: 2026-10-21 Version Diff and Chapter Paging
+
+**Files:**
+- Create: `apps/web/src/server/text-diff.ts` + test, `apps/web/src/server/chapter-paging.ts` + test, `apps/web/src/app/api/chapters/[chapterId]/versions/diff/route.ts` + test
+- Modify: `versions-panel.tsx`, `api/projects/[projectId]/chapters/route.ts`, `use-workspace-data.ts`, `asset-sidebar.tsx`, `workspace/page.tsx`, `globals.css`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Text diff: CJK-per-character / latin-per-word tokenization with an LCS table, adjacent same-kind segments merged, and a coarse whole-replacement fallback above 4000 units to bound memory on very long chapters.
+- [x] Diff API validates version existence, chapter ownership and entity match, returning segments plus an added/removed character summary.
+- [x] Version cards gain a compare toggle rendering an inline diff: green ins, red del, unchanged text inline, with a summary line.
+- [x] Chapter paging: normalizePaging (page >= 1, pageSize clamped 1-200, default 50) and findChapterPage (count + page query in parallel). The chapters endpoint stays backward compatible — no paging params returns the full array; paging params return an envelope.
+- [x] useChapters gains loadMore/hasMore/isLoadingMore/total with id-deduplicated incremental appends so scroll position is preserved.
+- [x] Verified: typecheck 5/5; 674 tests green (16+28+37+156+437); e2e 2 passed (42.0s) — smoke opens the versions tab, compares against current, and waits for the diff summary.

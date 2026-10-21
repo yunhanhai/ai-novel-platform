@@ -1032,3 +1032,31 @@ pnpm test:e2e    2 passed（40.4s）—— smoke 新增：搜索「林墨」→ 
 ```
 
 新增测试 13 例：snippet 上下文/省略号/大小写/无匹配、计数、搜索命中与空查询短路（7），统计空项目/聚合/分桶/查询范围（4），另含侧栏交互相关断言由 e2e 覆盖。
+
+---
+
+## 2026-10-21 — 第十一批：版本差异对比与章节分页
+
+### 1. 版本差异对比（回滚前先看改了什么）
+
+此前版本面板只能看到 200 字预览就决定回滚，风险高。新增：
+
+- `server/text-diff.ts`：中文按字符、英文按词切分的 LCS 差异算法（`tokenize` / `diffText` / `summarizeDiff`）。**超过 4000 单元退化为整段替换**，避免长篇章节耗尽内存；相同内容合并相邻同类片段
+- `GET /api/chapters/[chapterId]/versions/diff?versionId=`：校验版本存在、属于该章节，返回 `segments` + 摘要（新增/删除字数）
+- 版本卡片新增「对比当前 / 收起对比」：内联展示 diff，新增绿底 `<ins>`、删除红底 `<del>`、未变部分正常显示，附「相比当前：新增 N 字 · 删除 M 字」
+
+### 2. 章节列表分页（长篇小说侧栏不再一次全量）
+
+- `server/chapter-paging.ts`：`normalizePaging`（page ≥ 1、pageSize 1-200 夹紧、默认 50）+ `findChapterPage`（count + 分页查询并行）
+- `GET /api/projects/[projectId]/chapters` 保持向后兼容：不带 `page/pageSize` 时仍返回全量数组（既有调用方不受影响），带参数时返回分页信封
+- `useChapters` 增加 `loadMore / hasMore / isLoadingMore / total`，侧栏底部「加载更多章节」按钮；**增量追加并按 id 去重**，不重取已加载数据（避免滚动位置丢失）
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        674 tests（db 16 + shared 28 + ma 37 + worker 156 + web 437）
+pnpm test:e2e    2 passed（42.0s）—— smoke 新增：版本 tab → 对比当前 → 差异摘要出现
+```
+
+新增测试 21 例：diff 分词/纯插入/纯删除/上下文保留/双向重建/超长退化/摘要（10）、版本对比 API 400/404/跨章节/正常/401（5）、分页参数夹紧/分页元数据/skip 计算/空项目（4），另 2 例为既有断言更新。

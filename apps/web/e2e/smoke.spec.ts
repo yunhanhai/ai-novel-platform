@@ -154,6 +154,13 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await page.getByRole("button", { name: "清空搜索" }).click();
   await expect(page.locator(".search-hit")).toHaveCount(0);
 
+  // 12.5 版本对比：与当前正文比较，应展示差异或"一致"
+  await page.getByRole("tab", { name: "版本" }).click();
+  await expect(page.locator(".version-card").first()).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "对比当前" }).first().click();
+  await expect(page.locator(".version-diff-summary")).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
+
   // 13. 导出作品（TXT 附件下载）
   const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
   await page.getByRole("link", { name: "导出" }).click();

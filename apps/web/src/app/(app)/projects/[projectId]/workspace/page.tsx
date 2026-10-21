@@ -28,7 +28,15 @@ export default function WorkspacePage() {
   const params = useParams<{ projectId: string }>();
   const projectId = params?.projectId ?? null;
 
-  const { chapters, isLoading: chaptersLoading, createChapter, reload: reloadChapters } = useChapters(projectId);
+  const {
+    chapters,
+    isLoading: chaptersLoading,
+    isLoadingMore,
+    hasMore,
+    createChapter,
+    reload: reloadChapters,
+    loadMore
+  } = useChapters(projectId);
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -259,6 +267,9 @@ export default function WorkspacePage() {
         isLoading={chaptersLoading}
         exportHref={projectId ? `/api/projects/${projectId}/export` : null}
         projectId={projectId}
+        hasMore={hasMore}
+        isLoadingMore={isLoadingMore}
+        onLoadMore={() => void loadMore()}
       />
       <EditorPane
         title={activeChapter?.title ?? "未选择章节"}

@@ -19,6 +19,22 @@ export interface ChapterVersionItem {
   contentLength: number;
 }
 
+interface DiffSegment {
+  kind: "equal" | "insert" | "delete";
+  text: string;
+}
+
+interface VersionDiff {
+  versionId: string;
+  versionNo: number;
+  source: string;
+  createdAt: string;
+  currentChars: number;
+  targetChars: number;
+  summary: { addedChars: number; removedChars: number; changed: boolean };
+  segments: DiffSegment[];
+}
+
 interface Props {
   chapterId: string | null;
   onRestored?: () => void;
@@ -30,6 +46,8 @@ export function VersionsPanel({ chapterId, onRestored }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [diff, setDiff] = useState<VersionDiff | null>(null);
+  const [diffLoadingId, setDiffLoadingId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!chapterId) {
@@ -62,12 +80,33 @@ export function VersionsPanel({ chapterId, onRestored }: Props) {
       const json = (await res.json()) as ApiEnvelope<unknown>;
       if (!res.ok || !json.success) throw new Error(json.error ?? `回滚失败 (${res.status})`);
       setConfirmId(null);
+      setDiff(null);
       await reload();
       onRestored?.();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "回滚失败");
     } finally {
       setRestoringId(null);
+    }
+  }
+
+  async function handleToggleDiff(versionId: string) {
+    if (diff?.versionId === versionId) {
+      setDiff(null);
+      return;
+    }
+    setDiffLoadingId(versionId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/chapters/${chapterId}/versions/diff?versionId=${versionId}`);
+      const json = (await res.json()) as ApiEnvelope<VersionDiff>;
+      if (!res.ok || !json.success || !json.data) throw new Error(json.error ?? `对比失败 (${res.status})`);
+      setDiff(json.data);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "对比失败");
+      setDiff(null);
+    } finally {
+      setDiffLoadingId(null);
     }
   }
 
@@ -139,10 +178,39 @@ export function VersionsPanel({ chapterId, onRestored }: Props) {
                 <button
                   type="button"
                   className="btn-ghost"
+                  onClick={() => void handleToggleDiff(v.id)}
+                  disabled={diffLoadingId === v.id}
+                >
+                  {diffLoadingId === v.id ? "对比中..." : diff?.versionId === v.id ? "收起对比" : "对比当前"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
                   onClick={() => setConfirmId(v.id)}
                 >
                   回滚到此版本
                 </button>
+              </div>
+            )}
+
+            {diff?.versionId === v.id && (
+              <div className="version-diff">
+                <p className="muted version-diff-summary">
+                  {diff.summary.changed
+                    ? `相比当前：新增 ${diff.summary.addedChars} 字 · 删除 ${diff.summary.removedChars} 字`
+                    : "与当前正文一致"}
+                </p>
+                <div className="version-diff-body">
+                  {diff.segments.map((segment, index) =>
+                    segment.kind === "equal" ? (
+                      <span key={index}>{segment.text}</span>
+                    ) : segment.kind === "insert" ? (
+                      <ins key={index}>{segment.text}</ins>
+                    ) : (
+                      <del key={index}>{segment.text}</del>
+                    )
+                  )}
+                </div>
               </div>
             )}
           </li>

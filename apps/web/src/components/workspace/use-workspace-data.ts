@@ -24,14 +24,30 @@ export interface ChapterItem {
 interface UseChaptersResult {
   chapters: ChapterItem[];
   isLoading: boolean;
+  isLoadingMore: boolean;
+  hasMore: boolean;
+  total: number | null;
   error: string | null;
   reload: () => Promise<void>;
+  loadMore: () => Promise<void>;
   createChapter: (input: { chapterNo: number; title: string }) => Promise<ChapterItem | null>;
+}
+
+const CHAPTER_PAGE_SIZE = 50;
+
+interface ChapterPagePayload {
+  items: ChapterItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 }
 
 export function useChapters(projectId: string | null): UseChaptersResult {
   const [chapters, setChapters] = useState<ChapterItem[]>([]);
   const [isLoading, setLoading] = useState(false);
+  const [isLoadingMore, setLoadingMore] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const reloadSeqRef = useRef(0);
 
@@ -41,11 +57,16 @@ export function useChapters(projectId: string | null): UseChaptersResult {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/projects/${projectId}/chapters`);
-      const json = (await res.json()) as ApiEnvelope<ChapterItem[]>;
-      if (!res.ok || !json.success) throw new Error(json.error ?? `请求失败 (${res.status})`);
+      const res = await fetch(
+        `/api/projects/${projectId}/chapters?page=1&pageSize=${CHAPTER_PAGE_SIZE}`
+      );
+      const json = (await res.json()) as ApiEnvelope<ChapterPagePayload>;
+      if (!res.ok || !json.success || !json.data) {
+        throw new Error(json.error ?? `请求失败 (${res.status})`);
+      }
       if (reloadSeqRef.current !== seq) return;
-      setChapters(json.data ?? []);
+      setChapters(json.data.items);
+      setTotal(json.data.total);
     } catch (err: unknown) {
       if (reloadSeqRef.current !== seq) return;
       setError(err instanceof Error ? err.message : "章节加载失败");
@@ -53,6 +74,32 @@ export function useChapters(projectId: string | null): UseChaptersResult {
       if (reloadSeqRef.current === seq) setLoading(false);
     }
   }, [projectId]);
+
+  // 增量加载：侧栏「加载更多」。分页请求走同一接口，已加载的章节保持不动，
+  // 避免整表重取导致的滚动位置丢失。
+  const loadMore = useCallback(async () => {
+    if (!projectId) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = Math.floor(chapters.length / CHAPTER_PAGE_SIZE) + 1;
+      const res = await fetch(
+        `/api/projects/${projectId}/chapters?page=${nextPage}&pageSize=${CHAPTER_PAGE_SIZE}`
+      );
+      const json = (await res.json()) as ApiEnvelope<ChapterPagePayload>;
+      if (!res.ok || !json.success || !json.data) {
+        throw new Error(json.error ?? `请求失败 (${res.status})`);
+      }
+      setChapters((prev) => {
+        const seen = new Set(prev.map((chapter) => chapter.id));
+        return [...prev, ...json.data!.items.filter((chapter) => !seen.has(chapter.id))];
+      });
+      setTotal(json.data.total);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "加载更多失败");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [projectId, chapters.length]);
 
   useEffect(() => {
     void reload();
@@ -76,7 +123,17 @@ export function useChapters(projectId: string | null): UseChaptersResult {
     [projectId, reload]
   );
 
-  return { chapters, isLoading, error, reload, createChapter };
+  return {
+    chapters,
+    isLoading,
+    isLoadingMore,
+    hasMore: total !== null && chapters.length < total,
+    total,
+    error,
+    reload,
+    loadMore,
+    createChapter
+  };
 }
 
 interface UseChapterContentResult {

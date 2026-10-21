@@ -39,6 +39,9 @@ interface AssetSidebarProps {
   isLoading?: boolean;
   exportHref?: string | null;
   projectId?: string | null;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 export function AssetSidebar({
@@ -48,7 +51,10 @@ export function AssetSidebar({
   onCreate,
   isLoading = false,
   exportHref = null,
-  projectId = null
+  projectId = null,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore
 }: AssetSidebarProps) {
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
@@ -254,20 +260,32 @@ export function AssetSidebar({
       ) : chapters.length === 0 ? (
         <p className="muted">暂无章节</p>
       ) : (
-        <ul className="chapter-list">
-          {chapters.map((ch) => (
-            <li key={ch.id}>
-              <button
-                className={`chapter-item ${ch.id === activeChapterId ? "active" : ""}`}
-                onClick={() => onSelect(ch.id)}
-              >
-                <span className="chapter-no">第{ch.chapterNo}章</span>
-                <span className="chapter-title">{ch.title}</span>
-                <span className="chapter-status">{labelForChapterStatus(ch.status)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="chapter-list">
+            {chapters.map((ch) => (
+              <li key={ch.id}>
+                <button
+                  className={`chapter-item ${ch.id === activeChapterId ? "active" : ""}`}
+                  onClick={() => onSelect(ch.id)}
+                >
+                  <span className="chapter-no">第{ch.chapterNo}章</span>
+                  <span className="chapter-title">{ch.title}</span>
+                  <span className="chapter-status">{labelForChapterStatus(ch.status)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {hasMore && onLoadMore && (
+            <button
+              type="button"
+              className="btn-ghost btn-small chapter-load-more"
+              onClick={onLoadMore}
+              disabled={isLoadingMore}
+            >
+              {isLoadingMore ? "加载中..." : "加载更多章节"}
+            </button>
+          )}
+        </>
       )}
     </aside>
   );
