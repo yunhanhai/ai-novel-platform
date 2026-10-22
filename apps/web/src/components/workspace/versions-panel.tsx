@@ -99,6 +99,12 @@ export function VersionsPanel({ chapterId, onRestored }: Props) {
     setError(null);
     try {
       const res = await fetch(`/api/chapters/${chapterId}/versions/diff?versionId=${versionId}`);
+      // dev 模式下首次请求可能命中路由编译，返回 HTML 错误页；
+      // 直接 res.json() 会抛出难以理解的 "Unexpected token '<'"，这里给出可读提示。
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error("对比服务尚未就绪，请稍后重试");
+      }
       const json = (await res.json()) as ApiEnvelope<VersionDiff>;
       if (!res.ok || !json.success || !json.data) throw new Error(json.error ?? `对比失败 (${res.status})`);
       setDiff(json.data);

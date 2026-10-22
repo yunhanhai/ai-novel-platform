@@ -1236,3 +1236,43 @@ pnpm typecheck   5/5
 pnpm test        694 tests（db 16 + shared 28 + ma 37 + worker 157 + web 456）
 pnpm test:e2e    2 passed + 1 skipped（55.2s）
 ```
+
+---
+
+## 2026-10-21 — 第十九批：token 估算统一为 CJK 感知
+
+### 发现
+
+顺着上一批的提示词审计继续查，发现**三个互不一致的 token 估算器**：
+
+| 位置 | 原公式 | 对中文的影响 |
+|---|---|---|
+| `shared/context-composer/token-budget.ts` | `chars / 2` | 略低估 |
+| `shared/context-composer/build-context-packet.ts` | `chars / 2` | 略低估 |
+| `worker/pipeline/chapter-pipeline.ts` | `chars / 4` | **低估 2–4 倍** |
+| `worker/context/token-budget.ts` | `chars / 2`（重复实现，仅自测引用） | 略低估 |
+
+中文约 0.6–1.5 字/token，`chars / 4` 是英文经验值。章节管线用它做 `canRunModelStep` 的成本准入判断，**中文下会明显放行本该被预算拦下的步骤**，性能预算形同虚设。
+
+### 修复
+
+- 新增 `shared/generation/token-estimate.ts`：CJK 字符与中文标点（含 `，。！？` 所在的 U+3000 / U+FF00 区段）按 1 token 计，非 CJK 按 4 字符 ≈ 1 token。1 字/token 是安全上界，保证不低估
+- 四处估算器全部改为引用该共享实现；`worker/context/token-budget.ts` 的重复实现改为薄 re-export（与既有 `build-context-packet.ts` 模式一致）
+- 章节管线的 `estimatePromptTokens` 直接别名到共享 `estimateTokens`
+
+### 顺带修的 e2e 稳定性问题
+
+版本对比断言偶发失败，根因是 **dev 模式首次请求该路由时触发编译，返回 HTML 错误页**，前端 `res.json()` 抛出难以理解的 `Unexpected token '<'`。两处加固：
+
+- 前端先检查 `content-type`，非 JSON 时给出「对比服务尚未就绪，请稍后重试」的可读提示
+- e2e 在断言前预热该路由，避免把编译延迟计入超时窗口
+
+### 验证（全绿，e2e 连跑两次）
+
+```text
+pnpm typecheck   5/5
+pnpm test        700 tests（db 16 + shared 33 + ma 37 + worker 158 + web 456）
+pnpm test:e2e    2 passed + 1 skipped（45.2s / 45.8s）
+```
+
+新增测试 6 例：估算器空串/中文/英文/混排/下限保证（5）、预算裁剪的英文场景（1）。

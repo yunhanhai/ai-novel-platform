@@ -1,6 +1,7 @@
 import type { ContextAsset, NormalizedContextOptions } from "./types";
 import { activateByKeywords, type ActivationReport, type KeywordSource } from "./keyword-activation";
 import { applyTokenBudget } from "./token-budget";
+import { estimateTokens } from "../generation/token-estimate";
 
 interface ChapterInfo {
   id: string;
@@ -397,8 +398,4 @@ function formatWorldItem(worldItem: WorldItemInfo): string {
 
 function estimateTotalChars(sections: string[]): number {
   return sections.reduce((sum, section) => sum + section.length, 0);
-}
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 2);
 }

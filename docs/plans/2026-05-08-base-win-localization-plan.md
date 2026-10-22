@@ -609,3 +609,23 @@ pnpm test:e2e
 - [x] Translated all five prompts to Chinese, keeping JSON keys and enum values intact for machine parsing and preserving every interpolated value (banned lists, review criteria, methodology guide text). Section markers became 【方法论对齐】 / 【必查项】.
 - [x] Added a regression test running the full pipeline and asserting all five model calls receive prompts containing CJK characters and no "You are", so the constraint cannot silently regress.
 - [x] Verified: typecheck 5/5; 694 tests green (16+28+37+157+456); e2e 2 passed + 1 skipped (55.2s).
+
+## Task 29: 2026-10-21 CJK-Aware Token Estimation
+
+**Files:**
+- Create: `packages/shared/src/generation/token-estimate.ts` + test
+- Modify: `packages/shared/package.json`, `shared/context-composer/token-budget.ts`, `shared/context-composer/build-context-packet.ts`, `worker/pipeline/chapter-pipeline.ts`, `worker/context/token-budget.ts` + test, `versions-panel.tsx`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Found three inconsistent estimators: two used chars/2 and the chapter pipeline used chars/4, which is the English heuristic and underestimates Chinese by 2-4x. Since the pipeline uses it for canRunModelStep cost admission, Chinese generation could bypass budget guardrails.
+- [x] Added shared/generation/token-estimate.ts counting CJK characters and CJK punctuation (U+3000 and U+FF00 blocks, since novel prose is full of fullwidth punctuation) at 1 token each and other text at 4 chars/token — a safe upper bound that never underestimates Chinese.
+- [x] All four estimators now use it; the duplicated worker/context/token-budget.ts became a thin re-export matching the existing build-context-packet pattern; the pipeline's estimatePromptTokens aliases the shared function.
+- [x] Fixed an e2e flake: the first request to the new diff route in dev mode triggers compilation and returns an HTML error page, so res.json() threw Unexpected token '<'. The panel now checks content-type and shows a readable message, and the e2e warms the route before asserting.
+- [x] Verified: typecheck 5/5; 700 tests green (16+33+37+158+456); e2e 2 passed + 1 skipped, run twice (45.2s / 45.8s).

@@ -15,6 +15,7 @@
     "./generation/state": "./src/generation/state.ts",
     "./generation/word-count": "./src/generation/word-count.ts",
     "./generation/performance": "./src/generation/performance.ts",
+    "./generation/token-estimate": "./src/generation/token-estimate.ts",
     "./methodology/templates": "./src/methodology/templates.ts"
   },
   "scripts": {

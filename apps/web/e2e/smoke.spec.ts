@@ -155,6 +155,15 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(page.locator(".search-hit")).toHaveCount(0);
 
   // 12.5 版本对比：与当前正文比较，应展示差异或"一致"
+  //     先预热路由（dev 模式首次请求会触发编译，可能返回 HTML 错误页）
+  const chapterIdForDiff = await page.evaluate(async () => {
+    const res = await fetch("/api/projects/" + location.pathname.split("/")[2] + "/chapters?page=1&pageSize=1");
+    const json = await res.json();
+    return json?.data?.items?.[0]?.id ?? null;
+  });
+  if (chapterIdForDiff) {
+    await page.request.get(`/api/chapters/${chapterIdForDiff}/versions/diff?versionId=warmup`).catch(() => undefined);
+  }
   await page.getByRole("tab", { name: "版本" }).click();
   await expect(page.locator(".version-card").first()).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "对比当前" }).first().click();

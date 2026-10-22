@@ -1,3 +1,5 @@
+import { estimateTokens } from "../generation/token-estimate";
+
 interface BudgetItem {
   id: string;
   content: string;
@@ -14,10 +16,6 @@ interface BudgetResult<T extends BudgetItem> {
 interface ApplyBudgetParams<T extends BudgetItem> {
   items: T[];
   tokenBudget: number;
-}
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 2);
 }
 
 export function applyTokenBudget<T extends BudgetItem>({ items, tokenBudget }: ApplyBudgetParams<T>): BudgetResult<T> {

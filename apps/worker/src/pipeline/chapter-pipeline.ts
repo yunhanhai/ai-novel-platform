@@ -1,6 +1,7 @@
 ﻿import type { ActivationReport } from "../context/keyword-activation";
 import type { StyleGuide, MethodologyGuide } from "../context/build-context-packet";
 import type { ModelGenerateOptions } from "@ai-novel/model-adapters";
+import { estimateTokens as estimatePromptTokens } from "@ai-novel/shared/generation/token-estimate";
 import {
   createPerformanceTracker,
   normalizePerformanceBudget,
@@ -338,8 +339,4 @@ function safeJson<T>(text: string, fallback: T): T {
   } catch {
     return fallback;
   }
-}
-
-function estimatePromptTokens(prompt: string): number {
-  return Math.ceil(prompt.length / 4);
 }

@@ -22,13 +22,12 @@ describe("token-budget", () => {
 
   it("trims lowest priority items first", () => {
     const items: BudgetItem[] = [
-      { id: "hi", content: "X".repeat(600), priority: 10 },
-      { id: "mid", content: "X".repeat(350), priority: 5 },
-      { id: "lo", content: "X".repeat(200), priority: 1 }
+      { id: "hi", content: "题".repeat(300), priority: 10 },
+      { id: "mid", content: "答".repeat(150), priority: 5 },
+      { id: "lo", content: "注".repeat(100), priority: 1 }
     ];
 
-    // tokenBudget 是字符预算, estimateTokens = chars/2
-    // hi=600chars(300tokens), mid=350chars(175tokens), lo=200chars(100tokens), total 1150chars
+    // 中文按 1 字 ≈ 1 token 估算：hi=300, mid=150, lo=100
     const result = applyTokenBudget({ items, tokenBudget: 480 });
 
     expect(result.included).toHaveLength(2);
@@ -40,14 +39,26 @@ describe("token-budget", () => {
 
   it("trims item over budget and reports usage correctly", () => {
     const items: BudgetItem[] = [
-      { id: "a", content: "x".repeat(200), priority: 10 }
+      { id: "a", content: "文".repeat(200), priority: 10 }
     ];
 
-    // 200 chars = ~100 tokens > 50 token budget → trimmed, usage=0
+    // 中文 200 字 ≈ 200 tokens > 50 token 预算 → trimmed, usage=0
     const result = applyTokenBudget({ items, tokenBudget: 50 });
 
     expect(result.estimatedTokens).toBe(0);
     expect(result.trimmed).toHaveLength(1);
     expect(result.included).toHaveLength(0);
+  });
+
+  it("estimates english content at roughly four characters per token", () => {
+    const items: BudgetItem[] = [
+      { id: "en", content: "word".repeat(100), priority: 10 }
+    ];
+
+    // 400 个 ASCII 字符 ≈ 100 tokens，正好放进 100 的预算
+    const result = applyTokenBudget({ items, tokenBudget: 100 });
+
+    expect(result.included).toHaveLength(1);
+    expect(result.estimatedTokens).toBe(100);
   });
 });
