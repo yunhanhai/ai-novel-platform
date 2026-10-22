@@ -125,11 +125,24 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await page.getByRole("tab", { name: "AI", exact: true }).click();
 
   // 9. 触发 DESLOP
+  //    先验证并发保护：输入未保存内容后触发 AI 任务，刷新回写不能吞掉本地输入
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
+  const localEditMarker = `本地未保存-${Date.now()}`;
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type(localEditMarker);
   const deslopBtn = page.getByRole("button", { name: "去 AI 味" });
   await expect(deslopBtn).toBeEnabled({ timeout: 15_000 });
   await deslopBtn.click();
   await expect(jobTypeCell).toHaveText("去 AI 味", { timeout: 10_000 });
   await expect(jobStatusTag).toHaveText("已完成", { timeout: 30_000 });
+  // 本地未保存的输入必须仍在（未被任务回写覆盖）
+  await expect(editor).toHaveValue(new RegExp(localEditMarker), { timeout: 10_000 });
+  // 若检测到远端冲突，横幅应出现；选择保留本地
+  const conflictBanner = page.locator(".external-update-notice");
+  if (await conflictBanner.isVisible().catch(() => false)) {
+    await conflictBanner.getByRole("button", { name: "保留本地" }).click();
+  }
 
   // 10. 触发 EXTRACT_MEMORY
   const extractBtn = page.getByRole("button", { name: "抽取记忆" });

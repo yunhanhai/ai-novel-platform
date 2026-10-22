@@ -1028,6 +1028,28 @@ select {
   color: var(--warning-deep);
 }
 
+/* External update conflict banner */
+
+.external-update-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  background: var(--warning-bg);
+  font-size: 12px;
+  color: var(--warning-deep);
+}
+
+.external-update-actions {
+  display: flex;
+  gap: 6px;
+}
+
 /* Review panel */
 
 .review-panel {

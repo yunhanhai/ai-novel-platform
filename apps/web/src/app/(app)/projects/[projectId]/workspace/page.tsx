@@ -51,8 +51,17 @@ export default function WorkspacePage() {
   const [statsVersion, setStatsVersion] = useState(0);
   const bumpStats = useCallback(() => setStatsVersion((v) => v + 1), []);
 
-  const { content, setContent, saveStatus, isLoadingContent, flush, reload: reloadContent } =
-    useChapterContent(activeChapterId, { onSaved: bumpStats });
+  const {
+    content,
+    setContent,
+    saveStatus,
+    isLoadingContent,
+    flush,
+    reload: reloadContent,
+    externalUpdateNotice,
+    acceptExternalUpdate,
+    dismissExternalUpdate
+  } = useChapterContent(activeChapterId, { onSaved: bumpStats });
   const { job, startJob, isStarting, error: jobError } = useJobPolling();
 
   const [selection, setSelection] = useState<EditorSelection | null>(null);
@@ -291,6 +300,9 @@ export default function WorkspacePage() {
         onSelectionChange={setSelection}
         selectionToolbar={selectionToolbar}
         rewriteCard={rewriteCard}
+        externalUpdateNotice={externalUpdateNotice}
+        onAcceptExternalUpdate={() => void acceptExternalUpdate()}
+        onDismissExternalUpdate={dismissExternalUpdate}
       />
       <WorkspaceSideTabs
         projectId={projectId}

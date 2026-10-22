@@ -143,6 +143,9 @@ interface UseChapterContentResult {
   isLoadingContent: boolean;
   flush: () => Promise<void>;
   reload: () => Promise<void>;
+  externalUpdateNotice: boolean;
+  acceptExternalUpdate: () => Promise<void>;
+  dismissExternalUpdate: () => void;
 }
 
 export function useChapterContent(
@@ -154,6 +157,7 @@ export function useChapterContent(
   const [content, setContentState] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isLoadingContent, setLoadingContent] = useState(false);
+  const [externalUpdateNotice, setExternalUpdateNotice] = useState(false);
   const dirtyRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const activeIdRef = useRef<string | null>(null);
@@ -166,10 +170,18 @@ export function useChapterContent(
       const res = await fetch(`/api/chapters/${id}`);
       const json = (await res.json()) as ApiEnvelope<{ content: string }>;
       if (json.success && json.data && activeIdRef.current === id) {
-        setContentState(json.data.content ?? "");
-        contentRef.current = json.data.content ?? "";
-        dirtyRef.current = false;
-        setSaveStatus("idle");
+        const remote = json.data.content ?? "";
+        // 本地有未保存改动时不能直接覆盖——AI 任务回写触发的刷新
+        // 会把用户正在输入的内容吞掉。保留本地内容并提示冲突。
+        if (dirtyRef.current && remote !== contentRef.current) {
+          setExternalUpdateNotice(true);
+        } else {
+          setContentState(remote);
+          contentRef.current = remote;
+          dirtyRef.current = false;
+          setSaveStatus("idle");
+          setExternalUpdateNotice(false);
+        }
       }
     } catch {
       // Ignore one-off load failures; the editor can retry on reload.
@@ -274,13 +286,35 @@ export function useChapterContent(
     if (chapterId) await fetchContent(chapterId);
   }, [chapterId, fetchContent]);
 
+  // 放弃本地改动、接受远端最新内容（AI 回写 / 其他标签页）
+  const acceptExternalUpdate = useCallback(async () => {
+    if (!chapterId) return;
+    dirtyRef.current = false;
+    setExternalUpdateNotice(false);
+    await fetchContent(chapterId);
+  }, [chapterId, fetchContent]);
+
+  const dismissExternalUpdate = useCallback(() => {
+    setExternalUpdateNotice(false);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
 
-  return { content, setContent, saveStatus, isLoadingContent, flush, reload };
+  return {
+    content,
+    setContent,
+    saveStatus,
+    isLoadingContent,
+    flush,
+    reload,
+    externalUpdateNotice,
+    acceptExternalUpdate,
+    dismissExternalUpdate
+  };
 }
 
 export interface PerformanceSummaryView {

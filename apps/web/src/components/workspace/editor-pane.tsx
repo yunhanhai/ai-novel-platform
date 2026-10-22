@@ -19,6 +19,9 @@ interface EditorPaneProps {
   onSelectionChange?: (selection: EditorSelection | null) => void;
   selectionToolbar?: ReactNode;
   rewriteCard?: ReactNode;
+  externalUpdateNotice?: boolean;
+  onAcceptExternalUpdate?: () => void;
+  onDismissExternalUpdate?: () => void;
 }
 
 export function EditorPane({
@@ -31,7 +34,10 @@ export function EditorPane({
   selection = null,
   onSelectionChange,
   selectionToolbar,
-  rewriteCard
+  rewriteCard,
+  externalUpdateNotice = false,
+  onAcceptExternalUpdate,
+  onDismissExternalUpdate
 }: EditorPaneProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -62,6 +68,21 @@ export function EditorPane({
           {labelForSaveStatus(saveStatus)}
         </span>
       </div>
+      {externalUpdateNotice && (
+        <div className="external-update-notice" role="alert">
+          <span>
+            远端正文已更新（可能是 AI 任务或其他标签页），你本地有未保存的修改。
+          </span>
+          <div className="external-update-actions">
+            <button type="button" className="btn-ghost btn-small" onClick={onAcceptExternalUpdate}>
+              放弃本地改动
+            </button>
+            <button type="button" className="btn-ghost btn-small" onClick={onDismissExternalUpdate}>
+              保留本地
+            </button>
+          </div>
+        </div>
+      )}
       {selectionToolbar && selection && selection.text.trim().length > 0 && (
         <div className="selection-toolbar" role="toolbar" aria-label="选中文字操作">
           {selectionToolbar}
