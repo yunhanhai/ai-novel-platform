@@ -89,6 +89,13 @@ export function AssetSidebar({
   const [editingVolumeId, setEditingVolumeId] = useState<string | null>(null);
   const [volumeEditTitle, setVolumeEditTitle] = useState("");
   const [confirmDeleteVolumeId, setConfirmDeleteVolumeId] = useState<string | null>(null);
+  // 管理模式：勾选 + 拖拽排序 + 批量操作
+  const [manageMode, setManageMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchNotice, setBatchNotice] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 仅用于提示文案。真正的序号由服务端按全量章节计算，
@@ -188,6 +195,96 @@ export function AssetSidebar({
 
   const showingSearch = hits !== null;
 
+  function toggleSelected(chapterId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chapterId)) next.delete(chapterId);
+      else next.add(chapterId);
+      return next;
+    });
+  }
+
+  // 拖拽落点：把 dragId 对应章节插到目标章节当前所在位置（列表内重排）。
+  // 只重排当前组内的展示顺序，提交时把该组的新顺序发给服务端。
+  function handleDrop(
+    group: { volumeId: string | null; volumeTitle: string | null; chapters: ChapterItem[] },
+    targetId: string,
+    _targetIndex: number
+  ) {
+    if (!dragId || dragId === targetId || !projectId) return;
+    const ids = group.chapters.map((ch) => ch.id);
+    const from = ids.indexOf(dragId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+
+    ids.splice(to, 0, ids.splice(from, 1)[0]!);
+    setDragId(null);
+    setDragOverId(null);
+    setBatchBusy(true);
+    setBatchNotice(null);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/chapters/reorder`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderedIds: ids })
+        });
+        const json = (await res.json()) as ApiEnvelope<{ reordered: number }>;
+        if (!res.ok || !json.success) {
+          throw new Error(json.error ?? `排序失败 (${res.status})`);
+        }
+        onChapterMoved?.();
+        setBatchNotice(`已重排 ${json.data?.reordered ?? ids.length} 章`);
+      } catch (e: unknown) {
+        setBatchNotice(e instanceof Error ? e.message : "排序失败");
+      } finally {
+        setBatchBusy(false);
+      }
+    })();
+  }
+
+  async function handleBatchDelete() {
+    if (!projectId || selectedIds.size === 0) return;
+    setBatchBusy(true);
+    setBatchNotice(null);
+    let failed = 0;
+    for (const chapterId of selectedIds) {
+      try {
+        const res = await fetch(`/api/chapters/${chapterId}`, { method: "DELETE" });
+        if (!res.ok) failed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    setBatchBusy(false);
+    setSelectedIds(new Set());
+    setBatchNotice(failed === 0 ? "已删除所选章节" : `完成，${failed} 章删除失败`);
+    onChapterMoved?.();
+  }
+
+  async function handleBatchMove(volumeId: string) {
+    if (projectId === null || selectedIds.size === 0) return;
+    setBatchBusy(true);
+    setBatchNotice(null);
+    let failed = 0;
+    for (const chapterId of selectedIds) {
+      try {
+        const res = await fetch(`/api/chapters/${chapterId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ volumeId: volumeId || null })
+        });
+        if (!res.ok) failed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    setBatchBusy(false);
+    setSelectedIds(new Set());
+    setBatchNotice(failed === 0 ? "已移动所选章节" : `完成，${failed} 章移动失败`);
+    onChapterMoved?.();
+  }
+
   async function handleCreateVolume(event: React.FormEvent) {
     event.preventDefault();
     const title = volumeTitle.trim();
@@ -284,8 +381,7 @@ export function AssetSidebar({
   }
 
   // 软删除章节：后端只置 deletedAt，正文与版本链保留。
-  async function handleDeleteChapter(chapterId: string) {
-    setDeletingChapterId(chapterId);
+  async function handleDeleteChapter(chapterId: string) {    setDeletingChapterId(chapterId);
     setVolumeError(null);
     try {
       const res = await fetch(`/api/chapters/${chapterId}`, { method: "DELETE" });
@@ -359,8 +455,63 @@ export function AssetSidebar({
               + 新建
             </button>
           )}
+          {chapters.length > 0 && (
+            <button
+              type="button"
+              className={`btn-ghost btn-small ${manageMode ? "" : ""}`}
+              onClick={() => {
+                setManageMode((prev) => !prev);
+                setSelectedIds(new Set());
+                setBatchNotice(null);
+              }}
+              title={manageMode ? "退出管理" : "批量管理章节"}
+            >
+              {manageMode ? "完成" : "管理"}
+            </button>
+          )}
         </div>
       </div>
+
+      {manageMode && (
+        <div className="chapter-manage-bar">
+          <span className="muted">已选 {selectedIds.size} 章</span>
+          <div className="chapter-manage-actions">
+            <button
+              type="button"
+              className="btn-ghost btn-small"
+              disabled={batchBusy || selectedIds.size === 0}
+              onClick={() => void handleBatchDelete()}
+            >
+              批量删除
+            </button>
+            {volumes.length > 0 && (
+              <select
+                className="chapter-volume-select"
+                disabled={batchBusy || selectedIds.size === 0}
+                defaultValue=""
+                onChange={(e) => {
+                  if (e.target.value === "") return;
+                  void handleBatchMove(e.target.value);
+                  e.target.value = "";
+                }}
+                title="批量移动到分卷"
+              >
+                <option value="" disabled>
+                  批量移动到…
+                </option>
+                <option value="">未分卷</option>
+                {volumes.map((volume) => (
+                  <option key={volume.id} value={volume.id}>
+                    {volume.title}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          {batchNotice && <p className="form-hint">{batchNotice}</p>}
+          <p className="muted chapter-manage-hint">勾选后可批量操作；直接拖拽章节行可调整顺序</p>
+        </div>
+      )}
 
       {creatingVolume && (
         <form className="chapter-create-form" onSubmit={handleCreateVolume}>
@@ -584,8 +735,44 @@ export function AssetSidebar({
                 </div>
               )}
               <ul className="chapter-list">
-                {group.chapters.map((ch) => (
-                  <li key={ch.id} className="chapter-list-item">
+                {group.chapters.map((ch, index) => (
+                  <li
+                    key={ch.id}
+                    className={`chapter-list-item ${dragOverId === ch.id ? "drag-over" : ""}`}
+                    draggable={manageMode}
+                    onDragStart={(e) => {
+                      if (!manageMode) return;
+                      e.dataTransfer.effectAllowed = "move";
+                      setDragId(ch.id);
+                      e.dataTransfer.setData("text/plain", ch.id);
+                    }}
+                    onDragOver={(e) => {
+                      if (!manageMode || !dragId) return;
+                      e.preventDefault();
+                      setDragOverId(ch.id);
+                    }}
+                    onDragLeave={() => setDragOverId((prev) => (prev === ch.id ? null : prev))}
+                    onDrop={(e) => {
+                      if (!manageMode || !dragId) return;
+                      e.preventDefault();
+                      handleDrop(group, ch.id, index);
+                    }}
+                    onDragEnd={() => {
+                      setDragId(null);
+                      setDragOverId(null);
+                    }}
+                  >
+                    {manageMode && (
+                      <label className="chapter-check">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(ch.id)}
+                          onChange={() => toggleSelected(ch.id)}
+                          aria-label={`选择「${ch.title}」`}
+                        />
+                        <span className="chapter-drag-handle" title="拖拽排序">⠿</span>
+                      </label>
+                    )}
                     <button
                       className={`chapter-item ${ch.id === activeChapterId ? "active" : ""}`}
                       onClick={() => onSelect(ch.id)}

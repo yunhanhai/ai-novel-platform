@@ -757,3 +757,22 @@ pnpm test:e2e
 - [x] withVersionRetry (new) retries P2002 up to three times with short random backoff and rethrows non-unique errors immediately. applyDeslopEdit — which writes two version rows in one transaction and is the likeliest collider — is wrapped too.
 - [x] Audit notes recorded: saveContentVersion has no production callers (dead code), and the worker-side commitFinalize already benefits from the poll-level retry added earlier.
 - [x] Verified: typecheck 5/5; 712 tests green (16+33+37+158+468); e2e 2 passed + 1 skipped (59.4s).
+
+## Task 37: 2026-10-21 Chapter Drag Sort, Bulk Management, Peer-Project Issue Research
+
+**Files:**
+- Create: `apps/web/src/server/chapter-reorder.ts` + test, `api/projects/[projectId]/chapters/reorder/route.ts`
+- Modify: `asset-sidebar.tsx`, `globals.css`, `e2e/smoke.spec.ts`, docs
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Researched top-commented issues across four peer projects (AI_NovelGenerator 6.3k stars, neuro-book, AI-Novel-Writer, vela). Our JSON-decode and lock-leak equivalents are already guarded; two genuine gaps recorded: memory bloat degrading quality past ~30 chapters (peer issue #240 — we share the same append-only extract-memory design), and unreadable worker-side model errors surfaced only as HANDLER_RETRY.
+- [x] Drag sort: two-phase renumbering moves affected chapters into a negative temporary range before writing final numbers, avoiding mid-reorder collisions with the (project_id, chapter_no) unique index. Ordered ids are validated to belong to the project and not be soft-deleted; capped at 500; wrapped in withVersionRetry.
+- [x] Manage mode: checkboxes with bulk delete and bulk move-to-volume (including 未分卷), per-chapter execution with a failure count in the completion notice. Dragging is enabled only in manage mode with a dashed drop-target highlight; exiting clears the selection.
+- [x] Verified: typecheck 5/5; 717 tests green (16+33+37+158+473); e2e 2 passed + 1 skipped (53.2s) entering manage mode, checking one chapter, dragging it to the top and asserting it becomes the first list item.

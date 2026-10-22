@@ -282,6 +282,24 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
     page.locator(".chapter-list-item").filter({ hasText: "删除后新建的章节" })
   ).toHaveCount(1, { timeout: 15_000 });
 
+  // 15.6 管理模式：勾选章节、批量操作栏可见，拖拽排序生效
+  await page.getByRole("button", { name: "管理" }).click();
+  await expect(page.locator(".chapter-manage-bar")).toBeVisible();
+  // 勾选当前章节
+  const manageChapter = page.locator(".chapter-list-item").filter({ hasText: "删除后新建的章节" });
+  await manageChapter.locator('input[type="checkbox"]').check();
+  await expect(page.getByText(/已选 1 章/)).toBeVisible();
+  // 拖拽排序：把该章节拖到第一个位置（拖拽目标 = 列表第一项）
+  const firstItem = page.locator(".chapter-list-item").first();
+  await manageChapter.dragTo(firstItem);
+  // 排序提示出现后验证顺序变化：该章节应成为列表第一项
+  await expect(page.locator(".chapter-list-item").first()).toContainText("删除后新建的章节", {
+    timeout: 15_000
+  });
+  // 退出管理模式
+  await page.getByRole("button", { name: "完成" }).click();
+  await expect(page.locator(".chapter-manage-bar")).toHaveCount(0);
+
   // 16. 窄屏布局：编辑器优先于侧栏，且出现「回到正文」快捷按钮
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
