@@ -1306,3 +1306,29 @@ pnpm test:e2e    2 passed + 1 skipped（1.1m）—— smoke 新增：统计 tab 
 ```
 
 e2e 断言直接读 KPI 数值并解析为数字比较，而不是文本包含判断（后者会被 "250" 里的 "0" 误触发）。
+
+---
+
+## 2026-10-21 — 第二十一批：离开页面时的内容丢失保护
+
+### 发现
+
+自动保存有 1.5 秒防抖。此前**没有任何关闭/隐藏页面的兜底**：卸载时只清掉定时器，防抖窗口内关闭标签页、切换章节或刷新，这段输入直接丢失。对写作工具来说这是最伤的一类缺陷——用户丢的是自己刚写的字。
+
+### 修复
+
+- **`visibilitychange`（页面隐藏）**：若仍有未保存内容，立即用 `fetch(..., { keepalive: true })` 补一次保存——`keepalive` 让请求在页面销毁后仍能完成
+- **`beforeunload`**：仍有未保存内容时弹原生确认，给用户反悔机会（避免误关丢字）
+- 新增 `contentRef` 保存最新正文，避免事件处理器闭包拿到过期值；`fetchContent` 加载时同步更新 ref
+- 清理逻辑在 chapterId 变化时正确解绑监听器
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        700 tests（db 16 + shared 33 + ma 37 + worker 158 + web 456）
+pnpm test:e2e    2 passed + 1 skipped（60.0s）—— smoke 新增：输入标记后**立即刷新**
+                 （不等 1500ms 防抖），刷新后正文仍包含该标记
+```
+
+e2e 需要显式接受 `beforeunload` 的原生确认框，否则 Playwright 会在导航时挂起。

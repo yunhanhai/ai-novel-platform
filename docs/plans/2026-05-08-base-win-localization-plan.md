@@ -647,3 +647,21 @@ pnpm test:e2e
 - [x] Extracted refreshStats and added a statsVersion signal the parent bumps whenever prose changes: AI job success, applying rewrite/polish, version restore and DESLOP apply, plus manual edits via a new onSaved callback on useChapterContent so typing does not trigger a stats request per keystroke.
 - [x] persist's dependency array now includes onSaved, otherwise the closure would hold a stale reference.
 - [x] Verified: typecheck 5/5; 700 tests green; e2e 2 passed + 1 skipped (1.1m) with an assertion that parses the total-words KPI as a number and requires it to exceed zero (a text-containment check would have tripped on the 0 inside 250).
+
+## Task 31: 2026-10-21 Unsaved-Work Protection on Page Exit
+
+**Files:**
+- Modify: `use-workspace-data.ts`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Auto-save debounces 1.5s and nothing guarded page exit: unmounting only cleared the timer, so closing the tab, switching chapters or reloading inside that window silently dropped the last input. For a writing tool that is the most damaging class of bug.
+- [x] visibilitychange now flushes pending content with fetch(..., { keepalive: true }) so the request survives page teardown, and beforeunload raises the native confirm when work is unsaved.
+- [x] Added contentRef so the handlers always read the latest prose instead of a stale closure value; fetchContent also updates it on load. Listeners are rebound per chapterId.
+- [x] Verified: typecheck 5/5; 700 tests green; e2e 2 passed + 1 skipped (60.0s) typing a marker then reloading immediately (before the debounce fires) and asserting the marker survives. The e2e must accept the beforeunload dialog or Playwright hangs on navigation.

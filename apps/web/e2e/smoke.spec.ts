@@ -221,6 +221,20 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.txt$/);
 
+  // 13.5 离开保护：输入后立即刷新，未到防抖时间的改动不能丢
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
+  const guardMarker = `离开保护标记-${Date.now()}`;
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type(guardMarker);
+  // beforeunload 会弹出原生确认框，Playwright 需显式接受才继续导航
+  page.once("dialog", (dialog) => void dialog.accept());
+  // 不等待自动保存（默认 1500ms），立刻刷新模拟关页
+  await page.reload();
+  await expect(page.locator("textarea").first()).toHaveValue(new RegExp(guardMarker), {
+    timeout: 20_000
+  });
+
   // 14. 作品信息编辑：改梗概后保存，重载仍生效
   await page.getByRole("tab", { name: "作品", exact: true }).click();
   const premiseBox = page.getByPlaceholder(/主角、冲突、走向/);

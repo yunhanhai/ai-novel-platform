@@ -157,6 +157,8 @@ export function useChapterContent(
   const dirtyRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const activeIdRef = useRef<string | null>(null);
+  // 供卸载/隐藏钩子读取最新正文，避免闭包拿到过期值
+  const contentRef = useRef("");
 
   const fetchContent = useCallback(async (id: string) => {
     setLoadingContent(true);
@@ -165,6 +167,7 @@ export function useChapterContent(
       const json = (await res.json()) as ApiEnvelope<{ content: string }>;
       if (json.success && json.data && activeIdRef.current === id) {
         setContentState(json.data.content ?? "");
+        contentRef.current = json.data.content ?? "";
         dirtyRef.current = false;
         setSaveStatus("idle");
       }
@@ -210,6 +213,7 @@ export function useChapterContent(
   const setContent = useCallback(
     (value: string) => {
       setContentState(value);
+      contentRef.current = value;
       if (!chapterId) return;
       dirtyRef.current = true;
       setSaveStatus("idle");
@@ -229,6 +233,42 @@ export function useChapterContent(
     if (timerRef.current) clearTimeout(timerRef.current);
     await persist(content, chapterId);
   }, [chapterId, content, persist]);
+
+  // 离开保护：防抖窗口内直接关闭标签页会丢字。
+  // 1) 页面隐藏（切后台/关标签）时用 keepalive 补一次保存——浏览器会在页面销毁后继续发送；
+  // 2) beforeunload 时若仍有未保存内容，弹原生确认，给用户反悔机会。
+  useEffect(() => {
+    if (!chapterId) return;
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "hidden") return;
+      if (!dirtyRef.current) return;
+      const text = contentRef.current;
+      const id = activeIdRef.current;
+      if (!id) return;
+      // keepalive 让请求在页面卸载后仍能完成，避免丢失最后一段输入
+      void fetch(`/api/chapters/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text }),
+        keepalive: true
+      }).catch(() => undefined);
+      dirtyRef.current = false;
+    }
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!dirtyRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [chapterId]);
 
   const reload = useCallback(async () => {
     if (chapterId) await fetchContent(chapterId);
