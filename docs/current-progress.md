@@ -1332,3 +1332,35 @@ pnpm test:e2e    2 passed + 1 skipped（60.0s）—— smoke 新增：输入标�
 ```
 
 e2e 需要显式接受 `beforeunload` 的原生确认框，否则 Playwright 会在导航时挂起。
+
+---
+
+## 2026-10-21 — 第二十二批：超过一页后新建章节会撞号
+
+### 发现
+
+`AssetSidebar` 用「已加载章节的最大序号 + 1」计算新章节序号：
+
+```ts
+const nextChapterNo = chapters.length === 0 ? 1 : Math.max(...chapters.map(c => c.chapterNo)) + 1;
+```
+
+但章节列表**已改成分页（每页 50 章）**。作品超过 50 章时，前端只持有前 50 章，`Math.max` 得到 50，于是新章节序号固定算成 **51**——而库里第 51 章早就存在。`@@unique([projectId, chapterNo])` 会直接拒绝插入，表现为「创建失败」。
+
+这是分页改造引入的回归：分页之前前端拿到的是全量数据，`Math.max` 是正确的。
+
+### 修复
+
+- **序号改由服务端决定**：`POST /api/projects/[projectId]/chapters` 在未提供 `chapterNo` 时，用 `findFirst({ orderBy: { chapterNo: "desc" } })` 取全库最大值 + 1
+- 前端不再传 `chapterNo`，`nextChapterNo` 仅保留为提示文案（并注明不可用于决策）
+- 显式传入非法序号（0 / 非整数）仍然 400；显式传入合法序号保持向后兼容
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        703 tests（db 16 + shared 33 + ma 37 + worker 158 + web 459）
+pnpm test:e2e    2 passed + 1 skipped（1.3m）
+```
+
+新增测试 3 例：省略序号时按库内最大值 +1、首章从 1 开始、显式非法序号拒绝。

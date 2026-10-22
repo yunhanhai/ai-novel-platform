@@ -43,7 +43,7 @@ interface AssetSidebarProps {
   chapters: ChapterItem[];
   activeChapterId: string | null;
   onSelect: (id: string) => void;
-  onCreate?: (input: { chapterNo: number; title: string }) => Promise<unknown>;
+  onCreate?: (input: { title: string }) => Promise<unknown>;
   isLoading?: boolean;
   exportHref?: string | null;
   projectId?: string | null;
@@ -91,6 +91,8 @@ export function AssetSidebar({
   const [confirmDeleteVolumeId, setConfirmDeleteVolumeId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 仅用于提示文案。真正的序号由服务端按全量章节计算，
+  // 前端只有分页后的数据，不能据此决定序号（超过一页会撞号）。
   const nextChapterNo = chapters.length === 0
     ? 1
     : Math.max(...chapters.map((c) => c.chapterNo)) + 1;
@@ -174,7 +176,7 @@ export function AssetSidebar({
     setSubmitting(true);
     setErr(null);
     try {
-      await onCreate({ chapterNo: nextChapterNo, title: title.trim() });
+      await onCreate({ title: title.trim() });
       setTitle("");
       setCreating(false);
     } catch (e: unknown) {

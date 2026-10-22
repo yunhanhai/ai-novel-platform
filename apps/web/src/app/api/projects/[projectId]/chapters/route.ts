@@ -70,15 +70,15 @@ export async function GET(request: Request, context: RouteContext) {
 export async function POST(request: Request, context: RouteContext) {
   const { projectId } = await context.params;
   const body = (await request.json()) as CreateChapterBody;
-  const { chapterNo, title } = body;
+  const { title } = body;
 
-  if (chapterNo === undefined || !title) {
+  if (!title) {
     return NextResponse.json(
-      { success: false, error: "chapterNo 和 title 为必填项" },
+      { success: false, error: "标题为必填项" },
       { status: 400 }
     );
   }
-  if (!Number.isInteger(chapterNo) || chapterNo < 1) {
+  if (body.chapterNo !== undefined && (!Number.isInteger(body.chapterNo) || body.chapterNo < 1)) {
     return NextResponse.json(
       { success: false, error: "chapterNo 必须为正整数" },
       { status: 400 }
@@ -88,6 +88,19 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const organizationId = await getOrganizationId();
     const createdById = await getUserId();
+
+    // 序号由服务端决定：前端只加载分页后的部分章节，
+    // 用「已加载的最大序号 + 1」在超过一页时会与库里已有章节撞号。
+    let chapterNo = body.chapterNo;
+    if (chapterNo === undefined) {
+      const last = await prisma.chapter.findFirst({
+        where: { organizationId, projectId, deletedAt: null },
+        orderBy: { chapterNo: "desc" },
+        select: { chapterNo: true }
+      });
+      chapterNo = (last?.chapterNo ?? 0) + 1;
+    }
+
     const chapter = await createChapter({
       organizationId,
       projectId,

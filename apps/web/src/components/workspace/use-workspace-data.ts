@@ -30,7 +30,7 @@ interface UseChaptersResult {
   error: string | null;
   reload: () => Promise<void>;
   loadMore: () => Promise<void>;
-  createChapter: (input: { chapterNo: number; title: string }) => Promise<ChapterItem | null>;
+  createChapter: (input: { title: string }) => Promise<ChapterItem | null>;
 }
 
 const CHAPTER_PAGE_SIZE = 50;
@@ -106,7 +106,7 @@ export function useChapters(projectId: string | null): UseChaptersResult {
   }, [reload]);
 
   const createChapter = useCallback(
-    async (input: { chapterNo: number; title: string }): Promise<ChapterItem | null> => {
+    async (input: { title: string }): Promise<ChapterItem | null> => {
       if (!projectId) return null;
       const res = await fetch(`/api/projects/${projectId}/chapters`, {
         method: "POST",

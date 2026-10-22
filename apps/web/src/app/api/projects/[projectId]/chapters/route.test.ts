@@ -58,4 +58,39 @@ describe("POST /api/projects/[projectId]/chapters", () => {
     const res = await POST(req({}), routeCtx("proj-1"));
     expect(res.status).toBe(400);
   });
+
+  it("computes the next chapter number from the database when omitted", async () => {
+    // 前端只加载了分页后的章节，序号必须由服务端按全量数据决定
+    p().chapter.findFirst.mockResolvedValue({ chapterNo: 57 });
+    cc().mockResolvedValue({
+      id: "ch-new", projectId: "proj-1", chapterNo: 58, title: "新章节",
+      status: "PLANNED", wordCount: 0, content: null
+    });
+
+    const res = await POST(req({ title: "新章节" }), routeCtx("proj-1"));
+
+    expect(res.status).toBe(201);
+    expect(p().chapter.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { chapterNo: "desc" } })
+    );
+    expect(cc()).toHaveBeenCalledWith(expect.objectContaining({ chapterNo: 58 }));
+  });
+
+  it("starts at chapter 1 for the first chapter", async () => {
+    p().chapter.findFirst.mockResolvedValue(null);
+    cc().mockResolvedValue({
+      id: "ch-1", projectId: "proj-1", chapterNo: 1, title: "首章",
+      status: "PLANNED", wordCount: 0, content: null
+    });
+
+    await POST(req({ title: "首章" }), routeCtx("proj-1"));
+
+    expect(cc()).toHaveBeenCalledWith(expect.objectContaining({ chapterNo: 1 }));
+  });
+
+  it("rejects a non-positive explicit chapter number", async () => {
+    const res = await POST(req({ title: "章节", chapterNo: 0 }), routeCtx("proj-1"));
+    expect(res.status).toBe(400);
+    expect(cc()).not.toHaveBeenCalled();
+  });
 });

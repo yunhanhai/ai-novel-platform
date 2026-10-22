@@ -665,3 +665,21 @@ pnpm test:e2e
 - [x] visibilitychange now flushes pending content with fetch(..., { keepalive: true }) so the request survives page teardown, and beforeunload raises the native confirm when work is unsaved.
 - [x] Added contentRef so the handlers always read the latest prose instead of a stale closure value; fetchContent also updates it on load. Listeners are rebound per chapterId.
 - [x] Verified: typecheck 5/5; 700 tests green; e2e 2 passed + 1 skipped (60.0s) typing a marker then reloading immediately (before the debounce fires) and asserting the marker survives. The e2e must accept the beforeunload dialog or Playwright hangs on navigation.
+
+## Task 32: 2026-10-21 Chapter Number Collision Beyond One Page
+
+**Files:**
+- Modify: `api/projects/[projectId]/chapters/route.ts` + test, `asset-sidebar.tsx`, `use-workspace-data.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Regression from the paging work: the sidebar computed the next chapter number as max(loaded chapterNo) + 1. Once a project exceeds one page (50 chapters) the frontend only holds the first 50, so it always computed 51, which the unique constraint (projectId, chapterNo) rejected — new chapter creation simply failed.
+- [x] The server now owns numbering: POST /api/projects/[projectId]/chapters derives chapterNo from findFirst ordered by chapterNo desc when the client omits it. The client no longer sends chapterNo and nextChapterNo is display-only, documented as unsuitable for decisions.
+- [x] Explicit valid numbers remain backward compatible; explicit invalid ones (0 or non-integer) still return 400.
+- [x] Verified: typecheck 5/5; 703 tests green (16+33+37+158+459); e2e 2 passed + 1 skipped (1.3m).
