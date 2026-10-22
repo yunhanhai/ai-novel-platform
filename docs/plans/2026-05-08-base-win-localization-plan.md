@@ -701,3 +701,21 @@ pnpm test:e2e
 - [x] When local edits are unsaved and the remote content actually differs, fetchContent now keeps the local text and raises externalUpdateNotice instead of overwriting.
 - [x] The editor shows a warning banner offering 放弃本地改动 (accept remote) or 保留本地 (keep local, continue auto-saving). With no local edits the previous behaviour is unchanged.
 - [x] Verified: typecheck 5/5; 703 tests green; e2e 2 passed + 1 skipped (48.4s) typing a marker, running 去 AI 味, then asserting the marker survives and dismissing the conflict banner if shown.
+
+## Task 34: 2026-10-21 Cannot Create a Chapter After Deleting One
+
+**Files:**
+- Modify: `api/projects/[projectId]/chapters/route.ts` + test, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] softDeleteChapter only stamps deletedAt, while the unique index on (project_id, chapter_no) does not include deleted_at, so soft-deleted chapters keep their number. The previous fix derived the next number from non-deleted chapters only. Deleting the last chapter (N) therefore made the next number N again and hit the unique constraint — chapter creation failed outright.
+- [x] Numbering now ignores deletedAt so the sequence is strictly increasing, with a comment explaining why the filter must not be re-added. Consequence: deleted numbers are not reused, which matches web-novel expectations where chapter numbers referenced by readers should not shift.
+- [x] Added a test asserting findFirst's where clause has no deletedAt and that numbering advances from 9 to 10; e2e deletes a chapter then immediately creates a new one and asserts it appears.
+- [x] Verified: typecheck 5/5; 704 tests green (16+33+37+158+460); e2e 2 passed + 1 skipped (51.0s).

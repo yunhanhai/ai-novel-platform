@@ -91,10 +91,12 @@ export async function POST(request: Request, context: RouteContext) {
 
     // 序号由服务端决定：前端只加载分页后的部分章节，
     // 用「已加载的最大序号 + 1」在超过一页时会与库里已有章节撞号。
+    // 注意这里**不排除已软删除的章节**：唯一索引 (project_id, chapter_no)
+    // 不区分 deleted_at，删掉最后一章后若只按未删除章节取最大值，会算回同一个序号并撞约束。
     let chapterNo = body.chapterNo;
     if (chapterNo === undefined) {
       const last = await prisma.chapter.findFirst({
-        where: { organizationId, projectId, deletedAt: null },
+        where: { organizationId, projectId },
         orderBy: { chapterNo: "desc" },
         select: { chapterNo: true }
       });

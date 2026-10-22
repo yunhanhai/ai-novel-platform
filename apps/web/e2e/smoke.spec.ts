@@ -266,6 +266,15 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
     timeout: 15_000
   });
 
+  // 15.5 删除后仍能新建章节：软删除章节仍占用序号，服务端必须据此递增，
+  //      否则会算回被删章节的序号并撞唯一约束
+  await page.getByRole("button", { name: "+ 新建" }).click();
+  await page.getByPlaceholder("章节标题").fill("删除后新建的章节");
+  await page.getByRole("button", { name: "创建", exact: true }).click();
+  await expect(
+    page.locator(".chapter-list-item").filter({ hasText: "删除后新建的章节" })
+  ).toHaveCount(1, { timeout: 15_000 });
+
   // 16. 窄屏布局：编辑器优先于侧栏，且出现「回到正文」快捷按钮
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);

@@ -1396,3 +1396,38 @@ pnpm test        703 tests（db 16 + shared 33 + ma 37 + worker 158 + web 459）
 pnpm test:e2e    2 passed + 1 skipped（48.4s）—— smoke 新增：输入标记后触发「去 AI 味」，
                  任务完成后断言本地标记仍在；若出现冲突横幅则点「保留本地」
 ```
+
+---
+
+## 2026-10-21 — 第二十四批：删除章节后无法新建（唯一约束陷阱）
+
+### 发现
+
+`softDeleteChapter` 只写 `deletedAt`，而数据库唯一索引是：
+
+```sql
+CREATE UNIQUE INDEX chapters_project_id_chapter_no_key ON chapters (project_id, chapter_no)
+```
+
+**不包含 `deleted_at`**——软删除的章节仍然占用序号。而上一批我把服务端序号计算写成「未删除章节的最大值 + 1」。两者叠加导致：
+
+> 删掉最后一章（第 N 章）后，未删除章节的最大值是 N-1，新章节序号算成 N —— **撞上被删章节仍占用的唯一约束，创建直接失败**。
+
+这是上一批修复（服务端算序号）引入的新边界：修复分页撞号时用了 `deletedAt: null` 过滤，反而制造了删除场景下的撞号。
+
+### 修复
+
+- 序号计算改为**不排除软删除章节**（`where: { organizationId, projectId }`），让序号严格单调递增
+- 在代码里写明原因，避免后人「优化」掉这个看似多余的过滤
+- 副作用：序号不再复用被删章节的编号——这符合网文习惯（读者引用的章节号不会因删章而错位）
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        704 tests（db 16 + shared 33 + ma 37 + worker 158 + web 460）
+pnpm test:e2e    2 passed + 1 skipped（51.0s）—— smoke 新增：删除章节后立即新建，
+                 断言新章节出现在列表中
+```
+
+新增测试：断言 `findFirst` 的 where **不含** `deletedAt`，并验证序号从 9 递增到 10。

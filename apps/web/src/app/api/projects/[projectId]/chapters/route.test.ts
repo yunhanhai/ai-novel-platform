@@ -93,4 +93,20 @@ describe("POST /api/projects/[projectId]/chapters", () => {
     expect(res.status).toBe(400);
     expect(cc()).not.toHaveBeenCalled();
   });
+
+  it("counts soft-deleted chapters when deriving the next number", async () => {
+    // 唯一索引 (project_id, chapter_no) 不区分 deleted_at：
+    // 若只按未删除章节取最大值，删掉最后一章后会算回同一序号并撞约束。
+    p().chapter.findFirst.mockResolvedValue({ chapterNo: 9 });
+    cc().mockResolvedValue({
+      id: "ch-new", projectId: "proj-1", chapterNo: 10, title: "新章节",
+      status: "PLANNED", wordCount: 0, content: null
+    });
+
+    await POST(req({ title: "新章节" }), routeCtx("proj-1"));
+
+    const args = p().chapter.findFirst.mock.calls[0]![0] as { where: Record<string, unknown> };
+    expect(args.where.deletedAt).toBeUndefined();
+    expect(cc()).toHaveBeenCalledWith(expect.objectContaining({ chapterNo: 10 }));
+  });
 });
