@@ -161,6 +161,29 @@ describe("chapter-pipeline", () => {
     expect(reviewPromptArg).toContain("each chapter has a hook");
   });
 
+  it("writes every pipeline prompt in Chinese for Chinese web novels", async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce({ text: '{"chapterGoal":"x","sceneBeats":[],"charactersInScene":[]}', inputTokens: 10, outputTokens: 5 })
+      .mockResolvedValueOnce({ text: "草稿正文", inputTokens: 10, outputTokens: 2 })
+      .mockResolvedValueOnce({ text: '{"issues":[{"type":"pacing","detail":"节奏拖沓","severity":"warning"}]}', inputTokens: 10, outputTokens: 2 })
+      .mockResolvedValueOnce({ text: "修改后的正文", inputTokens: 10, outputTokens: 2 })
+      .mockResolvedValueOnce({ text: '{"characterChanges":[],"worldFacts":[],"newHooks":[],"summary":"","chapterSummary":""}', inputTokens: 10, outputTokens: 2 });
+
+    const deps = mockDeps({ model: { generate } });
+
+    await runChapterPipeline(deps);
+
+    const prompts = generate.mock.calls.map((call) => call[0] as string);
+    // plan / draft / review / revise / extract 五步都应产生调用
+    expect(prompts.length).toBeGreaterThanOrEqual(5);
+
+    for (const prompt of prompts) {
+      // 面向中文网文，指令必须是中文——英文指令会让模型先英文思考再翻译，损伤文风
+      expect(prompt).toMatch(/[\u4e00-\u9fff]/);
+      expect(prompt).not.toMatch(/\bYou are\b/);
+    }
+  });
+
   it("skips review and revise in fast mode", async () => {
     const deps = mockDeps({
       performance: { qualityMode: "fast", budget: normalizePerformanceBudget("fast", undefined) }

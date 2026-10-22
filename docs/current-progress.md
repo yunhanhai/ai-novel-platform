@@ -1208,3 +1208,31 @@ pnpm test:e2e    2 passed + 1 skipped（1.0m）—— smoke 新增：分卷改�
 ```
 
 新增测试 6 例：分卷改名（校验、裁剪、404）与删除（成功、404）。
+
+---
+
+## 2026-10-21 — 第十八批：章节管线提示词中文化（质量修复）
+
+### 发现
+
+审计全部提示词时发现一处**影响所有章节生成质量**的孤例：`chapter-pipeline.ts` 的 5 处指令提示词（plan / draft / review / revise / extract）全是英文，而其余所有 handler（改写、润色、续写、审校、细纲、诊断、去 AI 味、风格分析）和注入的上下文包全为中文。
+
+英文指令生成中文网文的代价：模型先用英文推理再翻译成中文，**文风与语感受损、token 成本更高**，且与管线注入的中文上下文割裂。这条管线正是 `GENERATE_CHAPTER` 的主路径，影响面最大。
+
+### 修复
+
+- 5 处提示词全部改写为中文，保留 JSON 键名与枚举值（`consistency|ai_slop|...` 等机器解析依赖不动），仅翻译指令与人读字段的说明
+- 方法论注入从 `[Methodology alignment]` 改为 `【方法论对齐】`；审校必查项从 `[Required checks]` 改为 `【必查项】`
+- 保留所有插值数据（banned 列表、reviewCriteria 等来自上下文的动态内容）
+
+### 防回归
+
+新增测试 `writes every pipeline prompt in Chinese for Chinese web novels`：跑完整管线，断言 5 次模型调用的提示词**均含中文字符且不含 "You are"**——锁住这条约束，避免将来改动退回英文。
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        694 tests（db 16 + shared 28 + ma 37 + worker 157 + web 456）
+pnpm test:e2e    2 passed + 1 skipped（55.2s）
+```

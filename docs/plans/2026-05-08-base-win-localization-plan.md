@@ -591,3 +591,21 @@ pnpm test:e2e
 - [x] Group action buttons stay at opacity 0 until the group is hovered or focused, matching the chapter delete button.
 - [x] Group title became flex:1 to accommodate the new action buttons.
 - [x] Verified: typecheck 5/5; 693 tests green (16+28+37+156+456); e2e 2 passed + 1 skipped (1.0m) covering rename, delete and chapter survival.
+
+## Task 28: 2026-10-21 Chinese Prompts for the Chapter Pipeline
+
+**Files:**
+- Modify: `apps/worker/src/pipeline/chapter-pipeline.ts`, `apps/worker/src/pipeline/chapter-pipeline.test.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Audit found chapter-pipeline.ts was the only file with English instruction prompts (plan/draft/review/revise/extract) while every other handler and the injected context packet are Chinese. For Chinese web novels this forces the model to reason in English and translate, hurting voice and token cost on the highest-traffic generation path.
+- [x] Translated all five prompts to Chinese, keeping JSON keys and enum values intact for machine parsing and preserving every interpolated value (banned lists, review criteria, methodology guide text). Section markers became 【方法论对齐】 / 【必查项】.
+- [x] Added a regression test running the full pipeline and asserting all five model calls receive prompts containing CJK characters and no "You are", so the constraint cannot silently regress.
+- [x] Verified: typecheck 5/5; 694 tests green (16+28+37+157+456); e2e 2 passed + 1 skipped (55.2s).
