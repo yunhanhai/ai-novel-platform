@@ -51,6 +51,7 @@ interface AssetSidebarProps {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onChapterMoved?: () => void;
+  statsVersion?: number;
 }
 
 export function AssetSidebar({
@@ -64,7 +65,8 @@ export function AssetSidebar({
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
-  onChapterMoved
+  onChapterMoved,
+  statsVersion = 0
 }: AssetSidebarProps) {
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
@@ -123,31 +125,31 @@ export function AssetSidebar({
     [projectId]
   );
 
-  useEffect(() => {
+  // 统计与分卷信息刷新。字数变化不会改变 chapters.length，
+  // 所以不能只依赖长度变化——生成/续写/改写后必须显式触发。
+  const refreshStats = useCallback(async () => {
     if (!projectId) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const [statsRes, volumesRes] = await Promise.all([
-          fetch(`/api/projects/${projectId}/stats`),
-          fetch(`/api/projects/${projectId}/volumes`)
-        ]);
-        const statsJson = (await statsRes.json()) as ApiEnvelope<ProjectStats>;
-        if (!cancelled && statsRes.ok && statsJson.success && statsJson.data) {
-          setStats(statsJson.data);
-        }
-        const volumesJson = (await volumesRes.json()) as ApiEnvelope<VolumeItem[]>;
-        if (!cancelled && volumesRes.ok && volumesJson.success && volumesJson.data) {
-          setVolumes(volumesJson.data);
-        }
-      } catch {
-        // 统计与分卷信息是辅助展示，失败时静默降级
+    try {
+      const [statsRes, volumesRes] = await Promise.all([
+        fetch(`/api/projects/${projectId}/stats`),
+        fetch(`/api/projects/${projectId}/volumes`)
+      ]);
+      const statsJson = (await statsRes.json()) as ApiEnvelope<ProjectStats>;
+      if (statsRes.ok && statsJson.success && statsJson.data) {
+        setStats(statsJson.data);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, chapters.length]);
+      const volumesJson = (await volumesRes.json()) as ApiEnvelope<VolumeItem[]>;
+      if (volumesRes.ok && volumesJson.success && volumesJson.data) {
+        setVolumes(volumesJson.data);
+      }
+    } catch {
+      // 统计与分卷信息是辅助展示，失败时静默降级
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void refreshStats();
+  }, [refreshStats, chapters.length, statsVersion]);
 
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

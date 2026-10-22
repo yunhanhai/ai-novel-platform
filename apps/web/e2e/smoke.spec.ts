@@ -174,6 +174,16 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await page.getByRole("tab", { name: "统计" }).click();
   await expect(page.locator(".stats-kpi")).toHaveCount(3, { timeout: 15_000 });
   await expect(page.locator(".stats-bar-row")).toHaveCount(5);
+  // 总字数必须反映真实正文（此前依赖章节数量变化才刷新，写作后仍显示 0）
+  await expect
+    .poll(
+      async () => {
+        const text = (await page.locator(".stats-kpi").nth(1).innerText()).replace(/[^\d]/g, "");
+        return Number.parseInt(text || "0", 10);
+      },
+      { timeout: 15_000 }
+    )
+    .toBeGreaterThan(0);
   await page.getByRole("tab", { name: "AI", exact: true }).click();
 
   // 12.7 分卷：新建分卷后章节可移入，侧栏出现分组标题

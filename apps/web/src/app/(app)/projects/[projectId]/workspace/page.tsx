@@ -46,8 +46,13 @@ export default function WorkspacePage() {
   }, [chapters, activeChapterId]);
 
   const activeChapter = chapters.find((ch) => ch.id === activeChapterId);
+
+  // 字数变化不会改变章节数量，侧栏统计需要显式刷新信号。
+  const [statsVersion, setStatsVersion] = useState(0);
+  const bumpStats = useCallback(() => setStatsVersion((v) => v + 1), []);
+
   const { content, setContent, saveStatus, isLoadingContent, flush, reload: reloadContent } =
-    useChapterContent(activeChapterId);
+    useChapterContent(activeChapterId, { onSaved: bumpStats });
   const { job, startJob, isStarting, error: jobError } = useJobPolling();
 
   const [selection, setSelection] = useState<EditorSelection | null>(null);
@@ -60,8 +65,9 @@ export default function WorkspacePage() {
     if (job?.status === "SUCCEEDED" && !REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
       void reloadChapters();
       void reloadContent();
+      bumpStats();
     }
-  }, [job?.status, job?.jobType, reloadChapters, reloadContent]);
+  }, [job?.status, job?.jobType, reloadChapters, reloadContent, bumpStats]);
 
   useEffect(() => {
     if (job?.status === "SUCCEEDED" && REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
@@ -177,7 +183,8 @@ export default function WorkspacePage() {
     setRewriteResult(null);
     setRewriteNotice(null);
     setSelection(null);
-  }, [rewriteResult, content, setContent]);
+    bumpStats();
+  }, [rewriteResult, content, setContent, bumpStats]);
 
   const discardRewrite = useCallback(() => {
     setRewriteResult(null);
@@ -271,6 +278,7 @@ export default function WorkspacePage() {
         isLoadingMore={isLoadingMore}
         onLoadMore={() => void loadMore()}
         onChapterMoved={() => void reloadChapters()}
+        statsVersion={statsVersion}
       />
       <EditorPane
         title={activeChapter?.title ?? "未选择章节"}
@@ -303,6 +311,7 @@ export default function WorkspacePage() {
         onChapterContentRefreshed={() => {
           void reloadContent();
           void reloadChapters();
+          bumpStats();
         }}
       />
       <button

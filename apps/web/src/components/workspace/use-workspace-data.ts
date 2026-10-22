@@ -147,9 +147,10 @@ interface UseChapterContentResult {
 
 export function useChapterContent(
   chapterId: string | null,
-  options: { debounceMs?: number } = {}
+  options: { debounceMs?: number; onSaved?: () => void } = {}
 ): UseChapterContentResult {
   const debounceMs = options.debounceMs ?? 1500;
+  const onSaved = options.onSaved;
   const [content, setContentState] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isLoadingContent, setLoadingContent] = useState(false);
@@ -197,12 +198,13 @@ export function useChapterContent(
         if (activeIdRef.current === idAtCall) {
           dirtyRef.current = false;
           setSaveStatus("saved");
+          onSaved?.();
         }
       } catch {
         if (activeIdRef.current === idAtCall) setSaveStatus("error");
       }
     },
-    []
+    [onSaved]
   );
 
   const setContent = useCallback(

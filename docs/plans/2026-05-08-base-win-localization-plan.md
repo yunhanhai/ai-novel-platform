@@ -629,3 +629,21 @@ pnpm test:e2e
 - [x] All four estimators now use it; the duplicated worker/context/token-budget.ts became a thin re-export matching the existing build-context-packet pattern; the pipeline's estimatePromptTokens aliases the shared function.
 - [x] Fixed an e2e flake: the first request to the new diff route in dev mode triggers compilation and returns an HTML error page, so res.json() threw Unexpected token '<'. The panel now checks content-type and shows a readable message, and the e2e warms the route before asserting.
 - [x] Verified: typecheck 5/5; 700 tests green (16+33+37+158+456); e2e 2 passed + 1 skipped, run twice (45.2s / 45.8s).
+
+## Task 30: 2026-10-21 Sidebar Word Count Never Refreshed
+
+**Files:**
+- Modify: `asset-sidebar.tsx`, `use-workspace-data.ts`, `workspace/page.tsx`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Real defect found in an e2e snapshot: the sidebar read 共 1 章 · 0 字 while the editor held 270 characters and the DB word_count was 250. The stats effect depended on [projectId, chapters.length], and word-count changes never change the chapter count, so the figure froze at first load.
+- [x] Extracted refreshStats and added a statsVersion signal the parent bumps whenever prose changes: AI job success, applying rewrite/polish, version restore and DESLOP apply, plus manual edits via a new onSaved callback on useChapterContent so typing does not trigger a stats request per keystroke.
+- [x] persist's dependency array now includes onSaved, otherwise the closure would hold a stale reference.
+- [x] Verified: typecheck 5/5; 700 tests green; e2e 2 passed + 1 skipped (1.1m) with an assertion that parses the total-words KPI as a number and requires it to exceed zero (a text-containment check would have tripped on the 0 inside 250).

@@ -1276,3 +1276,33 @@ pnpm test:e2e    2 passed + 1 skipped（45.2s / 45.8s）
 ```
 
 新增测试 6 例：估算器空串/中文/英文/混排/下限保证（5）、预算裁剪的英文场景（1）。
+
+---
+
+## 2026-10-21 — 第二十批：侧栏字数统计不刷新（真实缺陷）
+
+### 发现
+
+上一批 e2e 失败快照里露出一处矛盾：侧栏显示「共 1 章 · **0 字**」，而编辑器里明明有 270 字正文，数据库 `word_count` 也确实是 250。
+
+根因：`AssetSidebar` 拉取统计的 `useEffect` 依赖是 `[projectId, chapters.length]`。**字数变化不改变章节数量**，所以无论作者手写多少、AI 生成/续写/改写多少次，侧栏统计都停在首次加载的值。
+
+### 修复
+
+- 抽出 `refreshStats`，并新增 `statsVersion` 信号：父级每次正文被改动时递增，侧栏据此重新拉取
+- 覆盖全部字数变化路径：
+  - AI 任务成功（生成 / 续写 / 去AI味 / 诊断等）→ `bumpStats()`
+  - 应用改写/润色结果 → `bumpStats()`
+  - 版本回滚 / DESLOP 应用（`onChapterContentRefreshed`）→ `bumpStats()`
+  - **手动输入**：给 `useChapterContent` 增加 `onSaved` 回调，自动保存成功后触发——避免每敲一个字都请求统计
+- `persist` 的依赖数组补上 `onSaved`，否则闭包会持有旧引用
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        700 tests（db 16 + shared 33 + ma 37 + worker 158 + web 456）
+pnpm test:e2e    2 passed + 1 skipped（1.1m）—— smoke 新增：统计 tab 的总字数必须 > 0
+```
+
+e2e 断言直接读 KPI 数值并解析为数字比较，而不是文本包含判断（后者会被 "250" 里的 "0" 误触发）。
