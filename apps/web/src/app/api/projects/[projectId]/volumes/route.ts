@@ -53,24 +53,38 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const organizationId = await getOrganizationId();
 
-    let orderIndex = body.orderIndex;
-    if (orderIndex === undefined) {
+    async function nextOrderIndex(): Promise<number> {
       const last = await prisma.volume.findFirst({
         where: { organizationId, projectId },
         orderBy: { orderIndex: "desc" },
         select: { orderIndex: true }
       });
-      orderIndex = (last?.orderIndex ?? 0) + 1;
+      return (last?.orderIndex ?? 0) + 1;
     }
 
-    const volume = await createVolume({
-      organizationId,
-      projectId,
-      title,
-      orderIndex,
-      summary: body.summary?.trim(),
-      prisma
-    });
+    async function insert(explicit: number | undefined) {
+      const orderIndex = explicit ?? (await nextOrderIndex());
+      return createVolume({
+        organizationId,
+        projectId,
+        title: title!,
+        orderIndex,
+        summary: body.summary?.trim(),
+        prisma
+      });
+    }
+
+    let volume;
+    try {
+      volume = await insert(body.orderIndex);
+    } catch (error: unknown) {
+      // 并发新建会读到同一个最大值并撞唯一约束 (projectId, orderIndex)。
+      // 仅当序号由服务端推导时重算一次；显式指定序号的重试没有意义。
+      const isUnique =
+        typeof error === "object" && error !== null && (error as { code?: string }).code === "P2002";
+      if (body.orderIndex !== undefined || !isUnique) throw error;
+      volume = await insert(undefined);
+    }
 
     return NextResponse.json(
       {

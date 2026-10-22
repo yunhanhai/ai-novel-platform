@@ -719,3 +719,21 @@ pnpm test:e2e
 - [x] Numbering now ignores deletedAt so the sequence is strictly increasing, with a comment explaining why the filter must not be re-added. Consequence: deleted numbers are not reused, which matches web-novel expectations where chapter numbers referenced by readers should not shift.
 - [x] Added a test asserting findFirst's where clause has no deletedAt and that numbering advances from 9 to 10; e2e deletes a chapter then immediately creates a new one and asserts it appears.
 - [x] Verified: typecheck 5/5; 704 tests green (16+33+37+158+460); e2e 2 passed + 1 skipped (51.0s).
+
+## Task 35: 2026-10-21 Concurrent Insert Retry and e2e Warm-up Fix
+
+**Files:**
+- Modify: `api/projects/[projectId]/chapters/route.ts` + test, `api/projects/[projectId]/volumes/route.ts` + test, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Real race: chapter and volume numbers are derived as max+1, so two concurrent requests (double-click on 新建, a network retry, two tabs) read the same max and the second hits the P2002 unique constraint, surfacing as a creation failure.
+- [x] Both paths now catch P2002, recompute the number and retry once. Retry happens only when the server derived the number; a client-pinned number is reported as a conflict instead, and a failed retry still returns 409.
+- [x] The previous e2e warm-up never worked: page.request.get() uses an isolated request context without the browser session cookie, so it returned 401 and never compiled the route. Warm-up now runs inside page.evaluate(fetch) so the cookie is present.
+- [x] Verified: typecheck 5/5; 708 tests green (16+33+37+158+464); e2e 2 passed + 1 skipped, run twice (45.8s / 46.0s).

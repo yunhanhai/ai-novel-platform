@@ -78,11 +78,41 @@ describe("POST /api/projects/[projectId]/volumes", () => {
     expect(cv()).toHaveBeenCalledWith(expect.objectContaining({ orderIndex: 1 }));
   });
 
-  it("reports a conflict when the order index is taken", async () => {
+  it("retries once with a fresh order index when a concurrent insert wins the race", async () => {
+    // 两个并发请求读到同一个最大值 → 第二个撞 P2002，应重算后重试
+    pv().findFirst
+      .mockResolvedValueOnce({ orderIndex: 1 })
+      .mockResolvedValueOnce({ orderIndex: 2 });
+    const conflict = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    cv()
+      .mockRejectedValueOnce(conflict)
+      .mockResolvedValueOnce({ id: "v-3", title: "第三卷", summary: null, orderIndex: 3, status: "PLANNED", createdAt: new Date() });
+
+    const res = await post({ title: "第三卷" });
+
+    expect(res.status).toBe(201);
+    expect(cv()).toHaveBeenCalledTimes(2);
+    expect(cv().mock.calls[1]![0]).toMatchObject({ orderIndex: 3 });
+  });
+
+  it("reports a conflict when the retry also fails", async () => {
     pv().findFirst.mockResolvedValue({ orderIndex: 1 });
-    cv().mockRejectedValue(new Error("Unique constraint failed P2002"));
+    const conflict = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    cv().mockRejectedValue(conflict);
 
     const res = await post({ title: "重复卷" });
+
     expect(res.status).toBe(409);
+    expect(cv()).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry when the client pinned an explicit order index", async () => {
+    const conflict = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    cv().mockRejectedValueOnce(conflict);
+
+    const res = await post({ title: "重复卷", orderIndex: 1 });
+
+    expect(res.status).toBe(409);
+    expect(cv()).toHaveBeenCalledTimes(1);
   });
 });

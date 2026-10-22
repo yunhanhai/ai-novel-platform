@@ -109,4 +109,33 @@ describe("POST /api/projects/[projectId]/chapters", () => {
     expect(args.where.deletedAt).toBeUndefined();
     expect(cc()).toHaveBeenCalledWith(expect.objectContaining({ chapterNo: 10 }));
   });
+
+  it("retries once with a fresh number when a concurrent insert wins the race", async () => {
+    // 两个并发请求读到同一个最大值 → 第一个成功、第二个撞 P2002。
+    // 服务端应重算序号后重试，而不是直接把冲突抛给用户。
+    p().chapter.findFirst
+      .mockResolvedValueOnce({ chapterNo: 3 })
+      .mockResolvedValueOnce({ chapterNo: 4 });
+    const conflict = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    cc().mockRejectedValueOnce(conflict).mockResolvedValueOnce({
+      id: "ch-5", projectId: "proj-1", chapterNo: 5, title: "新章节",
+      status: "PLANNED", wordCount: 0, content: null
+    });
+
+    const res = await POST(req({ title: "新章节" }), routeCtx("proj-1"));
+
+    expect(res.status).toBe(201);
+    expect(cc()).toHaveBeenCalledTimes(2);
+    expect(cc().mock.calls[1]![0]).toMatchObject({ chapterNo: 5 });
+  });
+
+  it("does not retry when the client pinned an explicit number", async () => {
+    const conflict = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    cc().mockRejectedValueOnce(conflict);
+
+    const res = await POST(req({ title: "章节", chapterNo: 7 }), routeCtx("proj-1"));
+
+    expect(res.status).toBe(409);
+    expect(cc()).toHaveBeenCalledTimes(1);
+  });
 });

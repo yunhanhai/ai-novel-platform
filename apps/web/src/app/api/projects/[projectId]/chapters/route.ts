@@ -93,25 +93,40 @@ export async function POST(request: Request, context: RouteContext) {
     // 用「已加载的最大序号 + 1」在超过一页时会与库里已有章节撞号。
     // 注意这里**不排除已软删除的章节**：唯一索引 (project_id, chapter_no)
     // 不区分 deleted_at，删掉最后一章后若只按未删除章节取最大值，会算回同一个序号并撞约束。
-    let chapterNo = body.chapterNo;
-    if (chapterNo === undefined) {
+    async function nextChapterNo(): Promise<number> {
       const last = await prisma.chapter.findFirst({
         where: { organizationId, projectId },
         orderBy: { chapterNo: "desc" },
         select: { chapterNo: true }
       });
-      chapterNo = (last?.chapterNo ?? 0) + 1;
+      return (last?.chapterNo ?? 0) + 1;
     }
 
-    const chapter = await createChapter({
-      organizationId,
-      projectId,
-      chapterNo,
-      title,
-      createdById,
-      ...(body.volumeId ? { volumeId: body.volumeId } : {}),
-      prisma
-    });
+    async function insert(explicit: number | undefined) {
+      const chapterNo = explicit ?? (await nextChapterNo());
+      return createChapter({
+        organizationId,
+        projectId,
+        chapterNo,
+        title: title!,
+        createdById,
+        ...(body.volumeId ? { volumeId: body.volumeId } : {}),
+        prisma
+      });
+    }
+
+    let chapter;
+    try {
+      chapter = await insert(body.chapterNo);
+    } catch (error: unknown) {
+      // 并发新建（双击 / 重试）会读到同一个最大值并撞唯一约束。
+      // 仅当序号由服务端推导时重算一次；显式指定序号的重试没有意义。
+      const isUnique =
+        typeof error === "object" && error !== null && (error as { code?: string }).code === "P2002";
+      if (body.chapterNo !== undefined || !isUnique) throw error;
+      chapter = await insert(undefined);
+    }
+
     return NextResponse.json({ success: true, data: chapter }, { status: 201 });
   } catch (error: unknown) {
     return errorResponse(error);
