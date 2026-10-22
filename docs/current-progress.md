@@ -1458,3 +1458,32 @@ pnpm test:e2e    2 passed + 1 skipped（45.8s / 46.0s）
 ```
 
 新增测试 4 例：并发撞号后重算重试成功、重试仍失败返回 409、显式序号不重试（章节与分卷各一组）。
+
+---
+
+## 2026-10-21 — 第二十六批：版本链的并发撞号与事务原子性
+
+### 发现
+
+顺着上一轮"序号并发"继续审计版本号（`contentVersion.versionNo`，唯一约束 `(entityType, entityId, versionNo)`），发现两类问题：
+
+**1. 撞号后果更重**：章节/分卷撞号只是"创建失败"，版本撞号发生在**事务内部**——整个 finalize / 回滚 / 去AI味应用事务回滚，已写入的内容一并丢失，用户看到莫名其妙的失败。
+
+**2. `restoreChapterVersion` 不是原子的**：它"先写快照版本、再更新章节内容"，两步**不在同一事务**。快照写完、正文更新失败，会留下一个孤儿 MANUAL 版本——版本链出现一个内容既不在正文也不对应任何恢复操作的条目。
+
+### 修复
+
+- 新增 `server/version-retry.ts` 的 `withVersionRetry`：捕获 `P2002` 后带随机微退避重试（最多 3 次），非唯一冲突立即抛出
+- `restoreChapterVersion` 改为**单事务**（快照 + 正文更新原子完成）并包上重试；顺带把本地重复实现的 `countWords` 换成共享 `computeWordCount`
+- `applyDeslopEdit`（一个事务连写两条版本，最容易撞号）同样包上重试
+- 审计结论：`saveContentVersion` 无任何生产调用方（死代码），worker 的 `commitFinalize` 已有 poll 层重试兜底，均记录在案
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        712 tests（db 16 + shared 33 + ma 37 + worker 158 + web 468）
+pnpm test:e2e    2 passed + 1 skipped（59.4s）
+```
+
+新增测试 4 例：首次成功不重试 / 瞬时冲突重试成功 / 非唯一错误立即抛出 / 三次后放弃。

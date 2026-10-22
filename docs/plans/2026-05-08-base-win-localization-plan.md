@@ -737,3 +737,23 @@ pnpm test:e2e
 - [x] Both paths now catch P2002, recompute the number and retry once. Retry happens only when the server derived the number; a client-pinned number is reported as a conflict instead, and a failed retry still returns 409.
 - [x] The previous e2e warm-up never worked: page.request.get() uses an isolated request context without the browser session cookie, so it returned 401 and never compiled the route. Warm-up now runs inside page.evaluate(fetch) so the cookie is present.
 - [x] Verified: typecheck 5/5; 708 tests green (16+33+37+158+464); e2e 2 passed + 1 skipped, run twice (45.8s / 46.0s).
+
+## Task 36: 2026-10-21 Version Chain Concurrency and Atomicity
+
+**Files:**
+- Create: `apps/web/src/server/version-retry.ts` + test
+- Modify: `apps/web/src/server/content-versions.ts` + test, `apps/web/src/server/chapters.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Unlike the chapter-number collision, a version-number P2002 happens inside a transaction, rolling back the whole finalize/restore/deslop-apply including already-written content, and surfacing as an opaque failure.
+- [x] restoreChapterVersion was not atomic: it wrote the snapshot version first and updated the chapter content second, in separate steps. A failure between them left an orphan MANUAL version in the chain that corresponded to no visible operation. Now both steps run in one transaction wrapped in withVersionRetry; the local duplicate countWords was replaced by the shared computeWordCount.
+- [x] withVersionRetry (new) retries P2002 up to three times with short random backoff and rethrows non-unique errors immediately. applyDeslopEdit — which writes two version rows in one transaction and is the likeliest collider — is wrapped too.
+- [x] Audit notes recorded: saveContentVersion has no production callers (dead code), and the worker-side commitFinalize already benefits from the poll-level retry added earlier.
+- [x] Verified: typecheck 5/5; 712 tests green (16+33+37+158+468); e2e 2 passed + 1 skipped (59.4s).

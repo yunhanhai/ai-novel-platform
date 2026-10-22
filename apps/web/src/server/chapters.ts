@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
+import { withVersionRetry } from "./version-retry";
 
 interface CreateVolumeParams {
   organizationId: string;
@@ -177,11 +178,14 @@ export async function applyDeslopEdit({
   category,
   prisma
 }: ApplyDeslopEditParams) {
-  return prisma.$transaction(async (tx) => {
-    const chapter = await tx.chapter.findFirst({
-      where: { id: chapterId, organizationId, deletedAt: null }
-    });
-    if (!chapter) throw new Error("章节不存在");
+  // DESLOP 应用会在一个事务里连写两条版本记录；并发撞版本号时
+  // 整个事务回滚，用户看到「应用失败」。包一层重试让它自愈。
+  return withVersionRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const chapter = await tx.chapter.findFirst({
+        where: { id: chapterId, organizationId, deletedAt: null }
+      });
+      if (!chapter) throw new Error("章节不存在");
 
     if (baseContentHash && sha256Hex(chapter.content ?? "") !== baseContentHash) {
       throw new Error(CONTENT_STALE_ERROR);
@@ -238,7 +242,8 @@ export async function applyDeslopEdit({
     });
 
     return { chapter: updatedChapter, version };
-  });
+    })
+  );
 }
 
 function sha256Hex(text: string): string {

@@ -6,7 +6,7 @@ import {
 } from "./content-versions";
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
-  return {
+  const prisma = {
     contentVersion: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -17,7 +17,14 @@ function mockPrisma(overrides: Record<string, unknown> = {}) {
       update: vi.fn()
     },
     ...overrides
-  } as unknown as Parameters<typeof listChapterVersions>[0]["prisma"];
+  } as unknown as Record<string, unknown> & Parameters<typeof listChapterVersions>[0]["prisma"];
+
+  // 事务 mock：直接把 prisma 自身当作 tx 传给回调
+  (prisma as Record<string, unknown>).$transaction = vi.fn(
+    async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)
+  );
+
+  return prisma;
 }
 
 describe("content-versions", () => {
