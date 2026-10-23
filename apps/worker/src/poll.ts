@@ -1,3 +1,5 @@
+import { classifyModelError } from "./pipeline/model-error-classifier";
+
 export interface GenerationJob {
   id: string;
   organizationId: string;
@@ -76,6 +78,23 @@ export function createPoller(deps: PollerDeps): Poller {
       const message = error instanceof Error ? error.message : "Unknown error";
       const attemptCount = job.attemptCount ?? 1;
       const maxAttempts = job.maxAttempts ?? 3;
+
+      // 配置类错误（无效 key / 错误 baseURL 等）重试没有意义：
+      // 401 重试三次还是 401，只会多烧两次等待。直接定稿 FAILED，
+      // 错误信息用用户可读的排查提示，原始细节进服务端日志。
+      const classified = classifyModelError(error);
+      if (!classified.retryable) {
+        console.error(
+          `[worker] job ${job.id} config error (${classified.kind}): ${classified.raw ?? message}`
+        );
+        await updateJobStatus({
+          jobId: job.id,
+          status: "FAILED",
+          errorCode: "MODEL_CONFIG_ERROR",
+          errorMessage: classified.userMessage
+        });
+        return "error";
+      }
 
       if (attemptCount < maxAttempts) {
         await requeueForRetry({

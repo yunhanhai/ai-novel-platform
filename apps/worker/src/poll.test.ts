@@ -81,6 +81,55 @@ describe("poller", () => {
     expect(updateJobStatus).not.toHaveBeenCalled();
   });
 
+  it("fails immediately with a readable message on model config errors", async () => {
+    // 401 是永久性配置错误：重试三次还是 401，只会浪费时间
+    const handler = vi.fn().mockRejectedValue(
+      Object.assign(new Error("Incorrect API key provided"), { status: 401 })
+    );
+    const updateJobStatus = mockUpdateFn();
+    const requeueForRetry = mockRequeueFn();
+    const poller = createPoller({
+      claimNext: () => Promise.resolve({ ...baseJob, attemptCount: 1, maxAttempts: 3 }),
+      updateJobStatus,
+      requeueForRetry,
+      pollIntervalMs: 10,
+      handlers: new Map([["GENERATE_CHAPTER", handler]])
+    });
+
+    const result = await poller.tick();
+
+    expect(result).toBe("error");
+    expect(requeueForRetry).not.toHaveBeenCalled();
+    expect(updateJobStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: "j1",
+        status: "FAILED",
+        errorCode: "MODEL_CONFIG_ERROR",
+        errorMessage: expect.stringContaining("API key")
+      })
+    );
+  });
+
+  it("still retries rate-limit errors", async () => {
+    const handler = vi.fn().mockRejectedValue(
+      Object.assign(new Error("Too many requests"), { status: 429 })
+    );
+    const updateJobStatus = mockUpdateFn();
+    const requeueForRetry = mockRequeueFn();
+    const poller = createPoller({
+      claimNext: () => Promise.resolve({ ...baseJob, attemptCount: 1, maxAttempts: 3 }),
+      updateJobStatus,
+      requeueForRetry,
+      pollIntervalMs: 10,
+      handlers: new Map([["GENERATE_CHAPTER", handler]])
+    });
+
+    const result = await poller.tick();
+
+    expect(result).toBe("retried");
+    expect(updateJobStatus).not.toHaveBeenCalled();
+  });
+
   it("retries jobs without attempt metadata (legacy rows default to attempt 1)", async () => {
     const handler = vi.fn().mockRejectedValue(new Error("boom"));
     const requeueForRetry = mockRequeueFn();

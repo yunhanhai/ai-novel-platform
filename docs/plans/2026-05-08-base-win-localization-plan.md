@@ -797,3 +797,23 @@ pnpm test:e2e
 - [x] A quota of 100 accepted character states per project evicts the oldest by createdAt; duplicate content is skipped at creation.
 - [x] All rules run inside the extract-memory transaction; typed via a thin structural adapter so both the Prisma tx and test mocks satisfy it.
 - [x] Verified: typecheck 5/5; 724 tests green (16+33+37+165+473); e2e 2 passed + 1 skipped (1.0m).
+
+## Task 39: 2026-10-21 Model Error Classification (closes both research findings)
+
+**Files:**
+- Create: `apps/worker/src/pipeline/model-error-classifier.ts` + test
+- Modify: `apps/worker/src/poll.ts` + test
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Both shortcomings from the peer-project research are now closed. This one surfaced model failures as HANDLER_RETRY, so a user with a bad key or baseURL waited through three pointless retries and never learned the reason.
+- [x] New classifier groups provider errors into eight kinds, status codes first (401/403 invalid key, 402 quota, 404 model name, 429 rate limit, 5xx server) with text-pattern fallbacks for SDK connection failures without a status (fetch failed / ENOTFOUND → bad baseURL, timed out → timeout).
+- [x] Each kind carries a user-readable Chinese troubleshooting message; the raw error goes to server logs only.
+- [x] poll now finalizes CONFIG_* errors immediately as FAILED / MODEL_CONFIG_ERROR with the readable message instead of retrying (a 401 stays 401), while transient classes (rate limit, timeout, 5xx, unknown) keep the exponential-backoff retry.
+- [x] Verified: typecheck 5/5; 737 tests green (16+33+37+178+473); e2e 2 passed + 1 skipped (55.2s).

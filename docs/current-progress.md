@@ -1551,3 +1551,30 @@ pnpm test:e2e    2 passed + 1 skipped（1.0m）
 ### 记录：同类调研的另一个短板
 
 「worker 端模型错误细节不回传」（job 失败只报 HANDLER_RETRY，用户看不到 key 无效/baseURL 错误的具体原因）仍待做，列入下一批候选。
+
+---
+
+## 2026-10-21 — 第二十九批：模型错误分类与可读提示（调研短板全部关闭）
+
+上上轮调研暴露的两个短板至此全部关闭。本批解决第二个：**用户配置错 key 或 baseURL 时，job 只显示"HANDLER_RETRY / 已重试 N 次后放弃"**——既看不到原因，白等三次重试（401 重试三次还是 401）。
+
+### 实现
+
+**`pipeline/model-error-classifier.ts`**：把 provider 异常归类为 8 类，状态码优先（401/403 → key 无效、402 → 余额不足、404 → 模型名错误、429 → 限流、5xx → 服务端故障），无状态码时按文本特征兜底（`fetch failed`/`ENOTFOUND` → baseURL 错、`timed out` → 超时等）。
+
+- 每类配**用户可读中文排查提示**（如「API key 无效，请到设置→模型设置检查并用测试连接验证」），原始错误进服务端日志
+- **`retryable` 信号**：`CONFIG_*` 前缀的错误不可重试
+
+**poll 层接入**：
+- 配置类错误**立即定稿** `FAILED / MODEL_CONFIG_ERROR` + 可读提示，不再无谓重试
+- 瞬时类（限流/超时/5xx/未知）维持原有指数退避重试
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        737 tests（db 16 + shared 33 + ma 37 + worker 178 + web 473）
+pnpm test:e2e    2 passed + 1 skipped（55.2s）
+```
+
+新增测试 13 例：分类器 11 例（状态码/文本兜底/非 Error 抛出/UNKNOWN）+ poll 2 例（配置错立即失败不重试、限流仍重试）。
