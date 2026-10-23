@@ -18,12 +18,20 @@ const stubModel = {
 describe("createExtractMemoryHandler", () => {
   it("extracts memories and saves as proposed", async () => {
     interface TxStub {
-      projectMemory: { create: ReturnType<typeof vi.fn> };
+      projectMemory: {
+        create: ReturnType<typeof vi.fn>;
+        findMany: ReturnType<typeof vi.fn>;
+        updateMany: ReturnType<typeof vi.fn>;
+      };
       generationStep: { create: ReturnType<typeof vi.fn> };
       generationJob: { update: ReturnType<typeof vi.fn> };
     }
     const tx: TxStub = {
-      projectMemory: { create: vi.fn().mockResolvedValue({}) },
+      projectMemory: {
+        create: vi.fn().mockResolvedValue({}),
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 })
+      },
       generationStep: { create: vi.fn().mockResolvedValue({}) },
       generationJob: { update: vi.fn().mockResolvedValue({}) }
     };
@@ -69,5 +77,84 @@ describe("createExtractMemoryHandler", () => {
     expect(updateJobStatus).toHaveBeenCalledWith(
       expect.objectContaining({ status: "FAILED", errorCode: "CHAPTER_NOT_FOUND" })
     );
+  });
+
+  it("writes the chapter summary as accepted and supersedes older states", async () => {
+    const tx = {
+      projectMemory: {
+        create: vi.fn().mockResolvedValue({}),
+        findMany: vi.fn().mockResolvedValue([{ content: "旧记忆" }]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 })
+      },
+      generationStep: { create: vi.fn().mockResolvedValue({}) },
+      generationJob: { update: vi.fn().mockResolvedValue({}) }
+    };
+    const prisma = {
+      chapter: {
+        findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", content: "正文", title: "章", chapterNo: 1 })
+      },
+      $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx))
+    };
+
+    const handler = createExtractMemoryHandler({
+      prisma: prisma as never, updateJobStatus: vi.fn().mockResolvedValue({}), model: stubModel as never
+    });
+
+    await handler(baseJob);
+
+    // 章节摘要直接写为 accepted（生成上下文只读 accepted，堆在 proposed 里等于没有）
+    const created = tx.projectMemory.create.mock.calls.map((call) => call[0] as { data: Record<string, unknown> });
+    const summaryCreate = created.find((c) => c.data.memoryType === "chapter_summary");
+    expect(summaryCreate).toBeDefined();
+    expect(summaryCreate!.data.status).toBe("accepted");
+
+    // 同章旧摘要被淘汰
+    expect(tx.projectMemory.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ memoryType: "chapter_summary", scopeId: "chapter-1" }),
+        data: { status: "superseded" }
+      })
+    );
+
+    // 写入主角新状态前，淘汰主角的更早状态
+    expect(tx.projectMemory.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          memoryType: "character_state",
+          content: { startsWith: "主角: " }
+        }),
+        data: { status: "superseded" }
+      })
+    );
+  });
+
+  it("skips creating a memory whose content already exists", async () => {
+    const tx = {
+      projectMemory: {
+        create: vi.fn().mockResolvedValue({}),
+        // 与模型输出完全相同的世界事实 → 应被去重跳过
+        findMany: vi.fn().mockResolvedValue([{ content: "这个世界有九层" }]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 })
+      },
+      generationStep: { create: vi.fn().mockResolvedValue({}) },
+      generationJob: { update: vi.fn().mockResolvedValue({}) }
+    };
+    const prisma = {
+      chapter: {
+        findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", content: "正文", title: "章", chapterNo: 1 })
+      },
+      $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx))
+    };
+
+    const handler = createExtractMemoryHandler({
+      prisma: prisma as never, updateJobStatus: vi.fn().mockResolvedValue({}), model: stubModel as never
+    });
+
+    await handler(baseJob);
+
+    const worldFactCreates = tx.projectMemory.create.mock.calls
+      .map((call) => call[0] as { data: Record<string, unknown> })
+      .filter((c) => c.data.memoryType === "world_fact");
+    expect(worldFactCreates).toHaveLength(0);
   });
 });

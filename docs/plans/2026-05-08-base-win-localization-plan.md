@@ -776,3 +776,24 @@ pnpm test:e2e
 - [x] Drag sort: two-phase renumbering moves affected chapters into a negative temporary range before writing final numbers, avoiding mid-reorder collisions with the (project_id, chapter_no) unique index. Ordered ids are validated to belong to the project and not be soft-deleted; capped at 500; wrapped in withVersionRetry.
 - [x] Manage mode: checkboxes with bulk delete and bulk move-to-volume (including 未分卷), per-chapter execution with a failure count in the completion notice. Dragging is enabled only in manage mode with a dashed drop-target highlight; exiting clears the selection.
 - [x] Verified: typecheck 5/5; 717 tests green (16+33+37+158+473); e2e 2 passed + 1 skipped (53.2s) entering manage mode, checking one chapter, dragging it to the top and asserting it becomes the first list item.
+
+## Task 38: 2026-10-21 Memory Maintenance Against Long-Novel Quality Decay
+
+**Files:**
+- Create: `apps/worker/src/pipeline/memory-maintenance.ts` + test
+- Modify: `apps/worker/src/pipeline/extract-memory-handler.ts` + test
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] The peer-project top quality complaint (writing 30+ chapters degrades into name drift and heavy AI flavour) applies to us: extract-memory is append-only, and the generation context reads only accepted memories while extractions land as proposed that nobody reviews at scale — the system piles up but never gets used.
+- [x] Chapter summaries are now written directly as accepted (low-risk factual content bypassing the review bottleneck), superseding any older summary for the same chapter first.
+- [x] Character states reflect only the latest: writing a new state for a character supersedes that character's earlier states (including accepted ones), which is the direct defense against name/state drift.
+- [x] A quota of 100 accepted character states per project evicts the oldest by createdAt; duplicate content is skipped at creation.
+- [x] All rules run inside the extract-memory transaction; typed via a thin structural adapter so both the Prisma tx and test mocks satisfy it.
+- [x] Verified: typecheck 5/5; 724 tests green (16+33+37+165+473); e2e 2 passed + 1 skipped (1.0m).

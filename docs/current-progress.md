@@ -1525,3 +1525,29 @@ pnpm test:e2e    2 passed + 1 skipped（53.2s）—— smoke 新增：进入管�
 ```
 
 新增测试 5 例：空列表/混入外部章节拒绝/负数腾挪+回写顺序/自定义起始序号/组织隔离。
+
+---
+
+## 2026-10-21 — 第二十八批：记忆维护策略（对抗 30+ 章质量衰减）
+
+上轮调研中同类项目最高频的质量抱怨（AI_NovelGenerator #240：连写 30+ 章后人名漂移、AI 味变重）在我们项目同样成立：`extract-memory` 只追加不清理，且**生成上下文只读 `accepted` 状态**，而抽取默认写 `proposed` 且无人会逐条审阅几十章积累的几百条记忆——记忆系统实际处于「堆积但不用」状态。
+
+### 三条维护规则（`worker/pipeline/memory-maintenance.ts`，全部在落库事务内执行）
+
+1. **章节摘要自动 accept**：摘要是事实性低风险内容，直接写 `accepted`（绕过无人审阅的瓶颈）；同章旧摘要（含旧的 accepted）先标 `superseded`，重生成时替换而非重复堆积
+2. **角色状态新旧替换**：写入某角色新状态前，把该角色更早的 `character_state`（含 accepted）全部标 `superseded`——状态只需反映最新，这是「人名漂移」的直接防线
+3. **配额淘汰**：accepted 的角色状态超过 100 条时按 `createdAt` 淘汰最旧的；配合去重（同内容跳过创建）
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        724 tests（db 16 + shared 33 + ma 37 + worker 165 + web 473）
+pnpm test:e2e    2 passed + 1 skipped（1.0m）
+```
+
+新增测试 7 例：去重/摘要淘汰/角色替换/配额（5）+ handler 行为锁定：摘要写 accepted 且旧摘要被淘汰、角色替换被调用（1）+ 重复内容跳过创建（1）。
+
+### 记录：同类调研的另一个短板
+
+「worker 端模型错误细节不回传」（job 失败只报 HANDLER_RETRY，用户看不到 key 无效/baseURL 错误的具体原因）仍待做，列入下一批候选。
