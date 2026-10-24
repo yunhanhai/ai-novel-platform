@@ -1578,3 +1578,29 @@ pnpm test:e2e    2 passed + 1 skipped（55.2s）
 ```
 
 新增测试 13 例：分类器 11 例（状态码/文本兜底/非 Error 抛出/UNKNOWN）+ poll 2 例（配置错立即失败不重试、限流仍重试）。
+
+---
+
+## 2026-10-22 — 第三十批：自动连更（BATCH_CONTINUE）
+
+调研里同类项目用户的功能诉求（AI_NovelGenerator #155，7 条评论：「能不能有个全自动生成，一次多生成一章」）在我们项目落地：**一个 job 自动连续续写 N 章**（2/3/5/10 可选），挂机即可完成日更。
+
+### 实现
+
+- **新枚举值** `batch_continue`：迁移 `202610220001_add_batch_continue`（`ADD VALUE IF NOT EXISTS`）+ schema/db/api 三处类型同步
+- **`batch-continue-handler`**：循环续写，**每章前重读章节内容**（拿到上一轮追加后的最新正文再喂给模型，避免上下文漂移）；每章独立 `commitFinalize` 落一个版本（版本链完整可回滚）；`job.progress` 实时上报百分比
+- **失败保留**：中途某章模型返回空时，已完成章节保留，job 定稿 `FAILED / BATCH_ABORTED` 并注明「已完成 N 章」——不丢已产出内容
+- **上限 10 章**：防止单 job 过长；配合队列重试机制（模型网络抖动会自动重试整个 job，已完成的 finalize 不会重复入库因为每章独立版本）
+- 复用 `continue-chapter-handler` 的 prompt/工具函数（导出后共享），prompt 构造与单章续写完全一致
+- UI：AI 面板「继续写」旁新增「自动连更」（章数下拉 + 按钮），运行中按钮显示实时进度百分比
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        742 tests（db 16 + shared 33 + ma 37 + worker 183 + web 473）
+pnpm test:e2e    2 passed + 1 skipped（47.4s）—— smoke 新增：点「自动连更」→
+                 任务卡片显示「自动连更」→ SUCCEEDED → 正文变长
+```
+
+新增测试 5 例：章数夹紧、连更 3 章进度与产出、中途空输出保留已完成、章节缺失、目标回落解析。

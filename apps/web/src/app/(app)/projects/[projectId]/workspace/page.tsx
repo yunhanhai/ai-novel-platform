@@ -136,6 +136,12 @@ export default function WorkspacePage() {
     await startJob(activeChapterId, "CONTINUE_CHAPTER");
   }
 
+  async function handleBatchContinue(chapterCount: number) {
+    if (!activeChapterId) return;
+    await flush();
+    await startJob(activeChapterId, "BATCH_CONTINUE", { chapterCount });
+  }
+
   async function handleReview() {
     if (!activeChapterId) return;
     await flush();
@@ -311,6 +317,7 @@ export default function WorkspacePage() {
         onGenerate={handleGenerate}
         onDiagnose={handleDiagnose}
         onContinue={handleContinue}
+        onBatchContinue={handleBatchContinue}
         onReview={() => void handleReview()}
         onGenerateOutline={(count) => void handleGenerateOutline(count)}
         onApplyReviewReplacement={applyReviewReplacement}

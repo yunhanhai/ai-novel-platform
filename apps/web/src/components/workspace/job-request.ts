@@ -21,6 +21,7 @@ export function buildGenerationRequestBody(input: GenerationRequestInput): Recor
   const { chapterId, projectId, jobType, qualityMode, contextOptions, selectedText, instruction, chapterCount } = input;
   const isRewritePolish = REWRITE_POLISH_JOB_TYPES.has(jobType);
   const isOutline = jobType === "GENERATE_OUTLINE";
+  const isBatchContinue = jobType === "BATCH_CONTINUE";
   const trimmedInstruction = instruction?.trim();
 
   return {
@@ -42,6 +43,13 @@ export function buildGenerationRequestBody(input: GenerationRequestInput): Recor
           input: {
             ...(chapterCount ? { chapterCount } : {}),
             ...(trimmedInstruction ? { instruction: trimmedInstruction } : {})
+          }
+        }
+      : {}),
+    ...(isBatchContinue
+      ? {
+          input: {
+            ...(chapterCount ? { chapterCount } : { chapterCount: 1 })
           }
         }
       : {})

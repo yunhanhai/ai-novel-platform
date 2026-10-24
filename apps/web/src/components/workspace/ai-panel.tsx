@@ -14,6 +14,7 @@ interface AiPanelProps {
   onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions) => void;
   onDiagnose: (qualityMode: QualityMode) => void;
   onContinue: () => void;
+  onBatchContinue: (chapterCount: number) => void;
   onDeslop: () => void;
   onExtractMemory: () => void;
   isStarting: boolean;
@@ -25,10 +26,11 @@ interface AiPanelProps {
 
 const QUALITY_MODES: QualityMode[] = ["fast", "balanced", "deep"];
 
-export function AiPanel({ onGenerate, onDiagnose, onContinue, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId }: AiPanelProps) {
+export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId }: AiPanelProps) {
   const isRunning = job ? ["QUEUED", "RUNNING"].includes(job.status) : false;
   const [contextOptions, setContextOptions] = useState<ContextOptions | undefined>(undefined);
   const [qualityMode, setQualityMode] = useState<QualityMode>("balanced");
+  const [batchCount, setBatchCount] = useState(3);
   const busy = isStarting || isRunning || !canGenerate;
 
   const generateLabel = isStarting && job?.jobType === "GENERATE_CHAPTER"
@@ -48,6 +50,11 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onDeslop, onExtrac
     : isRunning && job?.jobType === "CONTINUE_CHAPTER"
     ? "续写中..."
     : "继续写";
+  const batchLabel = isStarting && job?.jobType === "BATCH_CONTINUE"
+    ? "提交中..."
+    : isRunning && job?.jobType === "BATCH_CONTINUE"
+    ? `连更中... ${job.progress ?? "0"}%`
+    : "自动连更";
 
   return (
     <div className="ai-panel-content" aria-label="AI 面板">
@@ -87,6 +94,29 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onDeslop, onExtrac
         >
           {continueLabel}
         </button>
+        <div className="batch-continue-row">
+          <select
+            aria-label="连更章数"
+            value={batchCount}
+            onChange={(e) => setBatchCount(Number(e.target.value))}
+            disabled={busy}
+            className="batch-continue-select"
+          >
+            {[2, 3, 5, 10].map((count) => (
+              <option key={count} value={count}>
+                {count} 章
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn-ghost"
+            onClick={() => onBatchContinue(batchCount)}
+            disabled={busy}
+            title="按当前章节连续自动续写多章，中途可停止；失败时已完成部分保留"
+          >
+            {batchLabel}
+          </button>
+        </div>
         <button
           className="btn-ghost"
           onClick={() => onDiagnose(qualityMode)}

@@ -169,6 +169,7 @@ enum GenerationJobType {
   GENERATE_OUTLINE @map("generate_outline")
   GENERATE_CHAPTER @map("generate_chapter")
   CONTINUE_CHAPTER @map("continue_chapter")
+  BATCH_CONTINUE   @map("batch_continue")
   REWRITE          @map("rewrite")
   POLISH           @map("polish")
   DESLOP           @map("deslop")

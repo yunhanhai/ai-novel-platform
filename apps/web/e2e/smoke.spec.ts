@@ -110,6 +110,15 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
     .poll(async () => (await editor.inputValue()).length, { timeout: 15_000 })
     .toBeGreaterThan(lengthBeforeContinue);
 
+  // 8.65 自动连更（BATCH_CONTINUE）：一次 job 连续续写 2 章
+  const lengthBeforeBatch = (await editor.inputValue()).length;
+  await page.getByRole("button", { name: "自动连更" }).click();
+  await expect(jobTypeCell).toHaveText("自动连更", { timeout: 10_000 });
+  await expect(jobStatusTag).toHaveText("已完成", { timeout: 60_000 });
+  await expect
+    .poll(async () => (await editor.inputValue()).length, { timeout: 20_000 })
+    .toBeGreaterThan(lengthBeforeBatch);
+
   // 8.7 审校（REVIEW）：切到审校 tab 触发，等待结果面板出现
   //     job-status-card 只在 AI tab 渲染，因此这里以审校面板自身作为完成信号
   await page.getByRole("tab", { name: "审校" }).click();

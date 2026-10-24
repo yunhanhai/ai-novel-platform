@@ -17,6 +17,7 @@ describe("createHandlers", () => {
       "GENERATE_OUTLINE",
       "GENERATE_CHAPTER",
       "CONTINUE_CHAPTER",
+      "BATCH_CONTINUE",
       "DESLOP",
       "EXTRACT_MEMORY",
       "REWRITE",

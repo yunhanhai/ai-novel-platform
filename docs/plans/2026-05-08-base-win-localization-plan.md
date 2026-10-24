@@ -817,3 +817,24 @@ pnpm test:e2e
 - [x] Each kind carries a user-readable Chinese troubleshooting message; the raw error goes to server logs only.
 - [x] poll now finalizes CONFIG_* errors immediately as FAILED / MODEL_CONFIG_ERROR with the readable message instead of retrying (a 401 stays 401), while transient classes (rate limit, timeout, 5xx, unknown) keep the exponential-backoff retry.
 - [x] Verified: typecheck 5/5; 737 tests green (16+33+37+178+473); e2e 2 passed + 1 skipped (55.2s).
+
+## Task 40: 2026-10-22 BATCH_CONTINUE (Auto Multi-Chapter Writing)
+
+**Files:**
+- Create: `apps/worker/src/pipeline/batch-continue-handler.ts` + test, `packages/db/prisma/migrations/202610220001_add_batch_continue/migration.sql`
+- Modify: schema.prisma, `packages/db/src/generation-jobs.ts`, `worker/src/handlers.ts` + test, `worker/src/pipeline/continue-chapter-handler.ts` (export shared helpers), `api/generation-jobs/route.ts`, `ai-panel.tsx`, `workspace-side-tabs.tsx`, `workspace/page.tsx`, `job-request.ts`, `globals.css`, `display-labels.ts`, `e2e/smoke.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Implements the peer-project user request (#155) for fully automatic multi-chapter generation: one job sequentially continues N chapters (2/3/5/10 selectable), so an author can leave it running.
+- [x] New enum value batch_continue via migration with ADD VALUE IF NOT EXISTS; schema, db helper type and API JobType all synced.
+- [x] The handler re-reads the chapter before each round so the model always sees the previous round's append; each round goes through its own commitFinalize so the version chain stays complete and rollback-able; job.progress reports the live percentage.
+- [x] Failure preserves completed chapters: an empty model return finalizes FAILED / BATCH_ABORTED with 已完成 N 章 instead of discarding progress. Capped at 10 chapters per job.
+- [x] Reuses the single-continue prompt and helpers (now exported); the AI panel gains a chapter-count select plus a live-progress button next to 继续写.
+- [x] Verified: typecheck 5/5; 742 tests green (16+33+37+183+473); e2e 2 passed + 1 skipped (47.4s) clicking 自动连更, asserting the job card and final growth.

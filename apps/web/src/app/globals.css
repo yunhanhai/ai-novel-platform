@@ -1644,6 +1644,25 @@ select {
   border-radius: 6px;
 }
 
+/* Batch continue */
+
+.batch-continue-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.batch-continue-select {
+  max-width: 64px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+}
+
 /* Writing stats panel */
 
 .stats-kpi-grid {

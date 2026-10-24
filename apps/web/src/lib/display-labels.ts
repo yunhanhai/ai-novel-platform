@@ -22,6 +22,7 @@ const GENERATION_JOB_TYPE_LABELS: Record<string, string> = {
   GENERATE_OUTLINE: "生成大纲",
   GENERATE_CHAPTER: "生成章节",
   CONTINUE_CHAPTER: "续写章节",
+  BATCH_CONTINUE: "自动连更",
   REWRITE: "改写",
   POLISH: "润色",
   DESLOP: "去 AI 味",

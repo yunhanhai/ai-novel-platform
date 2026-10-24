@@ -12,6 +12,7 @@ interface CreateJobParams {
     | "GENERATE_OUTLINE"
     | "GENERATE_CHAPTER"
     | "CONTINUE_CHAPTER"
+    | "BATCH_CONTINUE"
     | "REWRITE"
     | "POLISH"
     | "DESLOP"

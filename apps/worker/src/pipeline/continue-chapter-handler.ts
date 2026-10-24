@@ -37,15 +37,15 @@ type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 
 const DEFAULT_TARGET_LENGTH = 600;
 const MAX_TARGET_LENGTH = 3000;
-const TAIL_CONTEXT_CHARS = 1500;
+export const TAIL_CONTEXT_CHARS = 1500;
 
-function normalizeTargetLength(value: unknown): number {
+export function normalizeTargetLength(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_TARGET_LENGTH;
   return Math.min(Math.round(parsed), MAX_TARGET_LENGTH);
 }
 
-function buildContinuePrompt(existingTail: string, targetLength: number, instruction?: string): string {
+export function buildContinuePrompt(existingTail: string, targetLength: number, instruction?: string): string {
   return [
     "你是资深中文网文作者。下面是当前章节的结尾部分，请顺着它继续写下去。",
     "",
@@ -65,7 +65,7 @@ function buildContinuePrompt(existingTail: string, targetLength: number, instruc
     .join("\n");
 }
 
-function stripCodeFence(text: string): string {
+export function stripCodeFence(text: string): string {
   return text.replace(/^\s*```[a-zA-Z]*\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
 }
 
