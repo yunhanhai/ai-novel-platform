@@ -136,10 +136,10 @@ export default function WorkspacePage() {
     await startJob(activeChapterId, "CONTINUE_CHAPTER");
   }
 
-  async function handleBatchContinue(chapterCount: number) {
+  async function handleBatchContinue(chapterCount: number, extractMemory: boolean) {
     if (!activeChapterId) return;
     await flush();
-    await startJob(activeChapterId, "BATCH_CONTINUE", { chapterCount });
+    await startJob(activeChapterId, "BATCH_CONTINUE", { chapterCount, extractMemory });
   }
 
   async function handleReview() {

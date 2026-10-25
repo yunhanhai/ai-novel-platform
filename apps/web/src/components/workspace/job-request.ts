@@ -10,6 +10,7 @@ export interface GenerationRequestInput {
   selectedText?: string;
   instruction?: string;
   chapterCount?: number;
+  extractMemory?: boolean;
 }
 
 const REWRITE_POLISH_JOB_TYPES = new Set(["REWRITE", "POLISH"]);
@@ -18,7 +19,7 @@ const REWRITE_POLISH_JOB_TYPES = new Set(["REWRITE", "POLISH"]);
 // 上下文选项只在整章生成时有意义，选中改写只在 REWRITE/POLISH 时有意义，
 // 细纲生成走项目级参数，其余字段一律不附加，避免污染 worker 端的 input 解析。
 export function buildGenerationRequestBody(input: GenerationRequestInput): Record<string, unknown> {
-  const { chapterId, projectId, jobType, qualityMode, contextOptions, selectedText, instruction, chapterCount } = input;
+  const { chapterId, projectId, jobType, qualityMode, contextOptions, selectedText, instruction, chapterCount, extractMemory } = input;
   const isRewritePolish = REWRITE_POLISH_JOB_TYPES.has(jobType);
   const isOutline = jobType === "GENERATE_OUTLINE";
   const isBatchContinue = jobType === "BATCH_CONTINUE";
@@ -49,7 +50,9 @@ export function buildGenerationRequestBody(input: GenerationRequestInput): Recor
     ...(isBatchContinue
       ? {
           input: {
-            ...(chapterCount ? { chapterCount } : { chapterCount: 1 })
+            chapterCount: chapterCount ?? 1,
+            // 默认开启记忆维护；显式关掉才传 false，避免污染 worker 端默认值
+            ...(extractMemory === false ? { extractMemory: false } : {})
           }
         }
       : {})

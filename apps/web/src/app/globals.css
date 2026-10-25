@@ -1663,6 +1663,19 @@ select {
   font-family: inherit;
 }
 
+.batch-continue-option {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.batch-continue-option input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 /* Writing stats panel */
 
 .stats-kpi-grid {

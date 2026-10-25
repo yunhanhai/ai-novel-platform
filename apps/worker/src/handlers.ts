@@ -3,7 +3,7 @@ import type { GenerationJob, JobHandler, UpdateStatusFn } from "./poll";
 import type { RuntimeModel } from "./model-runtime";
 import { createGenerateChapterHandler } from "./pipeline/generate-chapter-handler";
 import { createDeslopHandler } from "./pipeline/deslop-handler";
-import { createExtractMemoryHandler } from "./pipeline/extract-memory-handler";
+import { createExtractMemoryHandler, extractMemoriesForChapter } from "./pipeline/extract-memory-handler";
 import { createRewritePolishHandler } from "./pipeline/rewrite-polish-handler";
 import { createContinueChapterHandler } from "./pipeline/continue-chapter-handler";
 import { createBatchContinueHandler } from "./pipeline/batch-continue-handler";
@@ -45,7 +45,15 @@ export function createHandlers(deps: HandlerFactoryDeps): Map<string, JobHandler
   handlers.set("REWRITE", rewritePolish);
   handlers.set("POLISH", rewritePolish);
   handlers.set("CONTINUE_CHAPTER", createContinueChapterHandler({ ...shared, ...fakeModelDep() }));
-  handlers.set("BATCH_CONTINUE", createBatchContinueHandler({ ...shared, ...fakeModelDep() }));
+  handlers.set(
+    "BATCH_CONTINUE",
+    createBatchContinueHandler({
+      ...shared,
+      ...fakeModelDep(),
+      // 连更每章自动抽取记忆，保持记忆链最新
+      extractMemories: extractMemoriesForChapter
+    })
+  );
   handlers.set("REVIEW", createReviewHandler({ ...shared, ...fakeModelDep() }));
   handlers.set("GENERATE_OUTLINE", createGenerateOutlineHandler({ ...shared, ...fakeModelDep() }));
 

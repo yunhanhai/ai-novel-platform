@@ -1,5 +1,4 @@
 import type { PrismaClient } from "@ai-novel/db";
-import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { createFakeModel } from "./fake-model";
 import {
   MAX_ACCEPTED_CHARACTER_STATES_PER_PROJECT,
@@ -44,6 +43,168 @@ interface ExtractOutput {
   chapterSummary: string;
 }
 
+export interface ExtractedMemoryStats {
+  characterChanges: number;
+  worldFacts: number;
+  newHooks: number;
+  summary: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+const EXTRACT_PROMPT_PREFIX = "你是小说记忆抽取器。分析本章正文，提取需要记录的信息。以 JSON 格式输出。";
+const EXTRACT_PROMPT_SCHEMA = `{
+  "characterChanges": [{"characterName": "角色名", "change": "变化描述"}],
+  "worldFacts": [{"fact": "新发现的世界事实"}],
+  "newHooks": [{"hook": "新埋设的伏笔"}],
+  "summary": "一句话总结本章",
+  "chapterSummary": "详细章节摘要（200字以内）"
+}`;
+
+function buildExtractPrompt(content: string): string {
+  return `${EXTRACT_PROMPT_PREFIX}
+
+正文：
+${content.slice(0, 8000)}
+
+输出格式：
+${EXTRACT_PROMPT_SCHEMA}`;
+}
+
+/**
+ * 记忆抽取核心：解析正文 → 调模型 → 按维护规则落库。
+ * 不碰 job 状态与 generationStep——独立任务与批量连更的每章钩子共用，
+ * 由调用方决定如何记录步骤与定稿。
+ */
+export async function extractMemoriesForChapter(params: {
+  prisma: PrismaClient;
+  model: FakeModel;
+  job: GenerationJob;
+  chapter: { id: string; content: string; title: string; chapterNo: number };
+}): Promise<ExtractedMemoryStats> {
+  const { prisma, model, job, chapter } = params;
+
+  const result = await model.generate(buildExtractPrompt(chapter.content));
+  const extracted = safeJson<ExtractOutput>(result.text, {
+    characterChanges: [], worldFacts: [], newHooks: [],
+    summary: "抽取失败", chapterSummary: ""
+  });
+
+  await prisma.$transaction(async (tx: Tx) => {
+    // 写入前先读取现有记忆，用于去重与维护
+    const existingMemories = await tx.projectMemory.findMany({
+      where: { organizationId: job.organizationId, projectId: job.projectId },
+      select: { content: true }
+    });
+    const existingContents = existingMemories.map((m) => m.content);
+    const maintenance = { tx, organizationId: job.organizationId, projectId: job.projectId, chapterId: chapter.id };
+
+    // 写入 proposed 状态的记忆
+    for (const change of extracted.characterChanges) {
+      if (!change.characterName) continue;
+      const content = `${change.characterName}: ${change.change}`;
+      if (isDuplicateContent(existingContents, content)) continue;
+      // 角色状态只需反映最新：先淘汰该角色的更早状态
+      await supersedeCharacterState({ ...maintenance, characterName: change.characterName });
+      await tx.projectMemory.create({
+        data: {
+          organizationId: job.organizationId,
+          projectId: job.projectId,
+          memoryType: "character_state",
+          scopeType: "chapter",
+          scopeId: chapter.id,
+          content,
+          sourceChapterId: chapter.id,
+          sourceJobId: job.id,
+          status: "proposed",
+          confidence: 70
+        }
+      });
+    }
+
+    for (const fact of extracted.worldFacts) {
+      if (!fact.fact) continue;
+      if (isDuplicateContent(existingContents, fact.fact)) continue;
+      await tx.projectMemory.create({
+        data: {
+          organizationId: job.organizationId,
+          projectId: job.projectId,
+          memoryType: "world_fact",
+          scopeType: "chapter",
+          scopeId: chapter.id,
+          content: fact.fact,
+          sourceChapterId: chapter.id,
+          sourceJobId: job.id,
+          status: "proposed",
+          confidence: 70
+        }
+      });
+    }
+
+    for (const hook of extracted.newHooks) {
+      if (!hook.hook) continue;
+      const content = `[新伏笔] ${hook.hook}`;
+      if (isDuplicateContent(existingContents, content)) continue;
+      await tx.projectMemory.create({
+        data: {
+          organizationId: job.organizationId,
+          projectId: job.projectId,
+          memoryType: "hook_status",
+          scopeType: "chapter",
+          scopeId: chapter.id,
+          content,
+          sourceChapterId: chapter.id,
+          sourceJobId: job.id,
+          status: "proposed",
+          confidence: 60
+        }
+      });
+    }
+
+    if (extracted.chapterSummary) {
+      // 章节摘要是事实性低风险内容：直接 accept，并把同章旧摘要淘汰。
+      // 否则摘要在 proposed 里堆积，永远进不了上下文（生成只读 accepted）。
+      await maintainChapterSummary(maintenance);
+      await tx.projectMemory.create({
+        data: {
+          organizationId: job.organizationId,
+          projectId: job.projectId,
+          memoryType: "chapter_summary",
+          scopeType: "chapter",
+          scopeId: chapter.id,
+          content: extracted.chapterSummary,
+          contentJson: { title: chapter.title, chapterNo: chapter.chapterNo },
+          sourceChapterId: chapter.id,
+          sourceJobId: job.id,
+          status: "accepted",
+          confidence: 85
+        }
+      });
+    }
+
+    // accepted 的角色状态超过上限时淘汰最旧的，防止上下文预算被旧状态挤占
+    const evictIds = await enforceCharacterStateQuota({
+      ...maintenance,
+      keep: MAX_ACCEPTED_CHARACTER_STATES_PER_PROJECT
+    });
+    if (evictIds.length > 0) {
+      await tx.projectMemory.updateMany({
+        where: { id: { in: evictIds } },
+        data: { status: "superseded" }
+      });
+    }
+  });
+
+  return {
+    characterChanges: extracted.characterChanges.length,
+    worldFacts: extracted.worldFacts.length,
+    newHooks: extracted.newHooks.length,
+    summary: extracted.summary,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens
+  };
+}
+
 export function createExtractMemoryHandler(deps: HandlerDeps) {
   const { prisma, updateJobStatus } = deps;
   const builtinModel = deps.model ?? createFakeModel();
@@ -80,130 +241,9 @@ export function createExtractMemoryHandler(deps: HandlerDeps) {
     }
 
     try {
-      const extractPrompt = `你是小说记忆抽取器。分析本章正文，提取需要记录的信息。以 JSON 格式输出。
-
-正文：
-${chapter.content.slice(0, 8000)}
-
-输出格式：
-{
-  "characterChanges": [{"characterName": "角色名", "change": "变化描述"}],
-  "worldFacts": [{"fact": "新发现的世界事实"}],
-  "newHooks": [{"hook": "新埋设的伏笔"}],
-  "summary": "一句话总结本章",
-  "chapterSummary": "详细章节摘要（200字以内）"
-}`;
-
-      const result = await model.generate(extractPrompt);
-      const extracted = safeJson<ExtractOutput>(result.text, {
-        characterChanges: [], worldFacts: [], newHooks: [],
-        summary: "抽取失败", chapterSummary: ""
-      });
+      const stats = await extractMemoriesForChapter({ prisma, model, job, chapter });
 
       await prisma.$transaction(async (tx: Tx) => {
-        // 写入前先读取现有记忆，用于去重与维护
-        const existingMemories = await tx.projectMemory.findMany({
-          where: { organizationId: job.organizationId, projectId: job.projectId },
-          select: { content: true }
-        });
-        const existingContents = existingMemories.map((m) => m.content);
-        const maintenance = { tx, organizationId: job.organizationId, projectId: job.projectId, chapterId: chapter.id };
-
-        // 写入 proposed 状态的记忆
-        for (const change of extracted.characterChanges) {
-          if (!change.characterName) continue;
-          const content = `${change.characterName}: ${change.change}`;
-          if (isDuplicateContent(existingContents, content)) continue;
-          // 角色状态只需反映最新：先淘汰该角色的更早状态
-          await supersedeCharacterState({ ...maintenance, characterName: change.characterName });
-          await tx.projectMemory.create({
-            data: {
-              organizationId: job.organizationId,
-              projectId: job.projectId,
-              memoryType: "character_state",
-              scopeType: "chapter",
-              scopeId: chapter.id,
-              content,
-              sourceChapterId: chapter.id,
-              sourceJobId: job.id,
-              status: "proposed",
-              confidence: 70
-            }
-          });
-        }
-
-        for (const fact of extracted.worldFacts) {
-          if (!fact.fact) continue;
-          if (isDuplicateContent(existingContents, fact.fact)) continue;
-          await tx.projectMemory.create({
-            data: {
-              organizationId: job.organizationId,
-              projectId: job.projectId,
-              memoryType: "world_fact",
-              scopeType: "chapter",
-              scopeId: chapter.id,
-              content: fact.fact,
-              sourceChapterId: chapter.id,
-              sourceJobId: job.id,
-              status: "proposed",
-              confidence: 70
-            }
-          });
-        }
-
-        for (const hook of extracted.newHooks) {
-          if (!hook.hook) continue;
-          const content = `[新伏笔] ${hook.hook}`;
-          if (isDuplicateContent(existingContents, content)) continue;
-          await tx.projectMemory.create({
-            data: {
-              organizationId: job.organizationId,
-              projectId: job.projectId,
-              memoryType: "hook_status",
-              scopeType: "chapter",
-              scopeId: chapter.id,
-              content,
-              sourceChapterId: chapter.id,
-              sourceJobId: job.id,
-              status: "proposed",
-              confidence: 60
-            }
-          });
-        }
-
-        if (extracted.chapterSummary) {
-          // 章节摘要是事实性低风险内容：直接 accept，并把同章旧摘要淘汰。
-          // 否则摘要在 proposed 里堆积，永远进不了上下文（生成只读 accepted）。
-          await maintainChapterSummary(maintenance);
-          await tx.projectMemory.create({
-            data: {
-              organizationId: job.organizationId,
-              projectId: job.projectId,
-              memoryType: "chapter_summary",
-              scopeType: "chapter",
-              scopeId: chapter.id,
-              content: extracted.chapterSummary,
-              contentJson: { title: chapter.title, chapterNo: chapter.chapterNo },
-              sourceChapterId: chapter.id,
-              sourceJobId: job.id,
-              status: "accepted",
-              confidence: 85
-            }
-          });
-        }
-
-        // accepted 的角色状态超过上限时淘汰最旧的，防止上下文预算被旧状态挤占
-        const evictIds = await enforceCharacterStateQuota({
-          ...maintenance,
-          keep: MAX_ACCEPTED_CHARACTER_STATES_PER_PROJECT
-        });
-        if (evictIds.length > 0) {
-          await tx.projectMemory.updateMany({
-            where: { id: { in: evictIds } },
-            data: { status: "superseded" }
-          });
-        }
-
         const now = new Date();
         await tx.generationStep.create({
           data: {
@@ -213,9 +253,9 @@ ${chapter.content.slice(0, 8000)}
             status: "SUCCEEDED",
             startedAt: now,
             finishedAt: now,
-            outputPreview: extracted.summary,
-            inputTokens: result.inputTokens,
-            outputTokens: result.outputTokens
+            outputPreview: stats.summary,
+            inputTokens: stats.inputTokens,
+            outputTokens: stats.outputTokens
           }
         });
 
@@ -227,10 +267,10 @@ ${chapter.content.slice(0, 8000)}
             finishedAt: new Date(),
             output: {
               chapterId: chapter.id,
-              characterChanges: extracted.characterChanges.length,
-              worldFacts: extracted.worldFacts.length,
-              newHooks: extracted.newHooks.length,
-              summary: extracted.summary
+              characterChanges: stats.characterChanges,
+              worldFacts: stats.worldFacts,
+              newHooks: stats.newHooks,
+              summary: stats.summary
             }
           }
         });

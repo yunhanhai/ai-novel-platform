@@ -1604,3 +1604,27 @@ pnpm test:e2e    2 passed + 1 skipped（47.4s）—— smoke 新增：点「自�
 ```
 
 新增测试 5 例：章数夹紧、连更 3 章进度与产出、中途空输出保留已完成、章节缺失、目标回落解析。
+
+---
+
+## 2026-10-22 — 第三十一批：连更流水线（自动维护记忆）
+
+把上批的自动连更升级为**写作流水线**：每章续写落库后自动抽取记忆（摘要 + 角色状态 + 世界事实 + 伏笔），让后续章节的上下文里始终带着**最新的**故事状态。这直接呼应第二十八批的记忆维护策略——记忆越新越准，长文质量衰减越慢。
+
+### 实现
+
+- **重构抽取核心**：把 `extract-memory-handler` 的核心（解析正文 → 调模型 → 按维护规则落库）抽成 `extractMemoriesForChapter`，不碰 job 状态与 generationStep——独立任务与批量钩子共用同一实现，行为零漂移（现有 6 个 handler 测试未改动即全绿）
+- **批量钩子**：`createBatchContinueHandler` 接受可选 `extractMemories` 依赖；每章 `commitFinalize` 后重读章节（拿到含本章续写的最新正文）再抽取
+- **失败隔离**：抽取失败只 `console.warn`，**不中断连更**——正文是主产物，记忆是辅助
+- **可开关**：`input.extractMemory` 默认开启（连更的价值之一），显式 `false` 关闭以省一半模型调用；前端连更行加「连更时维护记忆」复选框（默认勾选）
+- `output.memoryExtractedChapters` 记录成功抽取的章数
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        745 tests（db 16 + shared 33 + ma 37 + worker 186 + web 473）
+pnpm test:e2e    2 passed + 1 skipped（59.9s）—— smoke 的连更步骤默认开启记忆维护，真实跑通
+```
+
+新增测试 3 例：每章后抽取且拿到最新正文、抽取失败仍完成连更（memoryExtractedChapters=0）、显式关闭后不调用。

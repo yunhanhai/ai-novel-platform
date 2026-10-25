@@ -838,3 +838,22 @@ pnpm test:e2e
 - [x] Failure preserves completed chapters: an empty model return finalizes FAILED / BATCH_ABORTED with 已完成 N 章 instead of discarding progress. Capped at 10 chapters per job.
 - [x] Reuses the single-continue prompt and helpers (now exported); the AI panel gains a chapter-count select plus a live-progress button next to 继续写.
 - [x] Verified: typecheck 5/5; 742 tests green (16+33+37+183+473); e2e 2 passed + 1 skipped (47.4s) clicking 自动连更, asserting the job card and final growth.
+
+## Task 41: 2026-10-22 Batch-Continue Memory Pipeline
+
+**Files:**
+- Modify: `apps/worker/src/pipeline/extract-memory-handler.ts` (extract reusable core), `batch-continue-handler.ts` + test, `worker/src/handlers.ts`, `job-request.ts`, `use-workspace-data.ts`, `ai-panel.tsx`, `workspace-side-tabs.tsx`, `workspace/page.tsx`, `globals.css`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Batch continue now runs as a writing pipeline: after each chapter is finalized it extracts memories (summary, character states, world facts, hooks) so later chapters always generate against the freshest story state — directly reinforcing the memory-maintenance work from Task 38.
+- [x] Refactored the extract core into extractMemoriesForChapter (parse → model → maintenance rules) with no job-status or generationStep coupling, shared by the standalone job and the batch hook so behaviour cannot drift; the six existing handler tests passed unchanged.
+- [x] Failure isolation: a failed extraction logs a warning and never interrupts the batch — prose is the product, memory is support. output.memoryExtractedChapters reports how many rounds extracted successfully.
+- [x] Toggleable: input.extractMemory defaults on (the point of batch mode) and can be switched off to halve model calls; the AI panel adds a 连更时维护记忆 checkbox, ticked by default.
+- [x] Verified: typecheck 5/5; 745 tests green (16+33+37+186+473); e2e 2 passed + 1 skipped (59.9s) with the smoke batch step running the pipeline for real.

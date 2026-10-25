@@ -403,6 +403,7 @@ interface StartJobOptions {
   instruction?: string;
   projectId?: string;
   chapterCount?: number;
+  extractMemory?: boolean;
 }
 
 export function useJobPolling(): UseJobPollingResult {
@@ -448,7 +449,8 @@ export function useJobPolling(): UseJobPollingResult {
           contextOptions: options?.contextOptions,
           selectedText: options?.selectedText,
           instruction: options?.instruction,
-          chapterCount: options?.chapterCount
+          chapterCount: options?.chapterCount,
+          extractMemory: options?.extractMemory
         });
         const res = await fetch("/api/generation-jobs", {
           method: "POST",

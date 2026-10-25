@@ -14,7 +14,7 @@ interface AiPanelProps {
   onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions) => void;
   onDiagnose: (qualityMode: QualityMode) => void;
   onContinue: () => void;
-  onBatchContinue: (chapterCount: number) => void;
+  onBatchContinue: (chapterCount: number, extractMemory: boolean) => void;
   onDeslop: () => void;
   onExtractMemory: () => void;
   isStarting: boolean;
@@ -31,6 +31,7 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, o
   const [contextOptions, setContextOptions] = useState<ContextOptions | undefined>(undefined);
   const [qualityMode, setQualityMode] = useState<QualityMode>("balanced");
   const [batchCount, setBatchCount] = useState(3);
+  const [batchExtractMemory, setBatchExtractMemory] = useState(true);
   const busy = isStarting || isRunning || !canGenerate;
 
   const generateLabel = isStarting && job?.jobType === "GENERATE_CHAPTER"
@@ -110,13 +111,25 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, o
           </select>
           <button
             className="btn-ghost"
-            onClick={() => onBatchContinue(batchCount)}
+            onClick={() => onBatchContinue(batchCount, batchExtractMemory)}
             disabled={busy}
             title="按当前章节连续自动续写多章，中途可停止；失败时已完成部分保留"
           >
             {batchLabel}
           </button>
         </div>
+        <label
+          className="batch-continue-option muted"
+          title="每章续写后自动抽取摘要与角色状态，让后续章节基于最新记忆生成；关闭可省一半模型调用"
+        >
+          <input
+            type="checkbox"
+            checked={batchExtractMemory}
+            onChange={(e) => setBatchExtractMemory(e.target.checked)}
+            disabled={busy}
+          />
+          连更时维护记忆
+        </label>
         <button
           className="btn-ghost"
           onClick={() => onDiagnose(qualityMode)}

@@ -15,11 +15,21 @@ type UpdateStatusFn = (params: {
   errorMessage?: string;
 }) => Promise<unknown>;
 
+type ExtractMemoriesFn = (params: {
+  prisma: PrismaClient;
+  model: FakeModel;
+  job: GenerationJob;
+  chapter: { id: string; content: string; title: string; chapterNo: number };
+}) => Promise<unknown>;
+
 interface HandlerDeps {
   prisma: PrismaClient;
   updateJobStatus: UpdateStatusFn;
   model?: FakeModel;
   resolveModel?: (job: GenerationJob) => Promise<FakeModel | null>;
+  // 每章续写落库后自动抽取记忆（保持记忆链最新，让后续章节基于新记忆生成）。
+  // 抽取失败不中断连更——正文是主产物，记忆是辅助。
+  extractMemories?: ExtractMemoriesFn;
 }
 
 interface BatchContinueInput {
@@ -27,6 +37,7 @@ interface BatchContinueInput {
   chapterCount?: unknown;
   targetLength?: unknown;
   instruction?: unknown;
+  extractMemory?: unknown;
 }
 
 const ERROR_CODES = {
@@ -104,6 +115,10 @@ export function createBatchContinueHandler(deps: HandlerDeps) {
 
     let totalAddedChars = 0;
     let completed = 0;
+    let memoryExtractedChapters = 0;
+    // 默认开启：连更的价值之一就是自动维护记忆链，让后续章节基于最新记忆生成。
+    // 显式传 extractMemory: false 可关闭（每章会多一次模型调用）。
+    const wantExtract = input.extractMemory !== false && Boolean(deps.extractMemories);
 
     for (let i = 0; i < chapterCount; i += 1) {
       // 每章前重读章节，拿到上一轮追加后的最新正文
@@ -157,6 +172,25 @@ export function createBatchContinueHandler(deps: HandlerDeps) {
 
       totalAddedChars += continuation.length;
       completed = i + 1;
+
+      // 每章落库后抽取记忆：后续章节生成时上下文里就有最新摘要与角色状态。
+      // 抽取失败只告警，不中断连更——正文是主产物。
+      if (wantExtract && deps.extractMemories) {
+        try {
+          const fresh = await prisma.chapter.findFirst({
+            where: { id: chapterId, organizationId: job.organizationId, deletedAt: null },
+            select: { id: true, content: true, title: true, chapterNo: true }
+          });
+          if (fresh?.content) {
+            await deps.extractMemories({ prisma, model, job, chapter: fresh });
+            memoryExtractedChapters += 1;
+          }
+        } catch (error: unknown) {
+          const msg = error instanceof Error ? error.message : String(error);
+          console.warn(`[batch-continue] memory extraction failed for chapter ${chapterId}: ${msg}`);
+        }
+      }
+
       // 实时进度：前端轮询可见
       await prisma.generationJob.update({
         where: { id: job.id },
@@ -171,7 +205,8 @@ export function createBatchContinueHandler(deps: HandlerDeps) {
         mode: "BATCH_CONTINUE",
         requestedChapters: chapterCount,
         completedChapters: completed,
-        addedChars: totalAddedChars
+        addedChars: totalAddedChars,
+        memoryExtractedChapters
       }
     });
   };
