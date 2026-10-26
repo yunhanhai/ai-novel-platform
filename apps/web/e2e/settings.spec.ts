@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { warmUpAuthRoutes } from "./helpers";
 
 /**
  * Settings 模型管理页 e2e
@@ -25,6 +26,7 @@ test("模型设置：banner / 测试连接 / 编辑供应商 / 档案 CRUD", asy
   page.on("dialog", (dialog) => void dialog.accept());
 
   // 1. 注册并登录
+  await warmUpAuthRoutes(page);
   await page.goto("/register");
   await page.locator('input[type="email"]').fill(EMAIL);
   await page.locator('input[type="text"]').first().fill(DISPLAY_NAME);

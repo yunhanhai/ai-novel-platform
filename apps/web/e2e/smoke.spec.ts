@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { warmUpAuthRoutes } from "./helpers";
 
 /**
  * 完整核心闭环：注册 → 登录态进入项目列表 → 新建项目 → 进入工作台 →
@@ -21,7 +22,8 @@ const PROJECT_SLUG = `e2e-${STAMP}`;
 const CHAPTER_TITLE = "首章 · 故事开端";
 
 test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) => {
-  // 1. 注册
+  // 1. 注册（先预热 auth 路由，避开 dev 首次编译把 HTML 当 JSON）
+  await warmUpAuthRoutes(page);
   await page.goto("/register");
   await expect(page.getByRole("heading", { name: "注册" })).toBeVisible();
   await page.locator('input[type="email"]').fill(EMAIL);
@@ -118,6 +120,12 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect
     .poll(async () => (await editor.inputValue()).length, { timeout: 20_000 })
     .toBeGreaterThan(lengthBeforeBatch);
+
+  // 8.7 章节状态流转：编辑器头部标记「定稿」，侧栏标签同步
+  await page.getByLabel("章节状态").selectOption("FINAL");
+  await expect(
+    page.locator(".chapter-list-item").filter({ hasText: CHAPTER_TITLE }).locator(".chapter-status")
+  ).toHaveText("定稿", { timeout: 15_000 });
 
   // 8.7 审校（REVIEW）：切到审校 tab 触发，等待结果面板出现
   //     job-status-card 只在 AI tab 渲染，因此这里以审校面板自身作为完成信号

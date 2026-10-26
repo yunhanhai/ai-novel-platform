@@ -121,6 +121,17 @@ export function createBatchContinueHandler(deps: HandlerDeps) {
     const wantExtract = input.extractMemory !== false && Boolean(deps.extractMemories);
 
     for (let i = 0; i < chapterCount; i += 1) {
+      // 用户可能在上一章生成期间点了「停止」：每章开始前检查一次，
+      // 已完成的章节保留，安静退出（状态已是 CANCELLED，不能再覆盖）。
+      const current = await prisma.generationJob.findUnique({
+        where: { id: job.id },
+        select: { status: true }
+      });
+      if (current?.status === "CANCELLED") {
+        console.log(`[batch-continue] job ${job.id} cancelled by user after ${completed} chapters`);
+        return;
+      }
+
       // 每章前重读章节，拿到上一轮追加后的最新正文
       const chapter = await prisma.chapter.findFirst({
         where: { id: chapterId, organizationId: job.organizationId, deletedAt: null },

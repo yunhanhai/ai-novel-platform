@@ -22,11 +22,13 @@ interface AiPanelProps {
   error: string | null;
   canGenerate: boolean;
   chapterId: string | null;
+  onStopJob: () => void;
+  stopping: boolean;
 }
 
 const QUALITY_MODES: QualityMode[] = ["fast", "balanced", "deep"];
 
-export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId }: AiPanelProps) {
+export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId, onStopJob, stopping }: AiPanelProps) {
   const isRunning = job ? ["QUEUED", "RUNNING"].includes(job.status) : false;
   const [contextOptions, setContextOptions] = useState<ContextOptions | undefined>(undefined);
   const [qualityMode, setQualityMode] = useState<QualityMode>("balanced");
@@ -178,6 +180,19 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, o
               {labelForGenerationJobStatus(job.status)}
             </span>
           </div>
+          {isRunning && (
+            <div className="job-status-actions">
+              <button
+                type="button"
+                className="btn-ghost btn-small"
+                onClick={onStopJob}
+                disabled={stopping}
+                title="停止该任务；连更会在当前章完成后停止，已写内容保留"
+              >
+                {stopping ? "停止中..." : "停止任务"}
+              </button>
+            </div>
+          )}
           {job.errorMessage && <p className="form-error">{job.errorMessage}</p>}
           {job.status === "QUEUED" && (
             <p className="form-hint">

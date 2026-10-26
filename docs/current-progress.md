@@ -1628,3 +1628,36 @@ pnpm test:e2e    2 passed + 1 skipped（59.9s）—— smoke 的连更步骤默�
 ```
 
 新增测试 3 例：每章后抽取且拿到最新正文、抽取失败仍完成连更（memoryExtractedChapters=0）、显式关闭后不调用。
+
+---
+
+## 2026-10-22 — 第三十二批：停止任务与章节状态流转（含 UI 假文案自查）
+
+### 自查发现的假承诺
+
+上一批连更按钮的 tooltip 写着「中途可停止」，但**全项目没有任何取消任务的机制**——用户点了连更 10 章想停却停不掉，只能等它把额度烧完。这是 UI 在做假承诺，比功能缺失更糟。
+
+### 1. 停止任务
+
+- **枚举已存在**：`generation_job_status` 里本就有 `CANCELLED`，无需迁移
+- `POST /api/generation-jobs/[id]/cancel`：QUEUED 直接取消（worker 不会认领）；RUNNING 标记 CANCELLED，已完成的任务拒绝取消（400）
+- **批量连更检查点**：每章开始前查一次 job 状态，发现 CANCELLED 就**安静退出**——已完成章节保留，且**不调用 updateJobStatus**（避免把状态覆盖回 SUCCEEDED）
+- AI 面板任务卡片新增「停止任务」按钮（仅在排队/运行中显示，含停止中状态）
+
+### 2. 章节状态流转
+
+章节有 `PLANNED/DRAFT/REVIEWING/FINAL` 四态，PATCH 一直支持切换，但 **UI 没有任何入口**——作者无法标记「定稿」。现在编辑器头部新增状态下拉（待写/草稿/审阅中/定稿），切换后同步刷新侧栏标签。
+
+### 3. e2e flake 根治：auth 路由预热
+
+本轮连续两次 e2e 在**注册步骤**失败（`Unexpected token '<'`）——dev 模式按路由懒编译，首个 POST 落在编译窗口内会拿到 HTML 错误页。新增 `e2e/helpers.ts` 的 `warmUpAuthRoutes`（`/api/auth/*` 对 proxy 豁免，未登录即可触发编译），smoke 与 settings 在注册前调用。根治而非重试。
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        751 tests（db 16 + shared 33 + ma 37 + worker 187 + web 478）
+pnpm test:e2e    2 passed + 1 skipped（50.1s）
+```
+
+新增测试 6 例：取消 API 401/404/已完成拒绝/QUEUED 取消/RUNNING 标记（5）+ worker 连更中途取消安静退出（1）；e2e 新增章节状态流转真实断言（标记定稿 → 侧栏同步）。

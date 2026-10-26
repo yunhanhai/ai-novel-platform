@@ -22,6 +22,8 @@ interface EditorPaneProps {
   externalUpdateNotice?: boolean;
   onAcceptExternalUpdate?: () => void;
   onDismissExternalUpdate?: () => void;
+  chapterStatus?: string | null;
+  onStatusChange?: (status: string) => void;
 }
 
 export function EditorPane({
@@ -37,7 +39,9 @@ export function EditorPane({
   rewriteCard,
   externalUpdateNotice = false,
   onAcceptExternalUpdate,
-  onDismissExternalUpdate
+  onDismissExternalUpdate,
+  chapterStatus = null,
+  onStatusChange
 }: EditorPaneProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,9 +68,26 @@ export function EditorPane({
     <section className="pane editor-pane">
       <div className="editor-header">
         <h1>{title}</h1>
-        <span className={`save-status save-status-${saveStatus}`} aria-live="polite">
-          {labelForSaveStatus(saveStatus)}
-        </span>
+        <div className="editor-header-actions">
+          {chapterStatus && onStatusChange && (
+            <select
+              className="chapter-status-select"
+              aria-label="章节状态"
+              value={chapterStatus}
+              onChange={(e) => onStatusChange(e.target.value)}
+              disabled={disabled}
+              title="标记章节进度：待写 → 草稿 → 审阅中 → 定稿"
+            >
+              <option value="PLANNED">待写</option>
+              <option value="DRAFT">草稿</option>
+              <option value="REVIEWING">审阅中</option>
+              <option value="FINAL">定稿</option>
+            </select>
+          )}
+          <span className={`save-status save-status-${saveStatus}`} aria-live="polite">
+            {labelForSaveStatus(saveStatus)}
+          </span>
+        </div>
       </div>
       {externalUpdateNotice && (
         <div className="external-update-notice" role="alert">

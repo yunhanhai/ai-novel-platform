@@ -857,3 +857,23 @@ pnpm test:e2e
 - [x] Failure isolation: a failed extraction logs a warning and never interrupts the batch — prose is the product, memory is support. output.memoryExtractedChapters reports how many rounds extracted successfully.
 - [x] Toggleable: input.extractMemory defaults on (the point of batch mode) and can be switched off to halve model calls; the AI panel adds a 连更时维护记忆 checkbox, ticked by default.
 - [x] Verified: typecheck 5/5; 745 tests green (16+33+37+186+473); e2e 2 passed + 1 skipped (59.9s) with the smoke batch step running the pipeline for real.
+
+## Task 42: 2026-10-22 Job Cancellation, Chapter Status Flow, e2e Warm-up
+
+**Files:**
+- Create: `api/generation-jobs/[id]/cancel/route.ts` + test, `e2e/helpers.ts`
+- Modify: `batch-continue-handler.ts` + test, `ai-panel.tsx`, `editor-pane.tsx`, `workspace-side-tabs.tsx`, `workspace/page.tsx`, `globals.css`, `e2e/smoke.spec.ts`, `e2e/settings.spec.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Self-audit caught a false promise: the batch button tooltip said 中途可停止 while nothing in the project could cancel a job. Users starting a 10-chapter run had to wait it out, burning quota.
+- [x] Cancellation: CANCELLED already existed in the status enum (no migration). POST /api/generation-jobs/[id]/cancel cancels QUEUED jobs outright, marks RUNNING ones, and rejects finished ones with 400. The batch handler checks the job status before every chapter and exits quietly on cancellation — completed chapters stay, and updateJobStatus is deliberately not called so the CANCELLED state cannot be overwritten. The AI panel shows a 停止任务 button while queued/running.
+- [x] Chapter status flow: chapters had PLANNED/DRAFT/REVIEWING/FINAL and PATCH support all along, but no UI entry, so an author could not mark a chapter 定稿. The editor header now offers a status select that refreshes the sidebar label.
+- [x] Root-caused the recurring registration e2e flake (Unexpected token '<'): dev compiles routes lazily and the first POST landed inside the compilation window. New helpers.ts warmUpAuthRoutes pre-compiles /api/auth/* (exempt from the proxy) in smoke and settings before registering — a fix rather than a retry.
+- [x] Verified: typecheck 5/5; 751 tests green (16+33+37+187+478); e2e 2 passed + 1 skipped (50.1s).

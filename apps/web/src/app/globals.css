@@ -1676,6 +1676,33 @@ select {
   accent-color: var(--accent);
 }
 
+.job-status-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chapter-status-select {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.chapter-status-select:hover {
+  border-color: var(--accent);
+}
+
 /* Writing stats panel */
 
 .stats-kpi-grid {

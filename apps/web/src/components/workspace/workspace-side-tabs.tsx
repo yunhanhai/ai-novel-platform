@@ -46,6 +46,8 @@ interface Props {
   onDiagnose: (qualityMode: QualityMode) => void;
   onContinue: () => void;
   onBatchContinue: (chapterCount: number, extractMemory: boolean) => void;
+  onStopJob: () => void;
+  stopping: boolean;
   onReview: () => void;
   onGenerateOutline: (chapterCount: number) => void;
   onApplyReviewReplacement: (quote: string, replacement: string) => boolean;
@@ -66,6 +68,8 @@ export function WorkspaceSideTabs({
   onDiagnose,
   onContinue,
   onBatchContinue,
+  onStopJob,
+  stopping,
   onReview,
   onGenerateOutline,
   onApplyReviewReplacement,
@@ -102,6 +106,8 @@ export function WorkspaceSideTabs({
             onDiagnose={onDiagnose}
             onContinue={onContinue}
             onBatchContinue={onBatchContinue}
+            onStopJob={onStopJob}
+            stopping={stopping}
             onDeslop={onDeslop}
             onExtractMemory={onExtractMemory}
             isStarting={isStarting}

@@ -42,7 +42,10 @@ function makePrisma(contentAtCall: () => string) {
       findFirst: vi.fn().mockImplementation(findFirstImpl)
     },
     contentVersion: { findFirst: vi.fn().mockResolvedValue(null) },
-    generationJob: { update: vi.fn().mockResolvedValue({}) },
+    generationJob: {
+      update: vi.fn().mockResolvedValue({}),
+      findUnique: vi.fn().mockResolvedValue({ status: "RUNNING" })
+    },
     $transaction: vi.fn(async (cb: (t: unknown) => Promise<unknown>) => cb(tx))
   };
   return { prisma: prisma as never, tx, contentCalls: () => call };
@@ -205,5 +208,23 @@ describe("createBatchContinueHandler", () => {
     await handler(makeJob({ input: { chapterId: "ch-1", chapterCount: 2, extractMemory: false } }));
 
     expect(extractMemories).not.toHaveBeenCalled();
+  });
+
+  it("stops cleanly when the user cancels mid-batch", async () => {
+    const { prisma } = makePrisma(() => initialContent);
+    const model = { generate: vi.fn().mockResolvedValue({ text: "新段落", inputTokens: 1, outputTokens: 1 }) };
+    // 第 2 章开始前发现用户已取消
+    (prisma as unknown as { generationJob: { findUnique: ReturnType<typeof vi.fn> } })
+      .generationJob.findUnique
+      .mockResolvedValueOnce({ status: "RUNNING" })
+      .mockResolvedValueOnce({ status: "CANCELLED" });
+
+    const handler = createBatchContinueHandler({ prisma, updateJobStatus, model: model as never });
+    await handler(makeJob({ input: { chapterId: "ch-1", chapterCount: 3 } }));
+
+    // 只写了 1 章就退出
+    expect(model.generate).toHaveBeenCalledTimes(1);
+    // 不能把状态覆盖回 SUCCEEDED——DB 里已是 CANCELLED
+    expect(updateJobStatus).not.toHaveBeenCalled();
   });
 });
