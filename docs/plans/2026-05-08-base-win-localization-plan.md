@@ -877,3 +877,27 @@ pnpm test:e2e
 - [x] Chapter status flow: chapters had PLANNED/DRAFT/REVIEWING/FINAL and PATCH support all along, but no UI entry, so an author could not mark a chapter 定稿. The editor header now offers a status select that refreshes the sidebar label.
 - [x] Root-caused the recurring registration e2e flake (Unexpected token '<'): dev compiles routes lazily and the first POST landed inside the compilation window. New helpers.ts warmUpAuthRoutes pre-compiles /api/auth/* (exempt from the proxy) in smoke and settings before registering — a fix rather than a retry.
 - [x] Verified: typecheck 5/5; 751 tests green (16+33+37+187+478); e2e 2 passed + 1 skipped (50.1s).
+
+## Task 43: 2026-10-26 Eval Foundation, Phase 1 (Depth over Breadth)
+
+**Files:**
+- Create: `packages/shared/src/eval/text-diff.ts` + test (moved from apps/web), `packages/shared/src/eval/metrics.ts` + test, `apps/worker/src/eval/mine-revision-pairs.ts`, `docs/eval/baseline-2026-10-26.md`
+- Modify: `packages/shared/package.json`, `apps/web/src/server/text-diff.ts` (thin re-export), `apps/worker/package.json`, root `package.json`, `.gitignore`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+pnpm eval:mine
+```
+
+- [x] Reframed the task as depth: build a quality eval foundation from real revision data; explicitly excludes new job types, new panels, and any unmeasured "feels better" change.
+- [x] Reality check: the imagined AI→MANUAL version pairs do not exist (167 versions, all AI sourced, since manual edits never write versions). The real pairing is newest AI version vs current chapter content — the data answered the question instead of the assumption.
+- [x] Moved text-diff into shared/eval (the eval pipeline and the version-diff API now share one implementation; the web copy is a thin re-export and its tests still pass).
+- [x] New deterministic metrics module: slop density (reusing the deslop scanner), sentence-length coefficient of variation, dialogue ratio, repeated-bigram rate, and more — nine unit tests.
+- [x] pnpm eval:mine mines revision pairs (LCS diff edit magnitude), rejected chapters, and corpus metric distributions; writes a public numbers-only report and a private dataset containing prose.
+- [x] Privacy boundary: datasets with prose go to gitignored .eval-out/; only aggregate numbers reach the public repo.
+- [x] First baseline (honest): 78 corpus versions, slop 17.8/1k chars, bigram repeat 0.176 (inflated by e2e fake-model text — stated as a limitation in the report), 1 revision pair, 23 rejected chapters.
+- [x] Verified: typecheck 5/5; 770 tests green (16+52+37+187+478); e2e 2 passed + 1 skipped (59.1s); eval:mine runs end to end.

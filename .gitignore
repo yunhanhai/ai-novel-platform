@@ -17,3 +17,6 @@ playwright-report/
 test-results/
 blob-report/
 playwright/.cache/
+
+# 评测明细数据集（含正文，不提交）
+.eval-out/

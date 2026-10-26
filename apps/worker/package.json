@@ -5,7 +5,8 @@
   "scripts": {
     "test": "vitest run --configLoader runner",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx --env-file=../../.env src/index.ts"
+    "dev": "tsx --env-file=../../.env src/index.ts",
+    "eval:mine": "tsx --env-file=../../.env src/eval/mine-revision-pairs.ts"
   },
   "dependencies": {
     "@ai-novel/db": "workspace:*",
