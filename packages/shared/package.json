@@ -13,6 +13,7 @@
     "./deslop/scanner": "./src/deslop/scanner.ts",
     "./eval/text-diff": "./src/eval/text-diff.ts",
     "./eval/metrics": "./src/eval/metrics.ts",
+    "./eval/rubric": "./src/eval/rubric.ts",
     "./env": "./src/env.ts",
     "./generation/state": "./src/generation/state.ts",
     "./generation/word-count": "./src/generation/word-count.ts",

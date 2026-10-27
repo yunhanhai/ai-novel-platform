@@ -901,3 +901,24 @@ pnpm eval:mine
 - [x] Privacy boundary: datasets with prose go to gitignored .eval-out/; only aggregate numbers reach the public repo.
 - [x] First baseline (honest): 78 corpus versions, slop 17.8/1k chars, bigram repeat 0.176 (inflated by e2e fake-model text — stated as a limitation in the report), 1 revision pair, 23 rejected chapters.
 - [x] Verified: typecheck 5/5; 770 tests green (16+52+37+187+478); e2e 2 passed + 1 skipped (59.1s); eval:mine runs end to end.
+
+## Task 44: 2026-10-26 LLM-as-Judge Layer (pairwise with swap test)
+
+**Files:**
+- Create: `packages/shared/src/eval/rubric.ts` (frozen 5-dimension rubric), `apps/worker/src/eval/judge.ts` + test
+- Modify: `packages/shared/package.json`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] Pairwise comparison instead of absolute scoring — the eval-community consensus that relative judgements are far more stable; directly powers phase-2 A/B blind tests.
+- [x] Frozen rubric: five dimensions a real editor would argue about (文字质感/连贯性/人物声口/节奏/章末钩子), each with concrete 5-point and 1-point anchors; EVAL_RUBRIC_VERSION versioning so score comparisons are only valid within one rubric version.
+- [x] Swap test: every pair is judged in both orders; only agreeing verdicts map back to a stable winner, contradictions return tie + unstable — the core guard against LLM position bias, at a deliberate 2x cost.
+- [x] Parsing tolerance: fence stripping, invalid winners rejected, unknown dimensions default to tie, non-JSON returns a null that the judge converts to an unstable fallback.
+- [x] Honest limitation recorded: under the fake model the judge only exercises flow and tolerance, real scoring quality needs a real key.
+- [x] Verified: typecheck 5/5; 782 tests green (16+52+37+197+478); e2e 2 passed + 1 skipped (1.1m).
