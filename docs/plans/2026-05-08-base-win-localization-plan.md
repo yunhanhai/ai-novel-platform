@@ -961,3 +961,21 @@ pnpm test:e2e
 - [x] POST /api/generation-jobs/[id]/feedback matches the quote inside output.review.suggestions and marks it applied: true. Only the applied action is recorded — unmarked entries count as not adopted when computing adoption rate, so no explicit dismiss tracking is needed.
 - [x] The review panel fires the feedback call after a successful apply, fire-and-forget with silent failure so the signal never blocks the writing operation; unmatched quotes (e.g. re-reviewed since) return 404 without writing.
 - [x] Verified: typecheck 5/5; 789 tests green (16+52+37+197+487); e2e 2 passed + 1 skipped (58.4s).
+
+## Task 47: 2026-10-27 Real-Model Onboarding Handbook
+
+**Files:**
+- Create: `docs/real-model-onboarding.md`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] With the eval foundation and self-collecting signal chain closed, the last mile to "real model acceptance" is the operator path. Sessions are discontinuous; the process must not depend on anyone's memory. Wrote docs/real-model-onboarding.md.
+- [x] Six steps, each with a verification command and expected result: PG precheck; ENCRYPTION_KEY generation (PowerShell one-liner included, with the do-not-rotate warning); provider/profile setup plus the 1-token test connection; single-chapter smoke with an observation table; an eight-item full-pipeline checklist (continue, rewrite, polish, review with citation verification, batch with memory, extraction, version diff, export); eval data accumulation plus the error lookup table (seven kinds) and a rollback plan.
+- [x] Every factual claim was checked against code before writing: the 64-hex key validation lives in settings/runtime, the test connection is a 1-token ping that returns OK instantly under fake mode, and the error messages match the classifier's Chinese strings — no drift between handbook and behaviour.
+- [x] Verified: typecheck 5/5; 789 tests green; e2e 2 passed + 1 skipped.
