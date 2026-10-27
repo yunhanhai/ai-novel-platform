@@ -979,3 +979,20 @@ pnpm test:e2e
 - [x] Six steps, each with a verification command and expected result: PG precheck; ENCRYPTION_KEY generation (PowerShell one-liner included, with the do-not-rotate warning); provider/profile setup plus the 1-token test connection; single-chapter smoke with an observation table; an eight-item full-pipeline checklist (continue, rewrite, polish, review with citation verification, batch with memory, extraction, version diff, export); eval data accumulation plus the error lookup table (seven kinds) and a rollback plan.
 - [x] Every factual claim was checked against code before writing: the 64-hex key validation lives in settings/runtime, the test connection is a 1-token ping that returns OK instantly under fake mode, and the error messages match the classifier's Chinese strings — no drift between handbook and behaviour.
 - [x] Verified: typecheck 5/5; 789 tests green; e2e 2 passed + 1 skipped.
+
+## Task 48: 2026-10-27 Repo Consistency Sweep (Closing Batch)
+
+**Files:**
+- Modify: `AGENTS.md`, `docs/current-progress.md`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+```
+
+- [x] AGENTS.md had drifted: "4 packages" (actually 5), no eval:mine, and none of the late-stage architecture facts. Any future AI session reading it would be misled (e.g. that API identity still comes from env). Rewritten with pnpm eval:mine, a new Architecture Facts section (eight established facts: session identity, proxy gate, 13-type mirror, manual snapshot policy, batch pipeline, config errors never retried, CJK token estimation, Chinese prompts + eval foundation), a pointer to the onboarding handbook, and an updated rule against committing user prose.
+- [x] Dead-code inventory: api-errors.internalErrorResponse has no external callers — kept deliberately as the phase-two 5xx consolidation tool; saveContentVersion and the worker token-budget re-export noted.
+- [x] Security sweep of every API added since the last audit: cancel/feedback/reorder/export/search/stats/volumes all have organization scoping, proxy coverage and input validation — no gaps.
+- [x] Verified: typecheck 5/5; 789 tests + 1 skipped.

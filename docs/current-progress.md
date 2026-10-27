@@ -1830,3 +1830,20 @@ pnpm test:e2e    2 passed + 1 skipped（58.4s）
 ### 当前状态：系统就绪，等待 key
 
 至此，**在没有真实 key 的前提下能做的深度工作全部完成**：评测基座两层、自采集链路、验收手册。老程拿到 key 后按手册走到第 4 步即完成验收，走到第 5 步即开始积累真实基线——第二期（数据驱动改进）自动开闸。
+
+---
+
+## 2026-10-27 — 第三十八批：全仓一致性巡检（收尾批）
+
+### 巡检项与结果
+
+1. **AGENTS.md 漂移修正**（最重要）：它还停留在旧状态——"4 packages"（实际 5）、无 `eval:mine`、没有记录任何后期架构事实。后续 AI 会话读到旧版会被误导（如以为 API 身份仍来自 env）。已重写：补 `pnpm eval:mine`、新增 **Architecture Facts** 一节（8 条已成立的事实：会话鉴权/proxy 网关/13 任务类型镜像/手动快照策略/连更流水线/配置错误不重试/CJK token 估算/提示词中文化+评测基座）、补验收手册引用、更新开发规则（补「不提交用户正文」）。
+2. **死代码清点**：`api-errors.internalErrorResponse` 0 外部引用——**保留**（第二期 5xx 统一收口的预留工具）；`saveContentVersion` 0 引用（删除被规则拦，已注明）；worker token-budget re-export 0 引用（无害，保持一致性）。
+3. **安全面复查**（新增 API 批量过一遍）：cancel/feedback/reorder/export/search/stats/volumes 全部有组织隔离 + proxy 自动覆盖 + 输入校验，无遗漏。
+
+### 验证（全绿）
+
+```text
+pnpm typecheck   5/5
+pnpm test        789 tests + 1 skipped
+```
