@@ -942,3 +942,22 @@ pnpm eval:mine
 - [x] Pairing upgraded in eval:mine from newest-AI-version vs current content to AI version → next MANUAL version (the actual author-revised artifact); corpus expanded to all AI versions per chapter.
 - [x] Confirmed content_versions.source is a Prisma enum (DB stores mapped lowercase, client returns enum names) — the pairing logic was already correct.
 - [x] Verified: typecheck 5/5; 784 tests green (16+52+37+197+482); e2e 2 passed + 1 skipped (1.1m); eval:mine under the new pairing runs clean (0 pairs until MANUAL snapshots exist — correct).
+
+## Task 46: 2026-10-27 Review Adoption Signal
+
+**Files:**
+- Create: `api/generation-jobs/[id]/feedback/route.ts` + test
+- Modify: `apps/web/src/components/workspace/review-panel.tsx`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+- [x] The research-listed signal "review adoption rate" had zero persistence — applied state lived only in component memory and vanished on refresh. The evidence chain lacked its last link: the job output had the suggestions but nothing recorded whether the author accepted them.
+- [x] POST /api/generation-jobs/[id]/feedback matches the quote inside output.review.suggestions and marks it applied: true. Only the applied action is recorded — unmarked entries count as not adopted when computing adoption rate, so no explicit dismiss tracking is needed.
+- [x] The review panel fires the feedback call after a successful apply, fire-and-forget with silent failure so the signal never blocks the writing operation; unmatched quotes (e.g. re-reviewed since) return 404 without writing.
+- [x] Verified: typecheck 5/5; 789 tests green (16+52+37+197+487); e2e 2 passed + 1 skipped (58.4s).

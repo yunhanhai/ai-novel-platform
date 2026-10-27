@@ -86,11 +86,19 @@ export function ReviewPanel({
       if (ok) {
         setApplied((prev) => new Set(prev).add(item.quote));
         setNotice(null);
+        // 采纳行为回写 job，作为评审质量的行为信号（评测：应用数/建议总数=采纳率）
+        if (job?.id) {
+          void fetch(`/api/generation-jobs/${job.id}/feedback`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ quote: item.quote })
+          }).catch(() => undefined);
+        }
       } else {
         setNotice(`无法应用：「${item.quote.slice(0, 16)}…」在当前正文中已不存在，请重新审校。`);
       }
     },
-    [onApplyReplacement]
+    [onApplyReplacement, job?.id]
   );
 
   if (!chapterId) {
