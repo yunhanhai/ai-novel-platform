@@ -1,9 +1,9 @@
-// 评测基座第一步：从真实数据挖掘「AI 产物 vs 后续状态」配对。
+// 评测基座第一步：从真实数据挖掘「AI 产物 vs 作者改版」配对。
 //
 // 数据来源（全部来自运行中的数据库，不是人造测试集）：
-//   A. revision pairs —— 每章「最新 AI 版本」与「当前正文」不同的配对。
-//      这是"AI 写完、之后被改动过"的真实证据（人工编辑不写版本，
-//      所以当前正文与最新版本的差异即修改证据）。
+//   A. revision pairs —— 每章「AI 版本」与其后最近的「MANUAL 版本」配对。
+//      MANUAL 版本由手动保存自动产生（大幅修改 + 节流后才写），
+//      代表"AI 写完、作者改后的阶段性成果"——真实的修订证据链。
 //   B. rejected chapters —— 有版本记录但已被软删除的章节：AI 产物被直接否定的负样本。
 //   C. AI version corpus —— 未删除章节的全部 AI 版本，用于计算确定性文本指标基线。
 //
@@ -82,15 +82,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 每章只保留编号最大的版本（查询已按 versionNo desc 排序）
-  const latestByChapter = new Map<string, (typeof versions)[number]>();
-  for (const version of versions) {
-    if (!latestByChapter.has(version.entityId)) {
-      latestByChapter.set(version.entityId, version);
-    }
-  }
-
-  const chapterIds = [...latestByChapter.keys()];
+  const chapterIds = [...new Set(versions.map((v) => v.entityId))];
   const chapters = await prisma.chapter.findMany({
     where: { id: { in: chapterIds } },
     select: {
@@ -103,11 +95,21 @@ async function main(): Promise<void> {
   });
   const chapterById = new Map(chapters.map((c) => [c.id, c]));
 
+  // 按章分组、按 versionNo 升序扫描，配对「AI 版本 → 其后最近的 MANUAL 版本」。
+  // 手动保存会写 MANUAL 快照（差异 ≥10% 且节流 ≥10 分钟），所以这个证据链
+  // 会随真实使用自动积累。同一章若出现多个 AI 版本，只保留最近的待配对。
+  const versionsByChapter = new Map<string, typeof versions>();
+  for (const version of [...versions].sort((a, b) => a.versionNo - b.versionNo)) {
+    const list = versionsByChapter.get(version.entityId) ?? [];
+    list.push(version);
+    versionsByChapter.set(version.entityId, list);
+  }
+
   const revisionPairs: RevisionPair[] = [];
   const corpusMetrics: TextMetrics[] = [];
   let rejectedChapters = 0;
 
-  for (const [chapterId, version] of latestByChapter) {
+  for (const [chapterId, chapterVersions] of versionsByChapter) {
     const chapter = chapterById.get(chapterId);
     if (!chapter) continue;
 
@@ -116,34 +118,44 @@ async function main(): Promise<void> {
       continue; // 负样本：被否定的产物不进语料，只计数（正文保留在明细数据集中）
     }
 
-    const versionContent = version.content ?? "";
-    const currentContent = chapter.content ?? "";
-    corpusMetrics.push(computeTextMetrics(versionContent));
+    let pendingAI: (typeof chapterVersions)[number] | null = null;
+    for (const version of chapterVersions) {
+      if (version.source === "MANUAL") {
+        if (!pendingAI) continue; // 没有前置 AI 版本的 MANUAL（如回滚前的快照）暂不配对
 
-    if (currentContent.length > 0 && currentContent !== versionContent) {
-      const segments = diffText(versionContent, currentContent);
-      const summary = summarizeDiff(segments);
-      const denom = Math.max(versionContent.length, 1);
-      revisionPairs.push({
-        chapterId,
-        chapterNo: chapter.chapterNo,
-        title: chapter.title,
-        versionNo: version.versionNo,
-        versionChars: versionContent.length,
-        currentChars: currentContent.length,
-        addedChars: summary.addedChars,
-        removedChars: summary.removedChars,
-        editRatio: round((summary.addedChars + summary.removedChars) / denom, 3),
-        versionMetrics: computeTextMetrics(versionContent),
-        currentMetrics: computeTextMetrics(currentContent)
-      });
+        const aiContent = pendingAI.content ?? "";
+        const manualContent = version.content ?? "";
+        if (aiContent.length > 0 && manualContent.length > 0 && aiContent !== manualContent) {
+          const segments = diffText(aiContent, manualContent);
+          const summary = summarizeDiff(segments);
+          const denom = Math.max(aiContent.length, 1);
+          revisionPairs.push({
+            chapterId,
+            chapterNo: chapter.chapterNo,
+            title: chapter.title,
+            versionNo: pendingAI.versionNo,
+            versionChars: aiContent.length,
+            currentChars: manualContent.length,
+            addedChars: summary.addedChars,
+            removedChars: summary.removedChars,
+            editRatio: round((summary.addedChars + summary.removedChars) / denom, 3),
+            versionMetrics: computeTextMetrics(aiContent),
+            currentMetrics: computeTextMetrics(manualContent)
+          });
+        }
+        pendingAI = null;
+      } else {
+        // AI 产物（生成/续写/连更）都进语料——每个版本都是一次生成质量的样本
+        corpusMetrics.push(computeTextMetrics(version.content ?? ""));
+        pendingAI = version;
+      }
     }
   }
 
   const dataset: Dataset = {
     generatedAt: new Date().toISOString(),
     counts: {
-      chaptersWithVersions: latestByChapter.size,
+      chaptersWithVersions: chapterIds.length,
       totalVersions: versions.length,
       revisionPairs: revisionPairs.length,
       rejectedChapters,
@@ -175,11 +187,11 @@ async function main(): Promise<void> {
   lines.push("");
   lines.push(`- 有版本记录的章节：${dataset.counts.chaptersWithVersions}`);
   lines.push(`- 版本记录总数：${dataset.counts.totalVersions}`);
-  lines.push(`- **修订配对（最新 AI 版本 ≠ 当前正文）：${dataset.counts.revisionPairs}**`);
+  lines.push(`- **修订配对（AI 版本 → 其后 MANUAL 版本）：${dataset.counts.revisionPairs}**`);
   lines.push(`- 被否定的章节（软删除且有版本）：${dataset.counts.rejectedChapters}`);
-  lines.push(`- 语料版本数（未删除章节的最新版本）：${dataset.counts.corpusVersions}`);
+  lines.push(`- 语料版本数（未删除章节的 AI 版本）：${dataset.counts.corpusVersions}`);
   lines.push("");
-  lines.push("## 修订幅度（AI 版本 → 当前正文）");
+  lines.push("## 修订幅度（AI 版本 → 作者改版）");
   lines.push("");
   if (revisionPairs.length > 0) {
     lines.push(`- 平均修改幅度：(增+删)/版本长度 = ${round(editRatios.reduce((a, b) => a + b, 0) / editRatios.length)}`);
@@ -225,9 +237,9 @@ async function main(): Promise<void> {
   lines.push("");
   lines.push("- 当前样本主要来自本地开发与 e2e（多为 fake 模型输出、短章），**不代表真实 LLM 质量**；");
   lines.push("  接入真实模型并实际写作后，重跑本脚本即得真实基线。");
-  lines.push("- 修订配对假设「人工编辑不写版本、AI 任务与回滚写版本」，与当前实现一致；");
-  lines.push("  若将来手动保存也写版本，此口径需同步调整。");
-  lines.push("- LLM 评审层（rubric 评分）尚未接入，需要真实模型 key。");
+  lines.push("- 修订配对口径：「AI 版本 → 其后最近的 MANUAL 版本」。MANUAL 快照由手动保存自动产生");
+  lines.push("  （修改幅度 ≥10% 且距上一版本 ≥10 分钟才写），小幅修改与高频保存不进版本链。");
+  lines.push("- LLM 评审层（rubric 评分）已实现（`apps/worker/src/eval/judge.ts`），真实评分需真实模型 key。");
   lines.push("");
   lines.push("## 重跑方式");
   lines.push("");

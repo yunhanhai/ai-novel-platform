@@ -922,3 +922,23 @@ pnpm test:e2e
 - [x] Parsing tolerance: fence stripping, invalid winners rejected, unknown dimensions default to tie, non-JSON returns a null that the judge converts to an unstable fallback.
 - [x] Honest limitation recorded: under the fake model the judge only exercises flow and tolerance, real scoring quality needs a real key.
 - [x] Verified: typecheck 5/5; 782 tests green (16+52+37+197+478); e2e 2 passed + 1 skipped (1.1m).
+
+## Task 45: 2026-10-27 Revision Evidence Auto-Collection
+
+**Files:**
+- Modify: `apps/web/src/server/chapters.ts` + test, `apps/worker/src/eval/mine-revision-pairs.ts`
+
+**Commands:**
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+pnpm eval:mine
+```
+
+- [x] The eval foundation had no inflow: manual edits never wrote versions, so AI→author revision pairs could never accumulate. Phase-two material could not exist.
+- [x] Manual saves now snapshot a MANUAL version only when the edit is substantial (≥10% magnitude vs the previous version, LCS diff) and throttled (≥10 minutes since the last version), with a hard cap of 100 versions per chapter. First save of an empty chapter never snapshots — the AI chain stays semantically intact. Wrapped in withVersionRetry.
+- [x] Pairing upgraded in eval:mine from newest-AI-version vs current content to AI version → next MANUAL version (the actual author-revised artifact); corpus expanded to all AI versions per chapter.
+- [x] Confirmed content_versions.source is a Prisma enum (DB stores mapped lowercase, client returns enum names) — the pairing logic was already correct.
+- [x] Verified: typecheck 5/5; 784 tests green (16+52+37+197+482); e2e 2 passed + 1 skipped (1.1m); eval:mine under the new pairing runs clean (0 pairs until MANUAL snapshots exist — correct).

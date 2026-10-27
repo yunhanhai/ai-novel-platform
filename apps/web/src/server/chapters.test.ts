@@ -62,16 +62,172 @@ describe("chapters", () => {
   });
 
   describe("updateChapterContent", () => {
+    function txForUpdate(updated: unknown) {
+      const prisma = mockPrisma({
+        chapter: {
+          findFirst: vi.fn().mockResolvedValue({ id: "c1", projectId: "p1", content: null }),
+          update: vi.fn().mockResolvedValue(updated)
+        },
+        contentVersion: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          count: vi.fn().mockResolvedValue(0)
+        }
+      });
+      // 事务 mock：把 prisma 自身作为 tx 传入
+      (prisma as unknown as Record<string, unknown>).$transaction = vi.fn(
+        async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)
+      );
+      return prisma;
+    }
+
     it("updates chapter content and word count", async () => {
       const updated = { ...chapter, content: "正文内容", wordCount: 500 };
-      const prisma = mockPrisma({ chapter: { update: vi.fn().mockResolvedValue(updated) } });
+      const prisma = txForUpdate(updated);
 
       const result = await updateChapterContent({
         organizationId: "org1", chapterId: "c1",
         content: "正文内容", wordCount: 500, updatedById: "u1", prisma
       });
 
-      expect(result.wordCount).toBe(500);
+      expect(result.chapter.wordCount).toBe(500);
+      // 首次保存（旧正文为空）：只更新章节，不写快照版本
+      expect(result.snapshotCreated).toBe(false);
+    });
+
+    it("snapshots a MANUAL version after a large edit past the throttle window", async () => {
+      const updated = { ...chapter, content: "大幅改写后的正文内容", wordCount: 900 };
+      const prisma = mockPrisma({
+        chapter: {
+          findFirst: vi.fn().mockResolvedValue({ id: "c1", projectId: "p1", content: "原始的旧正文内容" }),
+          update: vi.fn().mockResolvedValue(updated)
+        },
+        contentVersion: {
+          // 上一版本是 11 分钟前的 AI 版本，内容与本次完全不同
+          findFirst: vi.fn().mockResolvedValue({
+            versionNo: 3,
+            content: "完全不同的旧版本内容",
+            createdAt: new Date(Date.now() - 11 * 60 * 1000)
+          }),
+          count: vi.fn().mockResolvedValue(5),
+          create: vi.fn().mockResolvedValue({ id: "cv-new", versionNo: 4 })
+        }
+      });
+      (prisma as unknown as Record<string, unknown>).$transaction = vi.fn(
+        async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)
+      );
+
+      const result = await updateChapterContent({
+        organizationId: "org1", chapterId: "c1",
+        content: "大幅改写后的正文内容", wordCount: 900, updatedById: "u1", prisma
+      });
+
+      expect(result.snapshotCreated).toBe(true);
+      const cv = (prisma as unknown as {
+        contentVersion: { create: ReturnType<typeof vi.fn> };
+      }).contentVersion.create;
+      expect(cv).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          source: "MANUAL",
+          content: "大幅改写后的正文内容"
+        })
+      });
+    });
+
+    it("does not snapshot a minor edit even past the throttle window", async () => {
+      const oldContent = "这是一段足够长的旧正文内容，用来构造一个修改幅度低于快照阈值的场景。".repeat(2);
+      const newContent = oldContent.slice(0, -2) + "两字";
+      const updated = { ...chapter, content: newContent, wordCount: 100 };
+      const prisma = mockPrisma({
+        chapter: {
+          findFirst: vi.fn().mockResolvedValue({ id: "c1", projectId: "p1", content: oldContent }),
+          update: vi.fn().mockResolvedValue(updated)
+        },
+        contentVersion: {
+          findFirst: vi.fn().mockResolvedValue({
+            versionNo: 3,
+            content: oldContent,
+            createdAt: new Date(Date.now() - 11 * 60 * 1000)
+          }),
+          count: vi.fn().mockResolvedValue(5),
+          create: vi.fn()
+        }
+      });
+      (prisma as unknown as Record<string, unknown>).$transaction = vi.fn(
+        async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)
+      );
+
+      const result = await updateChapterContent({
+        organizationId: "org1", chapterId: "c1",
+        content: newContent, wordCount: 100, updatedById: "u1", prisma
+      });
+
+      expect(result.snapshotCreated).toBe(false);
+      expect(
+        (prisma as unknown as { contentVersion: { create: ReturnType<typeof vi.fn> } }).contentVersion.create
+      ).not.toHaveBeenCalled();
+    });
+
+    it("does not snapshot inside the throttle window", async () => {
+      const oldContent = "节流窗口内的旧正文内容。";
+      const updated = { ...chapter, content: "完全不同的新正文。", wordCount: 100 };
+      const prisma = mockPrisma({
+        chapter: {
+          findFirst: vi.fn().mockResolvedValue({ id: "c1", projectId: "p1", content: oldContent }),
+          update: vi.fn().mockResolvedValue(updated)
+        },
+        contentVersion: {
+          // 上一版本 2 分钟前 → 节流窗口内
+          findFirst: vi.fn().mockResolvedValue({
+            versionNo: 3,
+            content: oldContent,
+            createdAt: new Date(Date.now() - 2 * 60 * 1000)
+          }),
+          count: vi.fn().mockResolvedValue(5),
+          create: vi.fn()
+        }
+      });
+      (prisma as unknown as Record<string, unknown>).$transaction = vi.fn(
+        async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)
+      );
+
+      const result = await updateChapterContent({
+        organizationId: "org1", chapterId: "c1",
+        content: "完全不同的新正文。", wordCount: 100, updatedById: "u1", prisma
+      });
+
+      expect(result.snapshotCreated).toBe(false);
+    });
+
+    it("does not snapshot when the version cap is reached", async () => {
+      const updated = { ...chapter, content: "上限后的修改", wordCount: 100 };
+      const prisma = mockPrisma({
+        chapter: {
+          findFirst: vi.fn().mockResolvedValue({ id: "c1", projectId: "p1", content: "旧正文" }),
+          update: vi.fn().mockResolvedValue(updated)
+        },
+        contentVersion: {
+          findFirst: vi.fn().mockResolvedValue({
+            versionNo: 100,
+            content: "完全不同的旧版本内容",
+            createdAt: new Date(Date.now() - 11 * 60 * 1000)
+          }),
+          count: vi.fn().mockResolvedValue(100),
+          create: vi.fn()
+        }
+      });
+      (prisma as unknown as Record<string, unknown>).$transaction = vi.fn(
+        async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)
+      );
+
+      const result = await updateChapterContent({
+        organizationId: "org1", chapterId: "c1",
+        content: "上限后的修改", wordCount: 100, updatedById: "u1", prisma
+      });
+
+      expect(result.snapshotCreated).toBe(false);
+      expect(
+        (prisma as unknown as { contentVersion: { create: ReturnType<typeof vi.fn> } }).contentVersion.create
+      ).not.toHaveBeenCalled();
     });
   });
 
