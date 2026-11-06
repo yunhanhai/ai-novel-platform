@@ -996,3 +996,27 @@ pnpm test
 - [x] Dead-code inventory: api-errors.internalErrorResponse has no external callers — kept deliberately as the phase-two 5xx consolidation tool; saveContentVersion and the worker token-budget re-export noted.
 - [x] Security sweep of every API added since the last audit: cancel/feedback/reorder/export/search/stats/volumes all have organization scoping, proxy coverage and input validation — no gaps.
 - [x] Verified: typecheck 5/5; 789 tests + 1 skipped.
+
+## Task 49: 2026-11-02 Model Setup Error Propagation
+
+**Files:**
+- Modify: `apps/worker/src/model-runtime.ts` + test, `apps/worker/src/pipeline/model-error-classifier.ts` + test, `packages/model-adapters/src/adapter-factory.ts` + test
+- Create: `apps/worker/src/model-runtime.integration.test.ts`
+- Update: `docs/current-progress.md`, `docs/real-model-onboarding.md`
+
+**Commands:**
+
+```bash
+pnpm --filter @ai-novel/worker test -- src/model-runtime.test.ts src/model-runtime.integration.test.ts src/pipeline/model-error-classifier.test.ts src/poll.test.ts
+pnpm --filter @ai-novel/model-adapters test -- src/adapter-factory.test.ts
+pnpm typecheck
+pnpm test
+git diff --check
+```
+
+- [x] Reproduced swallowed initialization failures with failing tests before implementation: resolver returned null for broken setup, malformed hex was accepted/truncated, and local factory errors classified as UNKNOWN.
+- [x] Reserve null for a genuinely absent profile. Propagate adapter failures, distinguish malformed profile and missing/invalid USER_KEY encryption key, and accept only complete 64-character hex keys.
+- [x] Give decryption failures a stable API_KEY_DECRYPTION_FAILED code while preserving the original cause; map five local setup categories to actionable Chinese messages through the existing non-retryable MODEL_CONFIG_ERROR path.
+- [x] Add real-module tests through resolver → adapter factory → chapter handler → poll, including actual AES-GCM wrong-key failure. Only database delegates are stubbed; no provider HTTP request is made.
+- [x] Verify both sides of the contract: no profile keeps NO_MODEL_PROFILE; a database lookup outage remains retryable; fake mode and PLATFORM_KEY do not require an unused encryption key.
+- [x] Verification: typecheck 5/5; 819 tests passed + 1 existing skipped (16+52+38+226+487); targeted worker 54 and factory 14 passed; diff check clean. Browser e2e and live LLM acceptance were not run in this task.

@@ -32,7 +32,7 @@ const platformProvider = {
 
 describe("model-runtime", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("resolves PLATFORM_KEY model without requiring ENCRYPTION_KEY", async () => {
@@ -68,7 +68,29 @@ describe("model-runtime", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it("does not create USER_KEY adapter when ENCRYPTION_KEY is missing", async () => {
+  it("ignores an invalid but unused ENCRYPTION_KEY in PLATFORM_KEY mode", async () => {
+    const adapter = { generate: vi.fn().mockResolvedValue({ text: "ok", inputTokens: 1, outputTokens: 1 }) };
+    mockResolveModelProfile.mockResolvedValue({ provider: platformProvider, modelName: "gpt-test" });
+    mockCreateAdapter.mockResolvedValue(adapter);
+    const resolveModel = createJobModelResolver({
+      prisma: {} as never,
+      useFakeModel: false,
+      env: { ENCRYPTION_KEY: "invalid-but-unused", OPENAI_API_KEY: "test-placeholder" },
+      logger: { warn: vi.fn() }
+    });
+
+    await expect(resolveModel(baseJob)).resolves.toMatchObject({
+      modelName: "gpt-test",
+      billingSource: "PLATFORM"
+    });
+    expect(mockCreateAdapter).toHaveBeenCalledWith(
+      platformProvider,
+      "gpt-test",
+      expect.objectContaining({ encryptionKey: null })
+    );
+  });
+
+  it("reports a missing ENCRYPTION_KEY instead of treating the profile as missing", async () => {
     mockResolveModelProfile.mockResolvedValue({
       provider: { ...platformProvider, authMode: "USER_KEY", encryptedApiKey: "enc-key" },
       modelName: "gpt-5.5"
@@ -81,18 +103,81 @@ describe("model-runtime", () => {
       logger
     });
 
-    const model = await resolveModel(baseJob);
-
-    expect(model).toBeNull();
+    await expect(resolveModel(baseJob)).rejects.toThrow("ENCRYPTION_KEY_NOT_RESOLVED");
     expect(mockCreateAdapter).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("ENCRYPTION_KEY"));
+  });
+
+  it("returns null when no model profile exists", async () => {
+    mockResolveModelProfile.mockResolvedValue(null);
+    const resolveModel = createJobModelResolver({
+      prisma: {} as never,
+      useFakeModel: false,
+      env: {},
+      logger: { warn: vi.fn() }
+    });
+
+    await expect(resolveModel(baseJob)).resolves.toBeNull();
+    expect(mockCreateAdapter).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { modelName: "gpt-test" },
+    { provider: platformProvider, modelName: "" },
+    { provider: platformProvider, modelName: "   " },
+    { provider: platformProvider, modelName: 42 }
+  ])("reports an incomplete profile before creating an adapter: %j", async (profile) => {
+    mockResolveModelProfile.mockResolvedValue(profile);
+    const resolveModel = createJobModelResolver({
+      prisma: {} as never,
+      useFakeModel: false,
+      env: {},
+      logger: { warn: vi.fn() }
+    });
+
+    await expect(resolveModel(baseJob)).rejects.toThrow("MODEL_PROFILE_INVALID");
+    expect(mockCreateAdapter).not.toHaveBeenCalled();
+  });
+
+  it("reports a malformed encryption key before creating a USER_KEY adapter", async () => {
+    mockResolveModelProfile.mockResolvedValue({
+      provider: { ...platformProvider, authMode: "USER_KEY", encryptedApiKey: "encrypted-test-value" },
+      modelName: "gpt-test"
+    });
+    const resolveModel = createJobModelResolver({
+      prisma: {} as never,
+      useFakeModel: false,
+      env: { ENCRYPTION_KEY: "z".repeat(64) },
+      logger: { warn: vi.fn() }
+    });
+
+    await expect(resolveModel(baseJob)).rejects.toThrow("ENCRYPTION_KEY_INVALID");
+    expect(mockCreateAdapter).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "API_KEY_NOT_RESOLVED: OPENAI_API_KEY not set",
+    "UNSUPPORTED_PROVIDER: GEMINI not implemented in phase 1",
+    "unexpected adapter failure"
+  ])("preserves adapter errors so the poller can classify them: %s", async (message) => {
+    mockResolveModelProfile.mockResolvedValue({ provider: platformProvider, modelName: "gpt-test" });
+    const error = new Error(message);
+    mockCreateAdapter.mockRejectedValue(error);
+    const logger = { warn: vi.fn() };
+    const resolveModel = createJobModelResolver({
+      prisma: {} as never,
+      useFakeModel: false,
+      env: {},
+      logger
+    });
+
+    await expect(resolveModel(baseJob)).rejects.toBe(error);
   });
 
   it("skips model profile lookup in fake model mode", async () => {
     const resolveModel = createJobModelResolver({
       prisma: {} as never,
       useFakeModel: true,
-      env: {},
+      env: { ENCRYPTION_KEY: "malformed-but-unused-in-fake-mode" },
       logger: { warn: vi.fn() }
     });
 
@@ -102,6 +187,17 @@ describe("model-runtime", () => {
 
   it("parses a 64 character hex ENCRYPTION_KEY", () => {
     expect(getEncryptionKey({ ENCRYPTION_KEY: "a".repeat(64) })).toEqual(Buffer.from("a".repeat(64), "hex"));
+    expect(getEncryptionKey({ ENCRYPTION_KEY: "AB".repeat(32) })).toEqual(Buffer.from("AB".repeat(32), "hex"));
     expect(getEncryptionKey({ ENCRYPTION_KEY: "" })).toBeNull();
+  });
+
+  it.each([
+    "a".repeat(63),
+    "a".repeat(65),
+    "a".repeat(64) + "ignored-suffix",
+    "a".repeat(62) + "zz",
+    "z".repeat(64)
+  ])("rejects malformed encryption keys without truncating or partially decoding: %s", (key) => {
+    expect(getEncryptionKey({ ENCRYPTION_KEY: key })).toBeNull();
   });
 });

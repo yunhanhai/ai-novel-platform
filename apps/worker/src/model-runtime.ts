@@ -23,8 +23,8 @@ interface CreateJobModelResolverParams {
 
 export function getEncryptionKey(env: NodeJS.ProcessEnv = process.env): Buffer | null {
   const hex = env.ENCRYPTION_KEY;
-  if (!hex || hex.length < 64) return null;
-  return Buffer.from(hex.slice(0, 64), "hex");
+  if (!hex || !/^[0-9a-fA-F]{64}$/.test(hex)) return null;
+  return Buffer.from(hex, "hex");
 }
 
 export function createJobModelResolver(params: CreateJobModelResolverParams) {
@@ -45,12 +45,16 @@ export function createJobModelResolver(params: CreateJobModelResolverParams) {
     if (!profile) return null;
 
     const provider = profile.provider as ProviderRecord | undefined;
-    const modelName = profile.modelName as string | undefined;
-    if (!provider || !modelName) return null;
+    const modelName = typeof profile.modelName === "string" ? profile.modelName.trim() : "";
+    if (!provider || typeof provider !== "object" || !modelName) {
+      throw new Error("MODEL_PROFILE_INVALID: missing provider or model name");
+    }
 
     if (provider.authMode === "USER_KEY" && !encryptionKey) {
-      logger.warn("ENCRYPTION_KEY not set; USER_KEY model profile cannot be used");
-      return null;
+      if (!env.ENCRYPTION_KEY) {
+        throw new Error("ENCRYPTION_KEY_NOT_RESOLVED: USER_KEY mode requires ENCRYPTION_KEY");
+      }
+      throw new Error("ENCRYPTION_KEY_INVALID: expected exactly 64 hexadecimal characters");
     }
 
     try {
@@ -63,7 +67,7 @@ export function createJobModelResolver(params: CreateJobModelResolverParams) {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.warn(`Failed to create model adapter: ${msg}`);
-      return null;
+      throw error;
     }
   };
 }

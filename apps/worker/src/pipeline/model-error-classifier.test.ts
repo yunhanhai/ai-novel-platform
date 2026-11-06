@@ -6,6 +6,23 @@ function withStatus(status: number, message: string) {
 }
 
 describe("classifyModelError", () => {
+  it.each([
+    ["ENCRYPTION_KEY_NOT_RESOLVED: USER_KEY mode requires ENCRYPTION_KEY", "CONFIG_ENCRYPTION_KEY", "ENCRYPTION_KEY"],
+    ["ENCRYPTION_KEY_INVALID: expected exactly 64 hexadecimal characters", "CONFIG_ENCRYPTION_KEY", "64"],
+    ["API_KEY_NOT_RESOLVED: OPENAI_API_KEY not set", "CONFIG_API_KEY_MISSING", "API key"],
+    ["API_KEY_NOT_RESOLVED: USER_KEY mode but encryptedApiKey is null", "CONFIG_API_KEY_MISSING", "API key"],
+    ["API_KEY_DECRYPTION_FAILED: unable to decrypt stored credentials", "CONFIG_API_KEY_DECRYPTION", "解密"],
+    ["UNSUPPORTED_PROVIDER: GEMINI not implemented in phase 1", "CONFIG_UNSUPPORTED_PROVIDER", "供应商"],
+    ["MODEL_PROFILE_INVALID: missing provider or model name", "CONFIG_MODEL_PROFILE_INVALID", "模型档案"]
+  ])("classifies local setup failure %s without retrying", (message, kind, hint) => {
+    const result = classifyModelError(new Error(message));
+
+    expect(result.kind).toBe(kind);
+    expect(result.retryable).toBe(false);
+    expect(result.userMessage).toContain(hint);
+    expect(result.userMessage).not.toBe(message);
+  });
+
   it("classifies auth failures by status code", () => {
     const result = classifyModelError(withStatus(401, "Invalid API key"));
     expect(result.kind).toBe("CONFIG_INVALID_KEY");

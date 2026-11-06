@@ -54,7 +54,11 @@ async function resolveApiKey(provider: ProviderRecord, deps: AdapterFactoryDeps)
     if (!provider.encryptedApiKey) {
       throw new Error("API_KEY_NOT_RESOLVED: USER_KEY mode but encryptedApiKey is null");
     }
-    return decrypt(provider.encryptedApiKey, deps.encryptionKey);
+    try {
+      return await decrypt(provider.encryptedApiKey, deps.encryptionKey);
+    } catch (error: unknown) {
+      throw new Error("API_KEY_DECRYPTION_FAILED: unable to decrypt stored credentials", { cause: error });
+    }
   }
 
   // PLATFORM_KEY

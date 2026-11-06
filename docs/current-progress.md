@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-10-21
+> Last updated: 2026-11-02
 
 ## Completed
 
@@ -1847,3 +1847,39 @@ pnpm test:e2e    2 passed + 1 skipped（58.4s）
 pnpm typecheck   5/5
 pnpm test        789 tests + 1 skipped
 ```
+
+---
+
+## 2026-11-02 — 模型初始化错误保真传播与配置诊断修复
+
+### 原始证据与根因
+
+沿模型解析 → adapter 工厂 → 章节 handler → poll 的真实调用路径检查，发现已有的模型错误分类器接不到初始化异常：
+
+- `model-runtime.ts` 对缺少 USER_KEY 主密钥直接返回 `null`，创建 adapter 抛错也被 catch 后返回 `null`。章节 handler 因而把“已有档案但配置损坏”一律定稿成 `NO_MODEL_PROFILE`。
+- `getEncryptionKey` 只检查最短长度并截取前 64 字符，`Buffer.from(..., "hex")` 还会部分解码非法串。该行为与设置页完整 64-hex 校验不一致。
+- 密文解密失败只有底层密码学错误，没有能让 poll 稳定识别的配置错误标识。
+
+### 修复
+
+- 只有确实找不到 ModelProfile 才返回 `null`；档案缺供应商或模型名时抛 `MODEL_PROFILE_INVALID`，adapter 创建错误原样向上传播。
+- USER_KEY 缺主密钥与主密钥格式错误分别抛 `ENCRYPTION_KEY_NOT_RESOLVED` / `ENCRYPTION_KEY_INVALID`；读取密钥仅接受完整 64 位十六进制，不截断。
+- adapter 工厂把解密失败包装为 `API_KEY_DECRYPTION_FAILED`，保留原 `cause`，面向用户只输出固定排查文案。
+- 分类器新增五类本地配置错误：主密钥缺失/非法、API key 缺失、密文解密失败、不支持的 provider、档案不完整。均经现有 poll 逻辑立即 `FAILED / MODEL_CONFIG_ERROR`，不无谓重试。
+- 接入手册的错误对照表同步新增上述排查项。
+
+### 正确性证据
+
+先写测试并观察到失败：resolver 把异常吞为 null、非法密钥被解码、本地错误被分成 UNKNOWN，且工厂未保留解密错误 cause。修复后同一组断言转绿。
+
+跨模块测试使用实际 resolver、adapter 工厂、AES-GCM 加解密、章节 handler 与 poll；仅数据库访问委托以 stub 提供固定记录。覆盖缺主密钥、非法主密钥、缺平台密钥、缺存储密钥、不支持 provider、使用错误主密钥解密等六种失败路径，确认最终提示可读、不会重排；另验证确实无档案仍是 NO_MODEL_PROFILE、数据库查询瞬时故障仍可重试。测试不依赖真实供应商响应，因此不把它称为真实 LLM 验收。
+
+```text
+pnpm typecheck   5/5 workspace 通过
+pnpm test        819 passed + 1 skipped
+                 db 16 / shared 52 / model-adapters 38 / worker 226 / web 487
+定向链路验证      worker 54 项 + adapter factory 14 项通过
+git diff --check 通过
+```
+
+本轮未执行浏览器 e2e、真实模型调用或数据库迁移。下一步真实验收仍按 `docs/real-model-onboarding.md` 操作；本次新增链路测试可在无 API key 时重复验证错误处理，不等同于输出质量评测。

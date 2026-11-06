@@ -6,6 +6,11 @@
 // 网络与限流类才值得重试。
 
 export type ModelErrorKind =
+  | "CONFIG_ENCRYPTION_KEY"
+  | "CONFIG_API_KEY_MISSING"
+  | "CONFIG_API_KEY_DECRYPTION"
+  | "CONFIG_UNSUPPORTED_PROVIDER"
+  | "CONFIG_MODEL_PROFILE_INVALID"
   | "CONFIG_INVALID_KEY" // key 无效 / 未授权（401/403）
   | "CONFIG_INSUFFICIENT_QUOTA" // 余额不足
   | "CONFIG_MODEL_NOT_FOUND" // 模型名不存在（404 或明确说明）
@@ -26,6 +31,11 @@ export interface ClassifiedModelError {
 }
 
 const KIND_TO_MESSAGE: Record<ModelErrorKind, string> = {
+  CONFIG_ENCRYPTION_KEY: "ENCRYPTION_KEY 缺失或格式不正确，请在 .env 配置完整的 64 位十六进制密钥并重启 worker；已有密文时请恢复原密钥",
+  CONFIG_API_KEY_MISSING: "未配置 API key：USER_KEY 模式请到「设置 → 模型设置」录入供应商密钥；PLATFORM_KEY 模式请配置 OPENAI_API_KEY 或 ANTHROPIC_API_KEY 并重启 worker",
+  CONFIG_API_KEY_DECRYPTION: "无法解密已保存的 API key，请恢复加密时使用的 ENCRYPTION_KEY，或在「设置 → 模型设置」重新录入供应商密钥",
+  CONFIG_UNSUPPORTED_PROVIDER: "当前供应商类型尚不支持，请到「设置 → 模型设置」选择已支持的供应商类型并测试连接",
+  CONFIG_MODEL_PROFILE_INVALID: "模型档案配置不完整，请到「设置 → 模型设置」检查关联供应商与模型名",
   CONFIG_INVALID_KEY: "API key 无效或未授权，请到「设置 → 模型设置」检查 key 并用「测试连接」验证",
   CONFIG_INSUFFICIENT_QUOTA: "API 余额不足，请到供应商控制台充值后重试",
   CONFIG_MODEL_NOT_FOUND: "模型名不存在，请到「设置 → 模型设置」确认模型名拼写正确",
@@ -56,6 +66,22 @@ export function classifyModelError(error: unknown): ClassifiedModelError {
   }
   if (status !== undefined && status >= 500) {
     return build("TRANSIENT_SERVER", raw);
+  }
+
+  if (/^ENCRYPTION_KEY_(NOT_RESOLVED|INVALID)(:|$)/.test(raw)) {
+    return build("CONFIG_ENCRYPTION_KEY", raw);
+  }
+  if (/^API_KEY_NOT_RESOLVED(:|$)/.test(raw)) {
+    return build("CONFIG_API_KEY_MISSING", raw);
+  }
+  if (/^API_KEY_DECRYPTION_FAILED(:|$)/.test(raw)) {
+    return build("CONFIG_API_KEY_DECRYPTION", raw);
+  }
+  if (/^UNSUPPORTED_PROVIDER(:|$)/.test(raw)) {
+    return build("CONFIG_UNSUPPORTED_PROVIDER", raw);
+  }
+  if (/^MODEL_PROFILE_INVALID(:|$)/.test(raw)) {
+    return build("CONFIG_MODEL_PROFILE_INVALID", raw);
   }
 
   // 文本特征：SDK 在连接层失败时往往没有状态码

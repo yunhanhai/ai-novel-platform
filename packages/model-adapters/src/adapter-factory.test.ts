@@ -70,6 +70,19 @@ describe("adapter-factory", () => {
     expect(mockCreateOpenAIAdapter).not.toHaveBeenCalled();
   });
 
+  test("USER_KEY decryption failure has a stable configuration code and preserves the cause", async () => {
+    const cause = new Error("Unsupported state or unable to authenticate data");
+    mockDecrypt.mockRejectedValueOnce(cause);
+
+    await expect(
+      createAdapter(makeProvider(), "gpt-test", { encryptionKey: encKey })
+    ).rejects.toMatchObject({
+      message: "API_KEY_DECRYPTION_FAILED: unable to decrypt stored credentials",
+      cause
+    });
+    expect(mockCreateOpenAIAdapter).not.toHaveBeenCalled();
+  });
+
   // Case 2
   test("PLATFORM_KEY + ANTHROPIC: uses ANTHROPIC_API_KEY from env", async () => {
     await createAdapter(
