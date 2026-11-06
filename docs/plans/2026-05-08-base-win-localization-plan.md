@@ -1020,3 +1020,12 @@ git diff --check
 - [x] Add real-module tests through resolver → adapter factory → chapter handler → poll, including actual AES-GCM wrong-key failure. Only database delegates are stubbed; no provider HTTP request is made.
 - [x] Verify both sides of the contract: no profile keeps NO_MODEL_PROFILE; a database lookup outage remains retryable; fake mode and PLATFORM_KEY do not require an unused encryption key.
 - [x] Verification: typecheck 5/5; 819 tests passed + 1 existing skipped (16+52+38+226+487); targeted worker 54 and factory 14 passed; diff check clean. Browser e2e and live LLM acceptance were not run in this task.
+
+## Task 50: 2026-11-06 GitHub / Gitee Synchronization
+
+- [x] Verify existing GitHub and Gitee repositories and push access; both master refs initially pointed to e633cc2.
+- [x] Review and commit the current workspace changes as 46122e8, including the previously untracked model-runtime integration test.
+- [x] Run fresh checks: 819 unit tests passed + 1 skipped; typecheck 5/5; Prisma schema valid; browser e2e 2 passed + 1 skipped in fake mode (53.9s).
+- [x] Push the code commit to both remotes and independently verify their master refs match the local code commit.
+- [x] Record evidence and scope in docs/current-progress.md; commit and synchronize this documentation in the same delivery.
+- [x] Keep local credentials, .env, generated files and evaluation prose out of the commit; preserve the separate experimental worktree and its uncommitted changes.

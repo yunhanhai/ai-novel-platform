@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-11-02
+> Last updated: 2026-11-06
 
 ## Completed
 
@@ -1883,3 +1883,27 @@ git diff --check 通过
 ```
 
 本轮未执行浏览器 e2e、真实模型调用或数据库迁移。下一步真实验收仍按 `docs/real-model-onboarding.md` 操作；本次新增链路测试可在无 API key 时重复验证错误处理，不等同于输出质量评测。
+
+---
+
+## 2026-11-06 — GitHub / Gitee 代码同步
+
+- 实时核对两个远程仓库已存在，初始 `master` 均为 `e633cc2b5e5eca023a6e80a4d7bf01946050e4cb`，无需创建新仓库。
+- GitHub：`https://github.com/yunhanhai/ai-novel-platform`；Gitee：`https://gitee.com/yunhanhai/ai-novel-platform`。
+- 将当前主工作区模型初始化错误处理、回归测试及接入文档的 10 个文件提交为 `46122e88b26f211389550bd198be9c766ed55b03`（`fix: preserve model setup errors and improve diagnostics`）。
+- 两个远程均已成功推送；随后独立执行 `git ls-remote <remote> refs/heads/master`，确认线上主分支均与该代码提交一致。本同步记录另行提交并推送到同一主分支。
+- 使用本机已有 Git 凭据完成推送，无需使用本轮提供的令牌；令牌未写入仓库文件或远程 URL。`.env`、依赖目录、浏览器产物和评测正文数据未纳入提交。
+
+本轮实跑验证：
+
+```text
+pnpm test          819 passed + 1 skipped（16 / 52 / 38 / 226 / 487）
+pnpm typecheck     5/5 workspace 通过
+pnpm db:validate   Prisma schema valid
+pnpm test:e2e      2 passed + 1 skipped（53.9s，fake 模型）
+git diff --check   通过
+```
+
+复用并启动本地 PostgreSQL `ai_novel_platform`；没有数据库迁移或真实供应商调用。e2e 在该库中创建了测试账号和测试项目，测试启动的 worker 已由 globalTeardown 关闭。
+
+范围说明：另一个工作树 `.worktrees/generation-performance-architecture` 仍有从旧版本分出的实验分支与未提交改动。本次仅同步当前 `master`，未合并、提交或推送该实验工作树。后续如需接纳这些实验功能，应先单独审查和验证。
