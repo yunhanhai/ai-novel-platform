@@ -1029,3 +1029,13 @@ git diff --check
 - [x] Push the code commit to both remotes and independently verify their master refs match the local code commit.
 - [x] Record evidence and scope in docs/current-progress.md; commit and synchronize this documentation in the same delivery.
 - [x] Keep local credentials, .env, generated files and evaluation prose out of the commit; preserve the separate experimental worktree and its uncommitted changes.
+
+## Task 51: 2026-11-07 Evidence-Based Publication Audit
+
+- [x] Inventory all registered branches/worktrees, 43 unpublished feature commits, 17 modified files and 8 untracked files; identify the 65/43 divergence from master.
+- [x] Verify ownership and visibility through platform APIs: GitHub public, Gitee private, both yunhanhai; no existing Actions runs.
+- [x] Fresh-clone both remotes; verify commit, tree, all 404 tracked file objects and fsck. Run 819 tests + 1 skipped and typecheck 5/5 in the GitHub clone.
+- [x] Verify feature HEAD separately (595 tests) and dirty working tree (613 tests), both typecheck 5/5. Direct anonymous GET proves feature API identity is unsafe for publication; do not merge/publish the experimental branch.
+- [x] Scan full reachable history and uncommitted source with checksum-verified Gitleaks; inspect each specific false positive; check supplied token absence without printing it.
+- [x] Preserve full Git bundle and byte-for-byte copies of 25 working files outside the repository; verify actual restore, all hashes and status; preserve 10 orphan agent files.
+- [x] Record conclusions, evidence, limits and next integration prerequisites in reports/2026-11-07-publication-audit.md. Publish audit documentation to both master refs and retain final receipts outside Git.

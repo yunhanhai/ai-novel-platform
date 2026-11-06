@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-11-06
+> Last updated: 2026-11-07
 
 ## Completed
 
@@ -1907,3 +1907,15 @@ git diff --check   通过
 复用并启动本地 PostgreSQL `ai_novel_platform`；没有数据库迁移或真实供应商调用。e2e 在该库中创建了测试账号和测试项目，测试启动的 worker 已由 globalTeardown 关闭。
 
 范围说明：另一个工作树 `.worktrees/generation-performance-architecture` 仍有从旧版本分出的实验分支与未提交改动。本次仅同步当前 `master`，未合并、提交或推送该实验工作树。后续如需接纳这些实验功能，应先单独审查和验证。
+
+---
+
+## 2026-11-07 — 全分支发布核验与可恢复保存
+
+- 报告：`reports/2026-11-07-publication-audit.md`。从原始 Git 对象、全部注册工作树及平台 API 核对；GitHub 属于 yunhanhai、公开，Gitee 同一用户、私有，保持可见性不变。
+- 审计前两端 master=9e683e1；新克隆分别核对 404 个受控文件、commit/tree 和 fsck，无差异。从 GitHub 克隆实跑 819 passed + 1 skipped、typecheck 5/5；上一轮同代码的浏览器验证有效，本轮未重复 e2e。
+- 发现性能分支 43 个独有提交、17 个修改文件及 8 个未跟踪文件；主分支另有 65 个独有提交。性能分支仍用默认组织环境变量，实测无 cookie GET /api/projects 返回 200 及 44 个项目；当前 master 返回 401。故该分支本次不合并、不提交原稿、不推送。
+- 性能分支干净提交 595 测试通过、当前工作树 613 测试通过，两者 typecheck 5/5；这些结果未覆盖并不能抵消匿名 API 问题。
+- Gitleaks v8.30.1 全历史及工作区扫描的 4 处告警均逐项核对为测试值/空示例，按具体发现复扫无新增项；2837 个可达对象未含本轮已知令牌。无评测正文、.env 或生成产物提交。
+- 仓库外备份 `D:/develop/AI/xiaoshuo/base_win-release-backups/2026-11-07-40d881a9/` 包含完整 Git bundle、25 文件字节副本及 SHA256 清单、10 个旧代理目录文件和实跑证据。从 bundle 恢复后与原工作树的 25 项 status 和全部文件哈希一致。
+- 边界：主分支同步成立，所有本地成果均已在线保存不成立；实验分支已有本地可恢复备份，待基于 master 修正身份和完成集成验证后再决定发布。本轮只更新核验文档，没有功能扩展、数据库迁移或部署。
