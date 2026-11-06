@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@ai-novel/db";
 import { createFakeModel } from "./fake-model";
+import { recordModelUsage } from "./usage-recorder";
 import {
   MAX_ACCEPTED_CHARACTER_STATES_PER_PROJECT,
   enforceCharacterStateQuota,
@@ -84,7 +85,9 @@ export async function extractMemoriesForChapter(params: {
 }): Promise<ExtractedMemoryStats> {
   const { prisma, model, job, chapter } = params;
 
+  const started = Date.now();
   const result = await model.generate(buildExtractPrompt(chapter.content));
+  await recordModelUsage({ prisma, job, model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, latencyMs: Date.now() - started });
   const extracted = safeJson<ExtractOutput>(result.text, {
     characterChanges: [], worldFacts: [], newHooks: [],
     summary: "抽取失败", chapterSummary: ""

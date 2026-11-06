@@ -194,3 +194,43 @@ export async function updateStep({ stepId, status, outputPreview, inputTokens, o
     }
   });
 }
+
+type RecoveryDb = Pick<PrismaClient, "generationJob">;
+
+export async function retryFailedJob(params: { organizationId: string; jobId: string; prisma: RecoveryDb }) {
+  const existing = await params.prisma.generationJob.findFirst({
+    where: { id: params.jobId, organizationId: params.organizationId },
+    select: { id: true, status: true }
+  });
+  if (!existing) return { ok: false as const, reason: "not_found" as const };
+  if (existing.status !== "FAILED") return { ok: false as const, reason: "invalid_status" as const, status: existing.status };
+  const result = await params.prisma.generationJob.updateMany({
+    where: { id: params.jobId, organizationId: params.organizationId, status: "FAILED" },
+    data: { status: "QUEUED", progress: "0", attemptCount: 0, errorCode: null, errorMessage: null, lockKey: null,
+      leaseExpiresAt: null, nextRunAt: null, startedAt: null, finishedAt: null }
+  });
+  if (!result.count) return { ok: false as const, reason: "invalid_status" as const };
+  return { ok: true as const, job: { id: existing.id, status: "QUEUED" as const } };
+}
+
+export async function recoverExpiredJobLeases(params: { organizationId: string; now?: Date; limit?: number; prisma: RecoveryDb }) {
+  const now = params.now ?? new Date();
+  const expired = await params.prisma.generationJob.findMany({
+    where: { organizationId: params.organizationId, status: "RUNNING", leaseExpiresAt: { lt: now } },
+    orderBy: { leaseExpiresAt: "asc" }, take: Math.min(100, Math.max(1, Math.trunc(params.limit ?? 10)))
+  });
+  let recovered = 0;
+  let failed = 0;
+  for (const job of expired) {
+    const exhausted = job.attemptCount >= job.maxAttempts;
+    const result = await params.prisma.generationJob.updateMany({
+      where: { id: job.id, organizationId: params.organizationId, status: "RUNNING", lockKey: job.lockKey,
+        leaseExpiresAt: job.leaseExpiresAt, attemptCount: job.attemptCount },
+      data: { status: exhausted ? "FAILED" : "QUEUED", lockKey: null, leaseExpiresAt: null,
+        nextRunAt: exhausted ? null : now, startedAt: null, finishedAt: exhausted ? now : null,
+        errorCode: "LEASE_EXPIRED", errorMessage: exhausted ? "任务租约过期且已达到重试上限" : "任务租约过期，已重新排队" }
+    });
+    if (result.count) { if (exhausted) failed++; else recovered++; }
+  }
+  return { recovered, failed };
+}

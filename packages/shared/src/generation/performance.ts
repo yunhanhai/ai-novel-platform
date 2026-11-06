@@ -28,6 +28,21 @@ export interface SkippedStepSummary {
   reason: BudgetSkipReason;
 }
 
+export interface ContextBudgetSummary {
+  tokenBudget: number;
+  appliedTokenBudget: number;
+  estimatedTokens: number;
+  includedCount: number;
+  trimmedCount: number;
+}
+
+export interface ContextFingerprint {
+  hash: string;
+  chapterId: string;
+  contextOptionsHash: string;
+  sourceUpdatedAt: string;
+}
+
 export interface PerformanceSummary {
   qualityMode: QualityMode;
   budget: PerformanceBudget;
@@ -36,6 +51,8 @@ export interface PerformanceSummary {
   outputTokens: number;
   latencyMs: number;
   skippedSteps: SkippedStepSummary[];
+  contextBudget?: ContextBudgetSummary;
+  contextFingerprint?: ContextFingerprint;
 }
 
 const DEFAULT_BUDGETS: Record<QualityMode, PerformanceBudget> = {
@@ -99,7 +116,7 @@ export function createPerformanceTracker(params: {
     recordSkippedStep(stepKey: string, reason: BudgetSkipReason) {
       skippedSteps.push({ stepKey, reason });
     },
-    summary(): PerformanceSummary {
+    summary(context: Pick<PerformanceSummary, "contextBudget" | "contextFingerprint"> = {}): PerformanceSummary {
       return {
         qualityMode: params.qualityMode,
         budget: params.budget,
@@ -107,7 +124,9 @@ export function createPerformanceTracker(params: {
         inputTokens,
         outputTokens,
         latencyMs,
-        skippedSteps
+        skippedSteps,
+        ...(context.contextBudget ? { contextBudget: context.contextBudget } : {}),
+        ...(context.contextFingerprint ? { contextFingerprint: context.contextFingerprint } : {})
       };
     }
   };

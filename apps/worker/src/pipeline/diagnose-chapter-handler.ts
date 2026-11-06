@@ -6,6 +6,7 @@ import {
   type PerformanceBudgetInput
 } from "@ai-novel/shared/generation/performance";
 import { createFakeModel } from "./fake-model";
+import { recordModelUsage } from "./usage-recorder";
 import type { GenerationJob } from "../poll";
 
 type FakeModel = ReturnType<typeof createFakeModel>;
@@ -135,6 +136,7 @@ export function createDiagnoseChapterHandler(deps: HandlerDeps) {
       const started = Date.now();
       const result = await model.generate(prompt, { maxOutputTokens: budget.maxOutputTokens });
       const latencyMs = Date.now() - started;
+      await recordModelUsage({ prisma, job, model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, latencyMs });
 
       const { summary: diagnosticSummary, degraded } = diagnoseFromText(result.text);
       tracker.recordModelStep({ inputTokens: result.inputTokens, outputTokens: result.outputTokens, latencyMs });

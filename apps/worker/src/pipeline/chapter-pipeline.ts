@@ -62,7 +62,7 @@ interface ExtractOutput {
   chapterSummary: string;
 }
 
-interface BuiltContext {
+interface BuiltContext extends Pick<PerformanceSummary, "contextBudget" | "contextFingerprint"> {
   prompt: string;
   activationReport: ActivationReport;
   styleGuide?: StyleGuide;
@@ -327,7 +327,7 @@ ${context.prompt}
     steps,
     extracted,
     activationReport: context.activationReport,
-    performanceSummary: tracker.summary()
+    performanceSummary: tracker.summary({ contextBudget: context.contextBudget, contextFingerprint: context.contextFingerprint })
   };
 }
 

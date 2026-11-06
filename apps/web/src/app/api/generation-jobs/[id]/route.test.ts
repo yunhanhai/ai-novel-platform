@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const retryMock = vi.hoisted(() => vi.fn());
+const transactionMock = vi.hoisted(() => vi.fn());
+const sessionMock = vi.hoisted(() => vi.fn());
+const auditMock = vi.hoisted(() => vi.fn());
+vi.mock("../../../../server/audit-log", () => ({ recordAuditLog: auditMock }));
 vi.mock("@ai-novel/db", () => ({
+  retryFailedJob: retryMock,
   prisma: {
+    $transaction: transactionMock,
     generationJob: {
       findFirst: vi.fn()
     }
@@ -10,10 +17,11 @@ vi.mock("@ai-novel/db", () => ({
 
 vi.mock("../../../../server/context", () => ({
   getOrganizationId: async () => "org-1",
-  isUnauthorizedError: () => false
+  requireSession: sessionMock,
+  isUnauthorizedError: (error: Error) => error.name === "UnauthorizedError"
 }));
 
-import { GET } from "./route";
+import { GET, POST } from "./route";
 import { prisma } from "@ai-novel/db";
 
 function p() { return prisma as unknown as { generationJob: { findFirst: ReturnType<typeof vi.fn> } }; }
@@ -52,4 +60,15 @@ describe("GET /api/generation-jobs/[id]", () => {
     const res = await GET(new Request("http://localhost/api/generation-jobs/job-1"), routeCtx("job-1"));
     expect(res.status).toBe(500);
   });
+});
+describe("POST /api/generation-jobs/[id] retry", () => {
+  const tx = { generationJob: {}, auditLog: {} };
+  const req = (body: unknown) => new Request("http://localhost/api/generation-jobs/job-1", { method: "POST", body: JSON.stringify(body) });
+  beforeEach(() => { vi.resetAllMocks(); sessionMock.mockResolvedValue({ organizationId: "session-org", userId: "session-user" }); transactionMock.mockImplementation((cb) => cb(tx)); retryMock.mockResolvedValue({ ok: true, job: { id: "job-1", status: "QUEUED" } }); });
+  it("retries and audits in one transaction under session identity", async () => { const response = await POST(req({ action: "retry", organizationId: "forged" }), routeCtx("job-1")); expect(response.status).toBe(200); expect(retryMock).toHaveBeenCalledWith({ prisma: tx, organizationId: "session-org", jobId: "job-1" }); expect(auditMock).toHaveBeenCalledWith({ prisma: tx, organizationId: "session-org", actorUserId: "session-user", action: "generation_job.retry", entityType: "generation_job", entityId: "job-1", metadata: { resultingStatus: "QUEUED" } }); });
+  it("returns 404 for foreign jobs without audit", async () => { retryMock.mockResolvedValue({ ok: false, reason: "not_found" }); expect((await POST(req({ action: "retry" }), routeCtx("foreign"))).status).toBe(404); expect(auditMock).not.toHaveBeenCalled(); });
+  it("returns 409 for a job no longer FAILED", async () => { retryMock.mockResolvedValue({ ok: false, reason: "invalid_status" }); expect((await POST(req({ action: "retry" }), routeCtx("job-1"))).status).toBe(409); expect(auditMock).not.toHaveBeenCalled(); });
+  it("requires a valid session before trying mutation", async () => { sessionMock.mockRejectedValue(Object.assign(new Error("expired"), { name: "UnauthorizedError" })); expect((await POST(req({ action: "retry" }), routeCtx("job-1"))).status).toBe(401); expect(transactionMock).not.toHaveBeenCalled(); });
+  it("fails transaction if audit cannot persist", async () => { auditMock.mockRejectedValue(new Error("postgres private details")); const response = await POST(req({ action: "retry" }), routeCtx("job-1")); expect(response.status).toBe(500); expect((await response.json()).error).toBe("服务器内部错误"); });
+  it("rejects malformed request bodies", async () => { expect((await POST(new Request("http://localhost", { method: "POST", body: "{" }), routeCtx("job-1"))).status).toBe(400); expect(transactionMock).not.toHaveBeenCalled(); });
 });

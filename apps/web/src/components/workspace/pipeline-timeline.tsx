@@ -33,6 +33,12 @@ export function PipelineTimeline({ job }: Props) {
               <span>跳过 {perf.skippedSteps.length} 步</span>
             )}
           </div>
+          {perf.contextBudget && (
+            <p className="muted">
+              上下文约 {perf.contextBudget.estimatedTokens} tokens / 上限 {perf.contextBudget.appliedTokenBudget}，
+              纳入 {perf.contextBudget.includedCount} 项，裁剪 {perf.contextBudget.trimmedCount} 项
+            </p>
+          )}
           {perf.skippedSteps && perf.skippedSteps.length > 0 && (
             <ul className="perf-skipped muted">
               {perf.skippedSteps.map((s, i) => (

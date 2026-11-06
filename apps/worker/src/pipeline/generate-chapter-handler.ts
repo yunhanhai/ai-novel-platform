@@ -7,6 +7,9 @@ import { getMethodologyTemplate, type MethodType, type MethodologyTemplate } fro
 import { normalizeQualityMode, normalizePerformanceBudget } from "@ai-novel/shared/generation/performance";
 import type { PerformanceSummary, PerformanceBudgetInput } from "@ai-novel/shared/generation/performance";
 import { createFakeModel } from "./fake-model";
+import { deriveGenerationContextTokenBudget } from "../context/generation-context-budget";
+import { createContextFingerprint, latestContextTimestamp } from "../context/context-fingerprint";
+import { estimateTokens } from "@ai-novel/shared/generation/token-estimate";
 import { runChapterPipeline } from "./chapter-pipeline";
 import type { GenerationJob } from "../poll";
 import type { RuntimeModel } from "../model-runtime";
@@ -125,7 +128,7 @@ function resolveChapterId(job: GenerationJob): string | null {
 
 async function loadChapter(prisma: PrismaClient, chapterId: string, job: GenerationJob): Promise<ChapterRef | null> {
   const chapter = await prisma.chapter.findFirst({
-    where: { id: chapterId, organizationId: job.organizationId, deletedAt: null },
+    where: { id: chapterId, organizationId: job.organizationId, projectId: job.projectId, deletedAt: null },
     select: { id: true, projectId: true, organizationId: true }
   });
   return chapter && chapter.projectId === job.projectId ? chapter : null;
@@ -165,21 +168,23 @@ interface MethodologyGuide {
   methodType: string;
   guideText: string;
   reviewCriteria?: string[];
+  updatedAt?: Date | string;
 }
 
 async function loadActiveMethodology(
   prisma: PrismaClient,
-  projectId: string
+  projectId: string,
+  organizationId: string
 ): Promise<MethodologyGuide | undefined> {
   const wm = (prisma as unknown as {
     writingMethodology?: {
-      findFirst(args: unknown): Promise<{ name: string; methodType: string; reviewCriteria: unknown; outlineMetadata: unknown } | null>;
+      findFirst(args: unknown): Promise<{ name: string; methodType: string; reviewCriteria: unknown; outlineMetadata: unknown; updatedAt?: Date | string } | null>;
     };
   }).writingMethodology;
   if (!wm) return undefined;
   const record = await wm.findFirst({
-    where: { projectId, isActive: true },
-    select: { name: true, methodType: true, reviewCriteria: true, outlineMetadata: true }
+    where: { organizationId, projectId, isActive: true },
+    select: { name: true, methodType: true, reviewCriteria: true, outlineMetadata: true, updatedAt: true }
   });
   if (!record) return undefined;
 
@@ -203,6 +208,7 @@ async function loadActiveMethodology(
 
   return {
     name: record.name,
+    updatedAt: record.updatedAt,
     methodType: record.methodType,
     guideText,
     ...(reviewCriteria.length > 0 ? { reviewCriteria } : {})
@@ -211,13 +217,13 @@ async function loadActiveMethodology(
 
 async function runPipelineForContentWithContext(params: PipelineRunParams): Promise<PipelineRunResult> {
   const { prisma, job, model, chapterId } = params;
-  const methodologyGuide = await loadActiveMethodology(prisma, job.projectId);
+  const methodologyGuide = await loadActiveMethodology(prisma, job.projectId, job.organizationId);
   const contextOptions = normalizeContextOptions(readContextOptions(job));
-  const context = await buildWorkerContextPacket({ prisma, job, chapterId, methodologyGuide, contextOptions });
-
   const performanceInput = (job.input ?? {}) as { qualityMode?: unknown; performanceBudget?: PerformanceBudgetInput };
   const qualityMode = normalizeQualityMode(performanceInput.qualityMode);
   const budget = normalizePerformanceBudget(qualityMode, performanceInput.performanceBudget);
+  const contextTokenBudget = Math.min(resolveTokenBudget(contextOptions.budgetPreset), deriveGenerationContextTokenBudget({ qualityMode, budget }));
+  const context = await buildWorkerContextPacket({ prisma, job, chapterId, methodologyGuide, contextOptions, contextTokenBudget });
 
   let finalContent = "";
   const usage: UsageTotals = { inputTokens: 0, outputTokens: 0, latencyMs: 0 };
@@ -279,16 +285,18 @@ async function buildWorkerContextPacket(params: {
   chapterId: string;
   methodologyGuide?: MethodologyGuide;
   contextOptions: NormalizedContextOptions;
+  contextTokenBudget: number;
 }) {
-  const { prisma, job, chapterId, methodologyGuide, contextOptions } = params;
+  const { prisma, job, chapterId, methodologyGuide, contextOptions, contextTokenBudget } = params;
   const chapter = await prisma.chapter.findFirst({
-    where: { id: chapterId, organizationId: job.organizationId, deletedAt: null },
+    where: { id: chapterId, organizationId: job.organizationId, projectId: job.projectId, deletedAt: null },
     select: {
       id: true,
       chapterNo: true,
       title: true,
       outlineSummary: true,
-      project: { select: { title: true, styleBrief: true } }
+      updatedAt: true,
+      project: { select: { title: true, styleBrief: true, updatedAt: true } }
     }
   }) as WorkerChapter | null;
 
@@ -301,7 +309,7 @@ async function buildWorkerContextPacket(params: {
     delegates.styleProfile?.findFirst({ where: { organizationId: job.organizationId, projectId: job.projectId, isActive: true }, orderBy: { updatedAt: "desc" } }) ?? Promise.resolve(null)
   ]);
 
-  return buildContextPacket({
+  const packet = buildContextPacket({
     projectId: job.projectId,
     projectTitle: chapter?.project?.title ?? job.projectId,
     styleBrief: chapter?.project?.styleBrief ?? undefined,
@@ -339,7 +347,7 @@ async function buildWorkerContextPacket(params: {
       scopeType: memory.scopeType,
       sourceChapterId: memory.sourceChapterId
     })),
-    tokenBudget: resolveTokenBudget(contextOptions.budgetPreset),
+    tokenBudget: contextTokenBudget,
     styleGuide: styleProfile ? {
       brief: styleProfile.styleBrief ?? undefined,
       banned: asStringArray(styleProfile.bannedWords),
@@ -349,13 +357,36 @@ async function buildWorkerContextPacket(params: {
     ...(methodologyGuide ? { methodologyGuide } : {}),
     contextOptions
   });
+  return {
+    ...packet,
+    contextBudget: {
+      tokenBudget: contextTokenBudget,
+      appliedTokenBudget: packet.assets.tokenBudget,
+      estimatedTokens: estimateTokens(packet.prompt),
+      includedCount: packet.assets.included.length,
+      trimmedCount: packet.assets.trimmed.length
+    },
+    contextFingerprint: createContextFingerprint({
+      organizationId: job.organizationId,
+      projectId: job.projectId,
+      chapterId,
+      prompt: packet.prompt,
+      tokenBudget: contextTokenBudget,
+      contextOptions,
+      sourceUpdatedAt: latestContextTimestamp([
+        chapter?.updatedAt, chapter?.project?.updatedAt, methodologyGuide?.updatedAt,
+        ...characters.map(item => item.updatedAt), ...worldItems.map(item => item.updatedAt),
+        ...plotThreads.map(item => item.updatedAt), ...memories.map(item => item.updatedAt), styleProfile?.updatedAt
+      ])
+    })
+  };
 }
 
 async function runPipelineForContent(params: PipelineRunParams): Promise<string> {
   const { prisma, job, model, chapterId } = params;
 
   // 鎻愬墠鏌ヨ鏂规硶璁猴紝浠ヤ究鍚屾娉ㄥ叆 buildContext
-  const methodologyGuide = await loadActiveMethodology(prisma, job.projectId);
+  const methodologyGuide = await loadActiveMethodology(prisma, job.projectId, job.organizationId);
 
   let finalContent = "";
   await runChapterPipeline({
@@ -398,7 +429,8 @@ interface WorkerChapter {
   chapterNo: number;
   title: string;
   outlineSummary: string | null;
-  project?: { title: string; styleBrief: string | null };
+  updatedAt?: Date | string;
+  project?: { title: string; styleBrief: string | null; updatedAt?: Date | string };
 }
 
 interface WorkerAssetDelegates {
@@ -409,11 +441,11 @@ interface WorkerAssetDelegates {
   styleProfile?: { findFirst(args: unknown): Promise<WorkerStyleProfile | null> };
 }
 
-interface WorkerCharacter { id: string; name: string; roleType: string; personality: string | null; speechPattern: string | null; motivation: string | null; appearance: string | null; arc: string | null; constraints: string | null; }
-interface WorkerWorldItem { id: string; name: string; itemType: string; summary: string | null; detail: string | null; constraints: string | null; activationKeywords: unknown; }
-interface WorkerPlotThread { id: string; threadType: string; title: string; description: string | null; status: string; }
-interface WorkerMemory { memoryType: string; content: string; scopeType: string; sourceChapterId: string | null; }
-interface WorkerStyleProfile { styleBrief: string | null; bannedWords: unknown; preferredWords: unknown; sentenceLengthProfile: unknown; }
+interface WorkerCharacter { updatedAt?: Date | string; id: string; name: string; roleType: string; personality: string | null; speechPattern: string | null; motivation: string | null; appearance: string | null; arc: string | null; constraints: string | null; }
+interface WorkerWorldItem { updatedAt?: Date | string; id: string; name: string; itemType: string; summary: string | null; detail: string | null; constraints: string | null; activationKeywords: unknown; }
+interface WorkerPlotThread { updatedAt?: Date | string; id: string; threadType: string; title: string; description: string | null; status: string; }
+interface WorkerMemory { updatedAt?: Date | string; memoryType: string; content: string; scopeType: string; sourceChapterId: string | null; }
+interface WorkerStyleProfile { updatedAt?: Date | string; styleBrief: string | null; bannedWords: unknown; preferredWords: unknown; sentenceLengthProfile: unknown; }
 
 function compactLines(values: string[]): string {
   return values.filter((value) => value.trim().length > 0).join("\n");

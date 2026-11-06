@@ -191,3 +191,13 @@ describe("build-context-packet", () => {
     expect(result.assets.forced.map((a) => a.id)).toContain("w1");
   });
 });
+
+it("budgets mixed CJK and Latin required sections in tokens rather than raw characters", () => {
+  const result = buildContextPacket({
+    ...baseInput, projectTitle: "Long title ".repeat(80), styleBrief: undefined,
+    currentChapter: { id: "chapter", chapterNo: 1, title: "Start" },
+    characters: [{ id: "hero", name: "Hero", roleType: "lead", content: "x".repeat(600) }],
+    worldItems: [], plotThreads: [], recentMemories: [], tokenBudget: 500
+  });
+  expect(result.assets.included.map(item => item.id)).toContain("hero");
+});

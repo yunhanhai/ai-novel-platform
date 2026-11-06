@@ -1919,3 +1919,14 @@ git diff --check   通过
 - Gitleaks v8.30.1 全历史及工作区扫描的 4 处告警均逐项核对为测试值/空示例，按具体发现复扫无新增项；2837 个可达对象未含本轮已知令牌。无评测正文、.env 或生成产物提交。
 - 仓库外备份 `D:/develop/AI/xiaoshuo/base_win-release-backups/2026-11-07-40d881a9/` 包含完整 Git bundle、25 文件字节副本及 SHA256 清单、10 个旧代理目录文件和实跑证据。从 bundle 恢复后与原工作树的 25 项 status 和全部文件哈希一致。
 - 边界：主分支同步成立，所有本地成果均已在线保存不成立；实验分支已有本地可恢复备份，待基于 master 修正身份和完成集成验证后再决定发布。本轮只更新核验文档，没有功能扩展、数据库迁移或部署。
+
+---
+
+## 2026-11-07 — 性能实验成果安全集成
+
+- 在 codex/performance-integration 从 master=b4db845 选择性迁移组织/项目趋势、预算设置、队列观测与恢复审计、上下文预算/指纹、独立任务用量证据。保留当前会话认证、13 handlers、重试分类、中文/CJK、人工版本及 batch 语义；旧实现冲突按当前 master 处理。
+- 所有新增路由 await requireSession；匿名 401，跨组织 404；恢复与审计同事务、条件更新防并发。预算输入与并发保存/重复清除已补回归；成本缺失保留提示，面板明确为用量记录、已知成本和记录耗时。
+- 实跑：954 passed + 1 skipped；typecheck 5/5；pnpm build 通过；schema valid；10 migrations up to date；完整 e2e 3 passed + 1 skipped（1.2m，fake）；8 项真实 DB 约束/回滚检查通过。桌面/390px 手机截图已复核。
+- 原实验工作树 25 个未提交文件原字节未变；完整历史通过最终集成父历史保存，不将旧分支直接部署。报告与范围对照：reports/2026-11-07-performance-integration.md。
+- Next 工作树根目录显式配置；本轮独立工作树 pnpm pg 缺失经冻结锁文件重装恢复，锁文件未变。测试日志与截图保存在 D:/develop/AI/xiaoshuo/base_win-release-backups/2026-11-07-performance-integration/。
+- 集成回 master 后同步两端并核对 Git 对象。无生产部署、无新迁移、无真实模型调用；真实成本/质量尚未验收。

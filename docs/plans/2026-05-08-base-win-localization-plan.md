@@ -1039,3 +1039,13 @@ git diff --check
 - [x] Scan full reachable history and uncommitted source with checksum-verified Gitleaks; inspect each specific false positive; check supplied token absence without printing it.
 - [x] Preserve full Git bundle and byte-for-byte copies of 25 working files outside the repository; verify actual restore, all hashes and status; preserve 10 orphan agent files.
 - [x] Record conclusions, evidence, limits and next integration prerequisites in reports/2026-11-07-publication-audit.md. Publish audit documentation to both master refs and retain final receipts outside Git.
+
+## Task 52: 2026-11-07 Safe Performance Feature Integration
+
+- [x] Build from current master in isolated codex/performance-integration; preserve old dirty worktree bytes and all current authentication/job/eval invariants.
+- [x] Integrate organization/project trends, cost budget settings and inheritance, queue observation/recovery/audit with awaited session identity and tenant-scoped queries.
+- [x] Use state-conditional recovery updates and shared audit transaction; validate concurrent budget create/clear, strict integer inputs and partially missing cost evidence.
+- [x] Integrate context budget/fingerprint and missing standalone usage evidence; retain Chinese prompts, CJK estimation and aggregate generation events.
+- [x] Verify 954 tests + 1 skipped, typecheck 5/5, production build, schema and migration status, complete e2e 3 passed + 1 skipped, 8 rollback-only real DB checks; inspect desktop/mobile screenshots.
+- [x] Resolve independently reviewed P2 findings; document counts, metering limits, environment repair and old-feature disposition in reports/2026-11-07-performance-integration.md.
+- [x] Finish integration on master and synchronize both remotes, retaining external commit/tree receipts; preserve original experimental worktree.

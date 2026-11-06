@@ -567,3 +567,36 @@ describe("commitFinalize", () => {
     );
   });
 });
+
+describe("generation context evidence", () => {
+  it("caps optional context by the input performance budget and saves a content fingerprint", async () => {
+    const { prisma, tx } = createPrismaStub();
+    prisma.chapter.findFirst.mockResolvedValue({
+      id: "chapter-1", projectId: "proj-1", organizationId: "org-1", chapterNo: 1,
+      title: "启程", outlineSummary: "出发", updatedAt: new Date("2026-11-07T00:00:00Z"),
+      project: { title: "作品", styleBrief: null, updatedAt: new Date("2026-11-06T00:00:00Z") }
+    });
+    const character = { id: "hero", name: "主角", roleType: "protagonist", motivation: "中".repeat(3000) };
+    const withAssets = { ...prisma, character: { findMany: vi.fn().mockResolvedValue([character]) } };
+    const model = { generate: vi.fn().mockResolvedValue({ text: "终稿", inputTokens: 10, outputTokens: 10 }) };
+    const handler = createGenerateChapterHandler({ prisma: withAssets as never, updateJobStatus: vi.fn(), model: model as never });
+    await handler({ ...baseJob, input: { qualityMode: "fast", performanceBudget: { maxInputTokens: 1000 }, contextOptions: { budgetPreset: "rich" } } });
+
+    const output = tx.generationJob.update.mock.calls[0]![0].data.output;
+    expect(output.performanceSummary.contextBudget).toMatchObject({ tokenBudget: 500, includedCount: 0, trimmedCount: 1 });
+    expect(output.performanceSummary.contextFingerprint).toMatchObject({
+      hash: expect.stringMatching(/^[a-f0-9]{64}$/), chapterId: "chapter-1",
+      contextOptionsHash: expect.stringMatching(/^[a-f0-9]{64}$/), sourceUpdatedAt: "2026-11-07T00:00:00.000Z"
+    });
+    expect(model.generate.mock.calls[0]![0]).not.toContain("中".repeat(50));
+    expect(withAssets.character.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ organizationId: "org-1", projectId: "proj-1" }) }));
+  });
+
+  it("loads the active methodology within the job organization", async () => {
+    const { prisma } = createPrismaStub();
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const handler = createGenerateChapterHandler({ prisma: { ...prisma, writingMethodology: { findFirst } } as never, updateJobStatus: vi.fn(), model: stubModel as never });
+    await handler(baseJob);
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ organizationId: "org-1", projectId: "proj-1" }) }));
+  });
+});

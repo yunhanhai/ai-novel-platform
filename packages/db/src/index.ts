@@ -6,6 +6,8 @@ export {
   claimNextJob,
   requeueJobForRetry,
   releaseJobLease,
+  retryFailedJob,
+  recoverExpiredJobLeases,
   updateJobStatus,
   createStep,
   updateStep

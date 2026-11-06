@@ -1,7 +1,8 @@
+import { errorResponse } from "../../../../server/api-errors";
+import { recordAuditLog } from "../../../../server/audit-log";
 import { NextResponse } from "next/server";
-import { sanitizeServerMessage } from "../../../../server/api-errors";
-import { prisma } from "@ai-novel/db";
-import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
+import { prisma, retryFailedJob } from "@ai-novel/db";
+import { getOrganizationId, requireSession } from "../../../../server/context";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -49,10 +50,28 @@ export async function GET(_request: Request, context: RouteContext) {
     }
     return NextResponse.json({ success: true, data: job });
   } catch (error: unknown) {
-  if (isUnauthorizedError(error)) {
-    return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
-  }    const message = error instanceof Error ? error.message : "服务异常";
-    console.error("[api] generation-jobs/[id] failed", error);
-  return NextResponse.json({ success: false, error: sanitizeServerMessage(message) }, { status: 500 });
+    return errorResponse("generation-job", error);
   }
+}
+
+export async function POST(request: Request, context: RouteContext) {
+  try {
+    const { organizationId, userId } = await requireSession();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body) || body.action !== "retry") {
+      return NextResponse.json({ success: false, error: "不支持的任务操作" }, { status: 400 });
+    }
+    const { id } = await context.params;
+    const result = await prisma.$transaction(async (tx) => {
+      const retry = await retryFailedJob({ prisma: tx, organizationId, jobId: id });
+      if (retry.ok) {
+        await recordAuditLog({ prisma: tx, organizationId, actorUserId: userId,
+          action: "generation_job.retry", entityType: "generation_job", entityId: id,
+          metadata: { resultingStatus: retry.job.status } });
+      }
+      return retry;
+    });
+    if (!result.ok) return NextResponse.json({ success: false, error: result.reason === "not_found" ? "任务不存在" : "只能重试失败任务" }, { status: result.reason === "not_found" ? 404 : 409 });
+    return NextResponse.json({ success: true, data: result.job });
+  } catch (error: unknown) { return errorResponse("generation-job-retry", error); }
 }

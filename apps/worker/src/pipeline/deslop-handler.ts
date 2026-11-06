@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { createFakeModel } from "./fake-model";
+import { recordModelUsage } from "./usage-recorder";
 import type { GenerationJob } from "../poll";
 
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
@@ -88,7 +89,9 @@ ${chapter.content.slice(0, 8000)}
 
 注意：position.start/end 为匹配文本在原文中的大致字符位置，如无法精确定位填 0。`;
 
+      const started = Date.now();
       const result = await model.generate(deslopPrompt);
+      await recordModelUsage({ prisma, job, model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, latencyMs: Date.now() - started });
       const report = safeJson<{ issues: unknown[]; overallScore: number; summary: string }>(result.text, {
         issues: [], overallScore: 100, summary: "未检测到明显 AI 味"
       });

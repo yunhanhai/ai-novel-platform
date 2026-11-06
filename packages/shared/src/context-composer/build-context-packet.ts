@@ -134,7 +134,7 @@ export function buildContextPacket(input: PacketInput): PacketResult {
   const excludedAssets = selectedCandidates.filter((asset) => !asset.required && excludedIds.has(asset.id));
   const budgetItems = selectedCandidates.filter((asset) => asset.required || !excludedIds.has(asset.id));
 
-  const budget = input.tokenBudget - estimateTotalChars(sections);
+  const budget = input.tokenBudget - estimateTokens(sections.join("\n"));
   const budgetCapped = Math.max(100, budget);
   const budgetResult = applyTokenBudget({ items: budgetItems, tokenBudget: budgetCapped });
 
@@ -394,8 +394,4 @@ function formatCharacter(character: CharacterInfo): string {
 
 function formatWorldItem(worldItem: WorldItemInfo): string {
   return `【世界观 - ${worldItem.itemType}】${worldItem.name}\n${worldItem.content}`;
-}
-
-function estimateTotalChars(sections: string[]): number {
-  return sections.reduce((sum, section) => sum + section.length, 0);
 }

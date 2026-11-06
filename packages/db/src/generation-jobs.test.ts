@@ -241,3 +241,46 @@ describe("generation-jobs", () => {
     });
   });
 });
+
+// Recovery paths must not overwrite work claimed after the initial read.
+describe("manual recovery concurrency", () => {
+  it("returns not_found for another organization without updating", async () => {
+    const db = { generationJob: { findFirst: vi.fn().mockResolvedValue(null), updateMany: vi.fn() } };
+    const { retryFailedJob } = await import("./generation-jobs");
+    expect(await retryFailedJob({ prisma: db as never, organizationId: "org1", jobId: "foreign" })).toEqual({ ok: false, reason: "not_found" });
+    expect(db.generationJob.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "foreign", organizationId: "org1" } }));
+    expect(db.generationJob.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("requires FAILED at update time and grants a fresh attempt budget", async () => {
+    const db = { generationJob: { findFirst: vi.fn().mockResolvedValue({ id: "j1", status: "FAILED" }), updateMany: vi.fn().mockResolvedValue({ count: 1 }) } };
+    const { retryFailedJob } = await import("./generation-jobs");
+    expect(await retryFailedJob({ prisma: db as never, organizationId: "org1", jobId: "j1" })).toMatchObject({ ok: true, job: { id: "j1", status: "QUEUED" } });
+    expect(db.generationJob.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "j1", organizationId: "org1", status: "FAILED" }, data: expect.objectContaining({ attemptCount: 0, status: "QUEUED", finishedAt: null, lockKey: null }) }));
+  });
+
+  it("reports a conflict when another caller retries the failed job first", async () => {
+    const db = { generationJob: { findFirst: vi.fn().mockResolvedValue({ id: "j1", status: "FAILED" }), updateMany: vi.fn().mockResolvedValue({ count: 0 }) } };
+    const { retryFailedJob } = await import("./generation-jobs");
+    expect(await retryFailedJob({ prisma: db as never, organizationId: "org1", jobId: "j1" })).toMatchObject({ ok: false, reason: "invalid_status" });
+  });
+
+  it("only recovers a still-expired lease with the same lock and attempt", async () => {
+    const now = new Date("2026-11-07T00:00:00Z");
+    const lease = new Date(now.getTime() - 1000);
+    const db = { generationJob: { findMany: vi.fn().mockResolvedValue([{ id: "j1", lockKey: "old-worker", leaseExpiresAt: lease, attemptCount: 1, maxAttempts: 3 }]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) } };
+    const { recoverExpiredJobLeases } = await import("./generation-jobs");
+    expect(await recoverExpiredJobLeases({ prisma: db as never, organizationId: "org1", now })).toEqual({ recovered: 0, failed: 0 });
+    expect(db.generationJob.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "j1", organizationId: "org1", status: "RUNNING", lockKey: "old-worker", leaseExpiresAt: lease, attemptCount: 1 } }));
+  });
+
+  it("terminates exhausted leases but leaves attempts for the worker to increment on claim", async () => {
+    const now = new Date("2026-11-07T00:00:00Z");
+    const db = { generationJob: { findMany: vi.fn().mockResolvedValue([{ id: "a", lockKey: "w", leaseExpiresAt: new Date(0), attemptCount: 3, maxAttempts: 3 }, { id: "b", lockKey: "w", leaseExpiresAt: new Date(0), attemptCount: 1, maxAttempts: 3 }]), updateMany: vi.fn().mockResolvedValue({ count: 1 }) } };
+    const { recoverExpiredJobLeases } = await import("./generation-jobs");
+    expect(await recoverExpiredJobLeases({ prisma: db as never, organizationId: "org1", now })).toEqual({ recovered: 1, failed: 1 });
+    expect(db.generationJob.updateMany.mock.calls[0]?.[0].data).toMatchObject({ status: "FAILED", errorCode: "LEASE_EXPIRED" });
+    expect(db.generationJob.updateMany.mock.calls[1]?.[0].data).toMatchObject({ status: "QUEUED", nextRunAt: now });
+    expect(db.generationJob.updateMany.mock.calls[1]?.[0].data).not.toHaveProperty("attemptCount");
+  });
+});

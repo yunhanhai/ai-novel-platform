@@ -22,6 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </Link>
           <div className="top-bar-right">
             <Link href="/settings/models" className="btn-ghost btn-small">设置</Link>
+            <Link href="/settings/performance" className="btn-ghost btn-small">预算</Link>
             <span className="user-tag">{session.displayName}</span>
             {organizationId ? (
               <span className="org-tag" title="当前组织上下文">org · {organizationId.slice(0, 8)}</span>

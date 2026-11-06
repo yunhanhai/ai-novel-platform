@@ -324,6 +324,8 @@ export interface PerformanceSummaryView {
   outputTokens: number;
   latencyMs: number;
   skippedSteps?: Array<{ stepKey: string; reason: string }>;
+  contextBudget?: { tokenBudget: number; appliedTokenBudget: number; estimatedTokens: number; includedCount: number; trimmedCount: number };
+  contextFingerprint?: { hash: string; chapterId: string; contextOptionsHash: string; sourceUpdatedAt: string };
 }
 
 export interface DiagnosticSummaryView {
