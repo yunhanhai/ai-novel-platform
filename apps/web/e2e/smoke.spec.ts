@@ -250,7 +250,10 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(deslopBtn).toBeEnabled({ timeout: 15_000 });
   await deslopBtn.click();
   await expect(jobTypeCell).toHaveText("去 AI 味", { timeout: 10_000 });
-  await expect(jobStatusTag).toHaveText("已完成", { timeout: 30_000 });
+  // Fake returns prose, not an evidence-backed report; it must never become score100.
+  await expect(jobStatusTag).toHaveText("失败", { timeout: 30_000 });
+  await expect(page.locator(".job-status-card").getByText("模型未返回可核对的去 AI 味报告，请重试分析；正文未修改", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "去 AI 味分析报告" })).toHaveCount(0);
   // 本地未保存的输入必须仍在（未被任务回写覆盖）
   await expect(editor).toHaveValue(new RegExp(localEditMarker), { timeout: 10_000 });
   // 若检测到远端冲突，横幅应出现；选择保留本地
@@ -258,6 +261,29 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   if (await conflictBanner.isVisible().catch(() => false)) {
     await conflictBanner.getByRole("button", { name: "保留本地" }).click();
   }
+
+  // 受控合法报告只验证展示，不冒充fake模型输出或真实供应商验收。
+  const reportJobId = "11111111-1111-4111-8111-111111111111";
+  const createReportRoute = async (route: import("@playwright/test").Route) => {
+    await route.fulfill({ status: 201, json: { success: true, data: { id: reportJobId, jobType: "DESLOP", status: "QUEUED" } } });
+  };
+  await page.route("**/api/generation-jobs", createReportRoute);
+  await page.route(`**/api/generation-jobs/${reportJobId}`, async route => {
+    await route.fulfill({ json: { success: true, data: {
+      id: reportJobId, jobType: "DESLOP", status: "SUCCEEDED", progress: "100", errorMessage: null, startedAt: null, finishedAt: null, steps: [],
+      output: { deslopReport: { overallScore: 80, summary: "合成展示报告", sourceChars: 8, sourceSha256: "0".repeat(64),
+        issues: [{ category: "stock_phrase", severity: "warning", matched: "仿佛", suggestion: "改为具体可见动作", position: { start: 1, end: 3 } }] } }
+    } } });
+  });
+  await page.getByRole("button", { name: "去 AI 味", exact: true }).click();
+  const deslopReport = page.getByRole("region", { name: "去 AI 味分析报告" });
+  await expect(deslopReport).toBeVisible();
+  await expect(deslopReport).toContainText("自然度参考分 80/100");
+  await expect(deslopReport).toContainText("不能判断作者身份");
+  await expect(deslopReport.getByText("仿佛", { exact: true })).toBeVisible();
+  await expect(deslopReport).toContainText("改为具体可见动作");
+  await page.unroute("**/api/generation-jobs", createReportRoute);
+  await page.unroute(`**/api/generation-jobs/${reportJobId}`);
 
   // 10. 触发 EXTRACT_MEMORY
   const extractBtn = page.getByRole("button", { name: "抽取记忆" });

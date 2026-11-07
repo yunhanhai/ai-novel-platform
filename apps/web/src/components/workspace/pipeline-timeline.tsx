@@ -15,6 +15,7 @@ export function PipelineTimeline({ job }: Props) {
   const steps = job.steps ?? [];
   const perf = job.output?.performanceSummary;
   const diag = job.output?.diagnosticSummary;
+  const deslop = job.output?.deslopReport;
 
   return (
     <div className="pipeline-panel">
@@ -70,6 +71,25 @@ export function PipelineTimeline({ job }: Props) {
           <span className="tag tag-warning">诊断未排队</span>
           <span className="muted">{job.output.diagnosticWarning}</span>
         </div>
+      )}
+
+      {job.status === "SUCCEEDED" && deslop && (
+        <section className="diagnostic-summary" aria-label="去 AI 味分析报告">
+          <strong>自然度参考分 {deslop.overallScore}/100（越高越自然）</strong>
+          <p>{deslop.summary}</p>
+          <p className="muted">分析来源 {deslop.sourceChars} 字符。分数仅供语言审阅，不能判断作者身份；后续改文请重新分析。</p>
+          {deslop.issues.length === 0 ? <p className="muted">本次未列出具体问题，仍需人工审阅。</p> : (
+            <ul className="diagnostic-suggestions">
+              {deslop.issues.map((issue, index) => (
+                <li key={`${issue.position.start}-${index}`}>
+                  <blockquote>{issue.matched}</blockquote>
+                  <p>{issue.suggestion}</p>
+                  <span className="muted">原文位置 {issue.position.start}–{issue.position.end}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       {diag && (

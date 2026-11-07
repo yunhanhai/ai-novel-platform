@@ -38,6 +38,7 @@ interface ClaimParams {
 
 interface UpdateStatusParams {
   expectedAttemptCount?: number;
+  expectedStatus?: "RUNNING";
   jobId: string;
   status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
   output?: InputJson;
@@ -157,13 +158,13 @@ export async function releaseJobLease(jobId: string, lockKey: string, prisma: Pr
   });
 }
 
-export async function updateJobStatus({ jobId, status, output, errorCode, errorMessage, expectedAttemptCount, prisma }: UpdateStatusParams) {
+export async function updateJobStatus({ jobId, status, output, errorCode, errorMessage, expectedAttemptCount, expectedStatus, prisma }: UpdateStatusParams) {
   const now = new Date();
   const isSucceeded = status === "SUCCEEDED";
 
   try {
     return await prisma.generationJob.update({
-      where: { id: jobId, ...(status !== "CANCELLED" ? { status: { not: "CANCELLED" as const } } : {}), ...(expectedAttemptCount !== undefined ? { attemptCount: expectedAttemptCount } : {}) },
+      where: { id: jobId, ...(status !== "CANCELLED" ? { status: { not: "CANCELLED" as const } } : {}), ...(expectedStatus ? { status: expectedStatus } : {}), ...(expectedAttemptCount !== undefined ? { attemptCount: expectedAttemptCount } : {}) },
       data: {
         status,
         ...(isSucceeded ? { progress: "100", finishedAt: now, output: output ?? {} } : {}),

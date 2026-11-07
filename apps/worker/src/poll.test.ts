@@ -225,3 +225,12 @@ it("leaves a continuation completed or owned by another attempt untouched", asyn
   expect(updateJobStatus).not.toHaveBeenCalled();
   expect(requeueForRetry).not.toHaveBeenCalled();
 });
+
+it("limits delayed DESLOP error finalization to the running attempt", async () => {
+  const updateJobStatus = mockUpdateFn(); const requeueForRetry = mockRequeueFn();
+  const poller = createPoller({ claimNext: async () => ({ ...baseJob, jobType: "DESLOP", attemptCount: 3, maxAttempts: 3 }), updateJobStatus, requeueForRetry, pollIntervalMs: 1,
+    handlers: new Map([["DESLOP", vi.fn().mockRejectedValue(new Error("storage unavailable"))]]) });
+  expect(await poller.tick()).toBe("error");
+  expect(updateJobStatus).toHaveBeenCalledWith(expect.objectContaining({ status: "FAILED", expectedStatus: "RUNNING", expectedAttemptCount: 3 }));
+  expect(requeueForRetry).not.toHaveBeenCalled();
+});

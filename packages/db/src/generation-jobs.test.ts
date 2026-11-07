@@ -309,3 +309,11 @@ it("fences terminal status updates from an older worker attempt", async () => {
   expect(result).toBe(current);
   expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ attemptCount: 1 }) }));
 });
+
+it("only applies a late analysis failure while the job is still running", async () => {
+  const succeeded = { ...job, status: "SUCCEEDED", attemptCount: 1 };
+  const update = vi.fn().mockRejectedValue({ code: "P2025" });
+  const prisma = mockPrisma({ generationJob: { update, findUniqueOrThrow: vi.fn().mockResolvedValue(succeeded) } });
+  expect(await updateJobStatus({ jobId: "j1", status: "FAILED", expectedAttemptCount: 1, expectedStatus: "RUNNING", prisma } as Parameters<typeof updateJobStatus>[0])).toBe(succeeded);
+  expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: "RUNNING", attemptCount: 1 }) }));
+});

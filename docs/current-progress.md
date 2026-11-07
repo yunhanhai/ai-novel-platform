@@ -2087,3 +2087,13 @@ git diff --check   通过
 - 验证1116单测+1skip（32/67/50/327/640）、typecheck5/5、build、完整e2e7pass+1skip（fake，1.8m）；8项实际DB全回滚，独立73定向无阻断。首轮smoke打印通过后触60秒总时限，未调时限，单独重跑完整通过。
 - 报告`reports/2026-11-07-generation-save.md`保留deep事务外后续任务、取消API迟到竞态、凭证不可用/ABA/非模型exactly-once限制。外部模型0，真实章/13记忆/配置不变，无迁移部署。
 - codex/generation-save完成后快进master同步双远程并外存commit/tree回执，原实验保留；下一步按实际证据检查其余状态/结果链路，不扩大付费调用。
+
+---
+
+## 2026-11-07 — 去 AI 味报告可信度
+
+- 真实DB RED复现散文SUCCEEDED100、8000后章尾丢失、旧来源报告成功与取消被覆盖。严格JSON/分数/引用定位校验，完整输入<=20000 Unicode字符，超限前失败；保存完整issues/来源hash，UI展示建议与参考分、不改正文。
+- 来源章→范围job锁后核对正文/attempt/RUNNING，step+report原子成功；取消/结束/旧attempt丢弃，来源冲突不自动retry。独立审查两项RED修复：迟到失败RUNNING条件，确认丢失读取成功step凭证且清理不降级已成功step。
+- 验证1139单测+1skip（33/67/50/349/640）、typecheck5/5、build、完整e2e7pass+1skip（fake，1.4m），10项真实DB回滚；独立5文件60项无剩余阻断。浏览器覆盖fake明确失败与合成合法报告展示，不能当真实模型语义验收。
+- 保留定位器重复文本、Next HTML404、Prisma runtime局部缺失失败证据；外存dev缓存并frozen force恢复包实体后完整通过，无修改锁版本/生成代码或时限。报告`reports/2026-11-07-deslop-report.md`记录限制与原始证据。
+- 外部模型0，真实正文/13记忆/模型配置未修改，无迁移部署；参考分不判断作者身份，后续改文需重新分析。codex/deslop-report完成后快进master同步双远程并外存commit/tree回执，原实验保留。

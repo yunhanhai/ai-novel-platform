@@ -355,6 +355,10 @@ export interface JobSummary {
     };
     performanceSummary?: PerformanceSummaryView;
     diagnosticSummary?: DiagnosticSummaryView;
+    deslopReport?: {
+      overallScore: number; summary: string; sourceChars: number; sourceSha256: string;
+      issues: Array<{ category: string; severity: "info" | "warning" | "error"; matched: string; suggestion: string; position: { start: number; end: number } }>;
+    };
     qualitySummary?: { passed: boolean; charCount: number; minChars?: number; maxChars?: number; lengthPassed: boolean; missingFacts: string[] };
     diagnosticDegraded?: boolean;
     diagnosticWarning?: string;

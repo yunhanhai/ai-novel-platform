@@ -1190,3 +1190,13 @@ git diff --check
 - [x] Verify1116 tests+1skip,typecheck5/5,build,e2e7pass+1skip,8rollback-only DB cases and independent73 checks;record first smoke total-timeout and unchanged-limit rerun.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
 - [ ] Remaining:late cancel API writes,reliable deep diagnostic dispatch,other analysis-result freshness and provider exactly-once requests require separate evidence.
+
+## Task 68: 2026-11-07 DESLOP Report Integrity
+
+- [x] Reproduce actual DB false perfect success, silently omitted ending, stale report and cancelled status overwrite.
+- [x] Strictly validate JSON/score/issues/exact quotes and offsets; send full source up to20000 Unicode characters, reject overlimit before model invocation.
+- [x] Save full report/source hash/step atomically under scoped chapter/job locks; fence source/attempt/cancel and late failure; recover committed-step acknowledgment without demoting success.
+- [x] Display source quotes/suggestions/reference score without changing prose; verify fake failure and controlled valid report separately in browser.
+- [x] Verify1139 tests+1skip,typecheck5/5,build,e2e7pass+1skip,10rollback DB cases and independent60 checks; preserve HTML404/dependency repair evidence.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
+- [ ] Remaining:real semantic quality,post-report edit freshness detection,other diagnostic/rewrite paths and provider exactly-once requests need separate evidence.

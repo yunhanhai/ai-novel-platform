@@ -25,6 +25,7 @@ export type UpdateStatusFn = (params: {
   errorCode?: string;
   errorMessage?: string;
   expectedAttemptCount?: number;
+  expectedStatus?: "RUNNING";
 }) => Promise<unknown>;
 export type RequeueForRetryFn = (params: {
   jobId: string;
@@ -62,7 +63,7 @@ export function createPoller(deps: PollerDeps): Poller {
     const job = await claimNext();
     if (!job) return "no_job";
 
-    const updateForAttempt: UpdateStatusFn = params => updateJobStatus({ ...params, expectedAttemptCount: job.attemptCount ?? 1 });
+    const updateForAttempt: UpdateStatusFn = params => updateJobStatus({ ...params, expectedAttemptCount: job.attemptCount ?? 1, ...(job.jobType === "DESLOP" ? { expectedStatus: "RUNNING" as const } : {}) });
     const handler = handlers.get(job.jobType);
     if (!handler) {
       await updateForAttempt({

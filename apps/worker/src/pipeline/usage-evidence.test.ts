@@ -8,12 +8,13 @@ const baseJob: GenerationJob = { id: "job", organizationId: "org", projectId: "p
 
 function setup() {
   const tx = {
-    $queryRaw: vi.fn().mockResolvedValue([{id:"chapter",content:"正文",title:"标题",chapterNo:1}]),
+    $queryRaw: vi.fn().mockImplementation(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "RUNNING", attemptCount: 1 }] : [{id:"chapter",content:"正文",title:"标题",chapterNo:1}]),
     generationStep: { create: vi.fn().mockResolvedValue({ id: "step" }), update: vi.fn().mockResolvedValue({}) },
     generationJob: { update: vi.fn().mockResolvedValue({}) },
     projectMemory: { create: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) }
   };
   const prisma = {
+    generationJob: { findFirst: vi.fn().mockResolvedValue({ status: "RUNNING", attemptCount: 1 }) },
     chapter: { findFirst: vi.fn().mockResolvedValue({ id: "chapter", title: "标题", content: "正文", chapterNo: 1 }) },
     generationStep: { create: vi.fn().mockResolvedValue({ id: "step" }), update: vi.fn().mockResolvedValue({}) },
     usageEvent: { create: vi.fn().mockResolvedValue({}) },
