@@ -1,3 +1,4 @@
+import { parseQualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
 import { NextResponse } from "next/server";
 import { sanitizeServerMessage } from "../../../server/api-errors";
 import { prisma, createJob } from "@ai-novel/db";
@@ -110,6 +111,8 @@ export async function POST(request: Request) {
   const body = (await request.json()) as CreateJobBody;
   const { chapterId, jobType: rawJobType } = body;
   const jobType = rawJobType ?? "GENERATE_CHAPTER";
+  try { if (jobType === "GENERATE_CHAPTER") parseQualityConstraints((body.input as { qualityConstraints?: unknown } | undefined)?.qualityConstraints); }
+  catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "质量约束无效" }, { status: 400 }); }
 
   if (!SUPPORTED_JOB_TYPES.includes(jobType)) {
     return NextResponse.json(

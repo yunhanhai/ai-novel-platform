@@ -149,3 +149,8 @@ test("passes cancellation and explicit request limits to SDK options without cha
   );
   expect(mockChatCreate.mock.calls.at(-1)?.[0]).not.toHaveProperty("signal");
 });
+test("passes opt-in reasoning effort and structured output without overriding request identity", async () => {
+  mockResponse();
+  await newAdapter().generate("json task", { reasoningEffort: "low", responseFormat: "json_object" } as never);
+  expect(mockChatCreate.mock.calls.at(-1)?.[0]).toMatchObject({ reasoning_effort: "low", response_format: { type: "json_object" }, model: "gpt-4o-mini" });
+});

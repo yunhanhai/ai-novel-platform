@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import type { QualityMode } from "@ai-novel/shared/generation/performance";
+import type { QualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
 import { useParams } from "next/navigation";
 import { AssetSidebar } from "../../../../../components/workspace/asset-sidebar";
 import { EditorPane, type EditorSelection } from "../../../../../components/workspace/editor-pane";
@@ -113,10 +114,10 @@ export default function WorkspacePage() {
     setActiveChapterId(id);
   }
 
-  async function handleGenerate(qualityMode: QualityMode, contextOptions?: ContextOptions) {
+  async function handleGenerate(qualityMode: QualityMode, contextOptions?: ContextOptions, qualityConstraints?: QualityConstraints) {
     if (!activeChapterId) return;
     await flush();
-    await startJob(activeChapterId, "GENERATE_CHAPTER", { qualityMode, contextOptions });
+    await startJob(activeChapterId, "GENERATE_CHAPTER", { qualityMode, contextOptions, qualityConstraints });
   }
 
   async function handleDiagnose(qualityMode: QualityMode) {

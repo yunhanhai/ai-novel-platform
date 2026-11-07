@@ -90,6 +90,8 @@ test("模型设置：banner / 测试连接 / 编辑供应商 / 档案 CRUD", asy
   const profileInputs = profileDialog.locator('input[type="text"]');
   await profileInputs.nth(0).fill(newProfileName);          // 档案名称
   await profileInputs.nth(1).fill("gpt-e2e-test");          // 模型 ID
+  await profileDialog.getByText("推理强度", { exact: true }).locator("..").locator("select").selectOption("low");
+  await profileDialog.getByRole("checkbox", { name: "诊断与规划使用 JSON 模式" }).check();
   await profileDialog.getByRole("button", { name: "创建" }).click();
 
   await expect(profilesList).toContainText(newProfileName, { timeout: 10_000 });
@@ -98,6 +100,8 @@ test("模型设置：banner / 测试连接 / 编辑供应商 / 档案 CRUD", asy
   const newProfileRow = profilesList.locator(".settings-list-item").filter({ hasText: newProfileName });
   await newProfileRow.getByRole("button", { name: "编辑" }).click();
   const editProfileDialog = page.locator(".settings-form").first();
+  await expect(editProfileDialog.getByText("推理强度", { exact: true }).locator("..").locator("select")).toHaveValue("low");
+  await expect(editProfileDialog.getByRole("checkbox", { name: "诊断与规划使用 JSON 模式" })).toBeChecked();
   const editInputs = editProfileDialog.locator('input[type="text"]');
   await editInputs.nth(1).fill("gpt-e2e-renamed");
   await editProfileDialog.getByRole("button", { name: "保存" }).click();

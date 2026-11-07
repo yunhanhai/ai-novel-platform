@@ -51,6 +51,14 @@ export function PipelineTimeline({ job }: Props) {
         </div>
       )}
 
+      {job.output?.qualitySummary && (
+        <div className="pipeline-warning" role="status">
+          <strong>{job.output.qualitySummary.passed ? "正文约束检查通过" : "正文已保存，部分要求未达到"}</strong>
+          <p className="muted">字数 {job.output.qualitySummary.charCount}；目标 {job.output.qualitySummary.minChars ?? 1}–{job.output.qualitySummary.maxChars ?? 20000} 字</p>
+          {job.output.qualitySummary.missingFacts.length > 0 && <p className="muted">缺少指定片段：{job.output.qualitySummary.missingFacts.join("、")}</p>}
+          <p className="muted">片段命中仅供核对，情节与语义仍需审阅。</p>
+        </div>
+      )}
       {job.output?.diagnosticWarning && (
         <div className="pipeline-warning" role="status">
           <span className="tag tag-warning">诊断未排队</span>
@@ -71,7 +79,7 @@ export function PipelineTimeline({ job }: Props) {
             <span>读者评分 {diag.readerScore}</span>
             <span>钩子 {diag.hookStrength}</span>
             <span>节奏 {diag.pacingScore}</span>
-            <span>风格漂移 {diag.styleDrift}</span>
+            <span>风格漂移 {diag.styleDrift}（越低越好）</span>
           </div>
           {diag.suggestions && diag.suggestions.length > 0 && (
             <ul className="diagnostic-suggestions">

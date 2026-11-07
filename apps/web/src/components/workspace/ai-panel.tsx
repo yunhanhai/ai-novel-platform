@@ -4,6 +4,8 @@ import { useState } from "react";
 import { ContextComposer } from "./context-composer";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import type { QualityMode } from "@ai-novel/shared/generation/performance";
+import { parseQualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
+import type { QualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
 import {
   labelForGenerationJobStatus,
   labelForGenerationJobType,
@@ -11,7 +13,7 @@ import {
 } from "../../lib/display-labels";
 
 interface AiPanelProps {
-  onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions) => void;
+  onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions, qualityConstraints?: QualityConstraints) => void;
   onDiagnose: (qualityMode: QualityMode) => void;
   onContinue: () => void;
   onBatchContinue: (chapterCount: number, extractMemory: boolean) => void;
@@ -32,6 +34,10 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, o
   const isRunning = job ? ["QUEUED", "RUNNING"].includes(job.status) : false;
   const [contextOptions, setContextOptions] = useState<ContextOptions | undefined>(undefined);
   const [qualityMode, setQualityMode] = useState<QualityMode>("balanced");
+  const [minChars, setMinChars] = useState("");
+  const [maxChars, setMaxChars] = useState("");
+  const [requiredFacts, setRequiredFacts] = useState("");
+  const [constraintError, setConstraintError] = useState<string | null>(null);
   const [batchCount, setBatchCount] = useState(3);
   const [batchExtractMemory, setBatchExtractMemory] = useState(true);
   const busy = isStarting || isRunning || !canGenerate;
@@ -82,10 +88,28 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, o
         </div>
       </div>
 
+      <details>
+        <summary>本次正文要求（可选）</summary>
+        <label className="wizard-field"><span>最少字数</span><input aria-label="正文最少字数" type="number" min="1" max="20000" disabled={busy} value={minChars} onChange={e => setMinChars(e.target.value)} /></label>
+        <label className="wizard-field"><span>最多字数</span><input aria-label="正文最多字数" type="number" min="1" max="20000" disabled={busy} value={maxChars} onChange={e => setMaxChars(e.target.value)} /></label>
+        <label className="wizard-field"><span>必须呈现的事实或片段（每行一条）</span><textarea aria-label="正文必含片段" disabled={busy} rows={3} value={requiredFacts} onChange={e => setRequiredFacts(e.target.value)} /></label>
+        <p className="muted">生成后核对字数与指定片段，情节是否成立仍需审阅。</p>
+      </details>
+      {constraintError && <p className="form-error" role="alert">{constraintError}</p>}
       <div className="ai-actions">
         <button
           className="btn-primary"
-          onClick={() => onGenerate(qualityMode, contextOptions)}
+          onClick={() => {
+            try {
+              const rules = minChars || maxChars || requiredFacts.trim() ? parseQualityConstraints({
+                ...(minChars ? { minChars: Number(minChars) } : {}),
+                ...(maxChars ? { maxChars: Number(maxChars) } : {}),
+                requiredFacts: requiredFacts.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+              }) : undefined;
+              setConstraintError(null);
+              onGenerate(qualityMode, contextOptions, rules);
+            } catch (err) { setConstraintError(err instanceof Error ? err.message : "正文要求无效"); }
+          }}
           disabled={busy}
         >
           {generateLabel}

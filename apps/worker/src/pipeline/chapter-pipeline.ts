@@ -1,4 +1,5 @@
-﻿import type { ActivationReport } from "../context/keyword-activation";
+﻿import { parseQualityConstraints, formatQualityConstraints, checkQualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
+import type { ActivationReport } from "../context/keyword-activation";
 import type { StyleGuide, MethodologyGuide } from "../context/build-context-packet";
 import type { ModelGenerateOptions } from "@ai-novel/model-adapters";
 import { estimateTokens as estimatePromptTokens } from "@ai-novel/shared/generation/token-estimate";
@@ -77,7 +78,7 @@ export interface PipelineDeps {
   createStep: (params: { stepKey: string }) => Promise<{ id: string }>;
   updateStep: (params: {
     stepId: string;
-    status: "SUCCEEDED" | "SKIPPED";
+    status: "SUCCEEDED" | "SKIPPED" | "FAILED";
     outputPreview: string;
     inputTokens: number;
     outputTokens: number;
@@ -96,7 +97,9 @@ interface PipelineResult {
 
 export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   const { job, model, buildContext, persistVersion, createStep, updateStep } = deps;
-  const input = job.input as { chapterId: string };
+  const input = job.input as { chapterId: string; qualityConstraints?: unknown };
+  const constraints = parseQualityConstraints(input.qualityConstraints);
+  const qualityHint = formatQualityConstraints(constraints);
   const chapterId = input.chapterId;
 
   const qualityMode = deps.performance?.qualityMode ?? "balanced";
@@ -113,7 +116,18 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
   ): Promise<string> {
     const step = await createStep({ stepKey: key });
     const started = Date.now();
-    const result = await model.generate(promptText, { maxOutputTokens: budget.maxOutputTokens });
+    let result: Awaited<ReturnType<FakeModelLike["generate"]>>;
+    try {
+      result = await model.generate(promptText, {
+        maxOutputTokens: budget.maxOutputTokens,
+        ...(["plan", "review", "extract_memory"].includes(key) ? { responseFormat: "json_object" as const } : {})
+      });
+    } catch (error) {
+      try {
+        await updateStep({ stepId: step.id, status: "FAILED", outputPreview: "模型请求失败，请查看任务错误提示", inputTokens: 0, outputTokens: 0, latencyMs: Date.now() - started, promptSnapshot: promptText.slice(0, 4000) });
+      } catch { /* The provider error remains the poller's source for retry classification. */ }
+      throw error;
+    }
     const elapsed = Date.now() - started;
     const preview = result.text.slice(0, opts.previewLen ?? 200);
 
@@ -172,6 +186,7 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
 
   const planPrompt = `你是一位专业的小说策划。请根据下面的上下文，为本章设计写作计划。只返回合法 JSON，不要任何解释。
 ${context.prompt}${methodologyHint}
+${qualityHint}
 
 输出结构：
 {
@@ -193,6 +208,7 @@ ${context.prompt}${methodologyHint}
 ${JSON.stringify(plan, null, 2)}
 
 ${context.prompt}
+${qualityHint}
 
 只输出章节正文，不要任何解释、标题或前后缀。`;
 
@@ -213,6 +229,7 @@ ${draftText}
 
 上下文：
 ${context.prompt}${reviewExtraText}
+${qualityHint}
 
 只返回合法 JSON，不要任何解释：
 {
@@ -240,6 +257,12 @@ ${context.prompt}${reviewExtraText}
     }
   }
 
+  if (constraints && qualityMode !== "fast") {
+    const measured = checkQualityConstraints(draftText, constraints);
+    if (!measured.lengthPassed) review.issues.push({ type: "pacing", severity: "error", detail: `实际${measured.charCount}字，未达到本次字数要求。`, suggestion: qualityHint });
+    if (measured.missingFacts.length > 0) review.issues.push({ type: "consistency", severity: "error", detail: `正文缺少指定事实片段：${measured.missingFacts.join("、")}`, suggestion: "把这些事实落实为动作、对话或物证，不要仅重复写作要求。" });
+  }
+
   if (qualityMode === "fast") {
     await skipStep("revise", "quality_mode");
   } else if (review.issues.length === 0) {
@@ -252,6 +275,7 @@ ${JSON.stringify(review.issues, null, 2)}
 原章节：
 ${draftText}
 
+${qualityHint}
 修改后的章节：`;
 
     const reviseCheck = tracker.canRunModelStep("revise", { estimatedInputTokens: estimatePromptTokens(revisePrompt) });
@@ -298,6 +322,7 @@ ${draftText}
 
 上下文：
 ${context.prompt}
+${qualityHint}
 
 输出结构：
 {

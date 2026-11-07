@@ -158,3 +158,12 @@ describe("createContinueChapterHandler", () => {
     expect(updateJobStatus).not.toHaveBeenCalled();
   });
 });
+
+it("records actual continuation model latency instead of zero", async () => {
+  const { prisma, tx } = makePrisma();
+  const clock = vi.spyOn(Date, "now").mockReturnValueOnce(1000).mockReturnValue(1820);
+  try {
+    await createContinueChapterHandler({ prisma, updateJobStatus: vi.fn(), model: { generate: vi.fn().mockResolvedValue({ text: "续文", inputTokens: 5, outputTokens: 2 }) } })(makeJob());
+    expect(tx.usageEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ latencyMs: 820 }) }));
+  } finally { clock.mockRestore(); }
+});

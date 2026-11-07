@@ -120,7 +120,9 @@ export function createContinueChapterHandler(deps: HandlerDeps) {
     const existing = chapter.content ?? "";
     const existingTail = existing.slice(-TAIL_CONTEXT_CHARS);
 
+    const started = Date.now();
     const result = await model.generate(buildContinuePrompt(existingTail, targetLength, instruction || undefined));
+    const latencyMs = Date.now() - started;
     const continuation = stripCodeFence(result.text);
     if (!continuation) {
       await fail(job.id, ERROR_CODES.EMPTY_OUTPUT, "模型未返回任何续写文本");
@@ -139,7 +141,7 @@ export function createContinueChapterHandler(deps: HandlerDeps) {
       usage: {
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
-        latencyMs: 0,
+        latencyMs,
         modelName,
         billingSource
       }

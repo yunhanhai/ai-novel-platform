@@ -13,6 +13,7 @@ interface ProfileItem {
   projectId: string | null;
   temperature: number | string | null;
   maxOutputTokens: number | null;
+  settings?: { reasoningEffort?: "low" | "medium" | "high" | null; jsonMode?: boolean } | null;
 }
 
 interface ProviderOption {
@@ -65,6 +66,7 @@ export function ProfilesList() {
       providerId: values.providerId,
       name: values.name,
       modelName: values.modelName,
+      settings: { reasoningEffort: values.reasoningEffort || null, jsonMode: values.jsonMode },
       taskType: values.taskType
     };
     const tempNum = Number(values.temperature);
@@ -87,6 +89,7 @@ export function ProfilesList() {
     const payload: Record<string, unknown> = {
       name: values.name,
       modelName: values.modelName,
+      settings: { ...(items?.find(item => item.id === id)?.settings ?? {}), reasoningEffort: values.reasoningEffort || null, jsonMode: values.jsonMode },
       taskType: values.taskType
     };
     if (values.temperature === "") {
@@ -208,6 +211,8 @@ export function ProfilesList() {
             taskType: (TASK_TYPES as readonly string[]).includes(dialog.profile.taskType)
               ? (dialog.profile.taskType as TaskType)
               : "default",
+            reasoningEffort: dialog.profile.settings?.reasoningEffort ?? "",
+            jsonMode: dialog.profile.settings?.jsonMode === true,
             temperature:
               dialog.profile.temperature === null ? "" : String(dialog.profile.temperature),
             maxOutputTokens:

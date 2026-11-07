@@ -59,7 +59,7 @@ export function createJobModelResolver(params: CreateJobModelResolverParams) {
     try {
       const adapter = await createAdapter(provider, modelName, { encryptionKey, env });
       return {
-        generate: (prompt: string, options?: ModelGenerateOptions) => adapter.generate(prompt, options),
+        generate: (prompt: string, options?: ModelGenerateOptions) => adapter.generate(prompt, profileOptions(profile, options)),
         modelName,
         billingSource: provider.authMode === "USER_KEY" ? "USER_KEY" : "PLATFORM"
       };
@@ -68,5 +68,28 @@ export function createJobModelResolver(params: CreateJobModelResolverParams) {
       logger.warn(`Failed to create model adapter: ${msg}`);
       throw error;
     }
+  };
+}
+
+function profileOptions(profile: Record<string, unknown>, options?: ModelGenerateOptions): ModelGenerateOptions {
+  const settings = profile.settings && typeof profile.settings === "object" && !Array.isArray(profile.settings)
+    ? profile.settings as Record<string, unknown> : {};
+  const numeric = (value: unknown, min: number, max: number): number | undefined => {
+    if (value === null || value === undefined) return undefined;
+    const n = Number(String(value));
+    return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
+  };
+  const temperature = numeric(profile.temperature, 0, 2);
+  const topP = numeric(profile.topP, 0, 1);
+  const limit = numeric(profile.maxOutputTokens, 1, 40000);
+  const reasoningEffort = settings.reasoningEffort;
+  const { responseFormat, ...request } = options ?? {};
+  return {
+    ...(temperature !== undefined ? { temperature } : {}),
+    ...(topP !== undefined ? { topP } : {}),
+    ...(reasoningEffort === "low" || reasoningEffort === "medium" || reasoningEffort === "high" ? { reasoningEffort } : {}),
+    ...request,
+    ...(limit !== undefined ? { maxOutputTokens: Math.min(Math.trunc(limit), options?.maxOutputTokens ?? limit) } : {}),
+    ...(settings.jsonMode === true && responseFormat === "json_object" ? { responseFormat } : {})
   };
 }

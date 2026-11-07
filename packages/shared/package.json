@@ -16,6 +16,7 @@
     "./eval/rubric": "./src/eval/rubric.ts",
     "./env": "./src/env.ts",
     "./generation/state": "./src/generation/state.ts",
+    "./generation/quality-constraints": "./src/generation/quality-constraints.ts",
     "./generation/word-count": "./src/generation/word-count.ts",
     "./generation/performance": "./src/generation/performance.ts",
     "./generation/token-estimate": "./src/generation/token-estimate.ts",

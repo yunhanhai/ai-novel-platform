@@ -1,4 +1,5 @@
-﻿import type { PrismaClient, Prisma } from "@ai-novel/db";
+﻿import { parseQualityConstraints, checkQualityConstraints, type QualitySummary } from "@ai-novel/shared/generation/quality-constraints";
+import type { PrismaClient, Prisma } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { buildContextPacket } from "@ai-novel/shared/context-composer/build-context-packet";
 import { normalizeContextOptions, resolveTokenBudget } from "@ai-novel/shared/context-composer/options";
@@ -497,6 +498,7 @@ interface FinalOutput {
   wordCount: number;
   contextSummary?: ContextSummary;
   performanceSummary?: PerformanceSummary;
+  qualitySummary?: QualitySummary;
 }
 
 export async function commitFinalize(params: CommitParams): Promise<FinalOutput> {
@@ -532,12 +534,14 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       select: { id: true, versionNo: true }
     });
 
+    const rules = job.jobType === "GENERATE_CHAPTER" ? parseQualityConstraints((job.input as { qualityConstraints?: unknown } | null)?.qualityConstraints) : undefined;
     const output = {
       chapterId: chapter.id,
       versionId: version.id,
       versionNo: version.versionNo,
       wordCount,
       ...(contextSummary ? { contextSummary } : {}),
+      ...(rules ? { qualitySummary: checkQualityConstraints(finalContent, rules) } : {}),
       ...(performanceSummary ? { performanceSummary } : {})
     };
 

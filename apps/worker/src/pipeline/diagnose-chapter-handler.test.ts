@@ -196,3 +196,24 @@ describe("createDiagnoseChapterHandler", () => {
     expect(prompt).toContain("文风");
   });
 });
+
+it.each(["{}", '{"readerScore":80}', '{"readerScore":80,"abandonRisk":"low","hookStrength":"90","pacingScore":75,"styleDrift":10,"continuityIssues":[],"suggestions":[]}'])("marks incomplete or mistyped JSON as degraded: %s", async (text) => {
+  const update = vi.fn();
+  await createDiagnoseChapterHandler({ prisma: createPrismaStub() as never, updateJobStatus: update, model: { generate: vi.fn().mockResolvedValue({ text, inputTokens: 3, outputTokens: 3 }) } })(baseJob);
+  expect(update).toHaveBeenCalledWith(expect.objectContaining({ output: expect.objectContaining({ diagnosticDegraded: true }) }));
+});
+
+it("closes the diagnostic step on provider failure and preserves the error for poll retry", async () => {
+  const prisma = createPrismaStub();
+  const failure = new Error("Request timed out.");
+  await expect(createDiagnoseChapterHandler({ prisma: prisma as never, updateJobStatus: vi.fn(), model: { generate: vi.fn().mockRejectedValue(failure) } })(baseJob)).rejects.toBe(failure);
+  expect(prisma.generationStep.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ promptSnapshot: expect.stringContaining("风格漂移") }) }));
+  expect(prisma.generationStep.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step-1" }, data: expect.objectContaining({ status: "FAILED", finishedAt: expect.any(Date) }) }));
+});
+
+it("requests JSON output and defines score direction and evidence scope", async () => {
+  const model = { generate: vi.fn().mockResolvedValue({ text: "{}", inputTokens: 3, outputTokens: 3 }) };
+  await createDiagnoseChapterHandler({ prisma: createPrismaStub() as never, updateJobStatus: vi.fn(), model })(baseJob);
+  expect(model.generate).toHaveBeenCalledWith(expect.stringContaining("0=无漂移"), expect.objectContaining({ responseFormat: "json_object" }));
+  expect(model.generate.mock.calls[0]?.[0]).toContain("未写出的事件");
+});

@@ -112,6 +112,8 @@ export function createDiagnoseChapterHandler(deps: HandlerDeps) {
     const budget = normalizePerformanceBudget(qualityMode, input.performanceBudget);
     const tracker = createPerformanceTracker({ qualityMode, budget });
 
+    let stepId: string | undefined;
+    let stepFinished = false;
     try {
       const prompt = buildDiagnosticPrompt({
         focus: DIAGNOSTIC_FOCUS[diagnosticType],
@@ -128,14 +130,16 @@ export function createDiagnoseChapterHandler(deps: HandlerDeps) {
           organizationId: job.organizationId,
           jobId: job.id,
           stepKey: "diagnose_chapter",
+          promptSnapshot: prompt.slice(0, 4000),
           status: "RUNNING",
           startedAt: new Date()
         },
         select: { id: true }
       });
 
+      stepId = step.id;
       const started = Date.now();
-      const result = await model.generate(prompt, { maxOutputTokens: budget.maxOutputTokens });
+      const result = await model.generate(prompt, { maxOutputTokens: budget.maxOutputTokens, responseFormat: "json_object" });
       const latencyMs = Date.now() - started;
       await recordModelUsage({ prisma, job, model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, latencyMs });
 
@@ -155,6 +159,7 @@ export function createDiagnoseChapterHandler(deps: HandlerDeps) {
         }
       });
 
+      stepFinished = true;
       await updateJobStatus({
         jobId: job.id,
         status: "SUCCEEDED",
@@ -168,6 +173,10 @@ export function createDiagnoseChapterHandler(deps: HandlerDeps) {
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "diagnose failed";
+      if (stepId && !stepFinished) {
+        try { await prisma.generationStep.update({ where: { id: stepId }, data: { status: "FAILED", finishedAt: new Date(), errorMessage: "诊断请求失败，请查看任务错误提示" } }); }
+        catch { /* Preserve the provider error for the poller's retry classification. */ }
+      }
       console.error(`[diagnose:${diagnosticType}] failed for job ${job.id}: ${message}`);
       throw error;
     }
@@ -203,7 +212,7 @@ function diagnoseFromText(text: string): { summary: DiagnosticSummary; degraded:
   if (!match) return { summary: degradedSummary(), degraded: true };
   try {
     const raw = JSON.parse(match[0]) as RawDiagnostic;
-    return { summary: normalizeDiagnostic(raw), degraded: false };
+    return { summary: normalizeDiagnostic(raw), degraded: !isCompleteDiagnostic(raw) };
   } catch {
     return { summary: degradedSummary(), degraded: true };
   }
@@ -294,5 +303,18 @@ ${params.content.slice(0, 8000)}
   "suggestions": [""]
 }
 
-所有评分均为 0-100 的整数。`;
+readerScore、hookStrength、pacingScore越高越好；styleDrift表示风格漂移，0=无漂移、100=完全偏离，越低越好。所有评分均为0-100整数。
+只输出最终JSON，最多3条连续性问题、3条建议，每条不超过60字。不得把梗概中未写出的事件当作正文已发生的事实。`;
+}
+
+function isCompleteDiagnostic(raw: RawDiagnostic): boolean {
+  const scores = [raw.readerScore, raw.hookStrength, raw.pacingScore, raw.styleDrift];
+  return scores.every(score => typeof score === "number" && Number.isFinite(score)) &&
+    ["low", "medium", "high"].includes(String(raw.abandonRisk)) &&
+    Array.isArray(raw.suggestions) && raw.suggestions.every(s => typeof s === "string" && s.trim().length > 0) &&
+    Array.isArray(raw.continuityIssues) && raw.continuityIssues.every(issue => {
+      if (!issue || typeof issue !== "object") return false;
+      const row = issue as Record<string, unknown>;
+      return ["info", "warning", "error"].includes(String(row.severity)) && typeof row.detail === "string" && row.detail.trim().length > 0 && typeof row.suggestion === "string";
+    });
 }

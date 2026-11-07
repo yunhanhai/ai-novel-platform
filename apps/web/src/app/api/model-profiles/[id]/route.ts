@@ -1,3 +1,4 @@
+import { validProfileSettings } from "../../../../server/model-profile-settings";
 import { NextResponse } from "next/server";
 import { sanitizeServerMessage } from "../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
@@ -12,6 +13,7 @@ interface RouteContext {
 }
 
 interface PatchBody {
+  settings?: { reasoningEffort?: "low" | "medium" | "high" | null; jsonMode?: boolean };
   name?: string;
   modelName?: string;
   taskType?: string;
@@ -28,6 +30,7 @@ const VALID_TASK_TYPES = new Set([
 export async function PATCH(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const body = (await request.json()) as PatchBody;
+  if (body.settings !== undefined && !validProfileSettings(body.settings)) return NextResponse.json({ success: false, error: "模型推理强度或JSON模式设置无效" }, { status: 400 });
 
   if (body.taskType && !VALID_TASK_TYPES.has(body.taskType)) {
     return NextResponse.json(

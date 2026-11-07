@@ -77,6 +77,14 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   // 6. 选择「均衡」质量模式并触发 GENERATE_CHAPTER（AI 面板默认是激活 tab）
   await expect(page.getByRole("heading", { name: "AI 助手" })).toBeVisible();
   await page.getByRole("radio", { name: "均衡" }).click();
+  await page.getByText("本次正文要求（可选）", { exact: true }).click();
+  await page.getByLabel("正文最少字数").fill("900");
+  await page.getByLabel("正文最多字数").fill("700");
+  await page.getByRole("button", { name: "生成章节" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "质量约束无效" })).toContainText("质量约束无效");
+  await page.getByLabel("正文最少字数").fill("1");
+  await page.getByLabel("正文最多字数").fill("5000");
+  await page.getByLabel("正文必含片段").fill("林墨\n推开门");
   await page.getByRole("button", { name: "生成章节" }).click();
 
   // 7. 等待 job 类型显示为“生成章节”且状态达到“已完成”
@@ -90,6 +98,7 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   const editor = page.locator("textarea").first();
   await expect(editor).not.toBeEmpty({ timeout: 10_000 });
 
+  await expect(page.getByText("正文约束检查通过", { exact: true })).toBeVisible();
   await expect(page.getByText(/上下文约 .* tokens/)).toBeVisible();
   await page.getByRole("tab", { name: "性能", exact: true }).click();
   await expect(page.locator(".performance-panel")).toBeVisible();

@@ -56,3 +56,9 @@ describe("buildGenerationRequestBody", () => {
     expect((body.input as Record<string, unknown>).instruction).toBeUndefined();
   });
 });
+
+it("sends explicit chapter constraints only for chapter generation",()=>{
+  const qualityConstraints={minChars:700,maxChars:900,requiredFacts:["死亡时间"]};
+  expect(buildGenerationRequestBody({chapterId:"c1",jobType:"GENERATE_CHAPTER",qualityConstraints} as never)).toMatchObject({input:{qualityConstraints}});
+  expect(buildGenerationRequestBody({chapterId:"c1",jobType:"DIAGNOSE_CHAPTER",qualityConstraints} as never).input).toBeUndefined();
+});

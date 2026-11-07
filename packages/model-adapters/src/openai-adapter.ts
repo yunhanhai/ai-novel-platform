@@ -18,6 +18,8 @@ export function createOpenAIAdapter(config: OpenAIAdapterConfig): ModelAdapter {
     const response = await client.chat.completions.create({
       model: config.modelName,
       messages: [{ role: "user", content: prompt }],
+      ...(options?.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
+      ...(options?.responseFormat ? { response_format: { type: options.responseFormat } } : {}),
       ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(options?.topP !== undefined ? { top_p: options.topP } : {}),
       ...(options?.maxOutputTokens !== undefined ? { max_tokens: options.maxOutputTokens } : {})

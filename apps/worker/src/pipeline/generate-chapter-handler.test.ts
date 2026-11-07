@@ -617,3 +617,12 @@ describe("generation context evidence", () => {
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ organizationId: "org-1", projectId: "proj-1" }) }));
   });
 });
+
+it("preserves generated prose and exposes failed deterministic constraints without extra calls",async()=>{
+  const {prisma,tx}=createPrismaStub();
+  const model={generate:vi.fn().mockResolvedValue({text:"短正文",inputTokens:3,outputTokens:3})};
+  await createGenerateChapterHandler({prisma:prisma as never,updateJobStatus:vi.fn(),model})({...baseJob,input:{qualityMode:"fast",performanceBudget:{maxModelCalls:2},qualityConstraints:{minChars:700,maxChars:900,requiredFacts:["死亡预告"]}}});
+  expect(model.generate).toHaveBeenCalledTimes(2);
+  expect(tx.contentVersion.create.mock.calls[0]?.[0].data.content).toBe("短正文");
+  expect(tx.generationJob.update.mock.calls[0]?.[0].data.output.qualitySummary).toMatchObject({passed:false,charCount:3,lengthPassed:false,missingFacts:["死亡预告"]});
+});

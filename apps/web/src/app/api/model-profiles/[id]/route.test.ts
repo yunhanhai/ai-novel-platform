@@ -68,3 +68,8 @@ describe("model-profiles [id]", () => {
     expect(res.status).toBe(404);
   });
 });
+
+it("rejects invalid JSON tuning on PATCH without delegating", async () => {
+  const response = await PATCH(new Request("http://localhost/api/model-profiles/mpf1", { method: "PATCH", body: JSON.stringify({ settings: { jsonMode: "yes" } }) }), ctx("mpf1"));
+  expect(response.status).toBe(400);
+});

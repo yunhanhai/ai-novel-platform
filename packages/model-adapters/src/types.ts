@@ -5,6 +5,8 @@ export interface ModelResult {
 }
 
 export interface ModelGenerateOptions {
+  reasoningEffort?: "low" | "medium" | "high";
+  responseFormat?: "json_object";
   temperature?: number;
   topP?: number;
   maxOutputTokens?: number;

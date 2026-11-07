@@ -24,6 +24,8 @@ export interface ProfileFormValues {
   taskType: TaskType;
   temperature: string;
   maxOutputTokens: string;
+  reasoningEffort: "" | "low" | "medium" | "high";
+  jsonMode: boolean;
 }
 
 interface ProviderOption {
@@ -45,7 +47,9 @@ const DEFAULTS: ProfileFormValues = {
   modelName: "",
   taskType: "default",
   temperature: "",
-  maxOutputTokens: ""
+  maxOutputTokens: "",
+  reasoningEffort: "",
+  jsonMode: false
 };
 
 export function ProfileForm({ mode, initial, providers, onSubmit, onCancel }: ProfileFormProps) {
@@ -152,6 +156,19 @@ export function ProfileForm({ mode, initial, providers, onSubmit, onCancel }: Pr
         </label>
       </div>
 
+      <label className="wizard-field">
+        <span>推理强度</span>
+        <select value={values.reasoningEffort} onChange={(e) => patch({ reasoningEffort: e.target.value as ProfileFormValues["reasoningEffort"] })}>
+          <option value="">模型默认</option>
+          <option value="low">低</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+        </select>
+      </label>
+      <label className="wizard-field">
+        <span><input type="checkbox" checked={values.jsonMode} onChange={(e) => patch({ jsonMode: e.target.checked })} /> 诊断与规划使用 JSON 模式</span>
+        <small className="muted">仅在供应商支持时开启；正文仍输出纯文本。</small>
+      </label>
       {error && <p className="form-error">{error}</p>}
 
       <div className="settings-form-actions">

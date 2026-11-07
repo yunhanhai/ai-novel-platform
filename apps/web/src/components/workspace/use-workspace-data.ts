@@ -2,6 +2,7 @@
 
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import type { QualityMode } from "@ai-novel/shared/generation/performance";
+import type { QualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildGenerationRequestBody } from "./job-request";
 
@@ -354,6 +355,7 @@ export interface JobSummary {
     };
     performanceSummary?: PerformanceSummaryView;
     diagnosticSummary?: DiagnosticSummaryView;
+    qualitySummary?: { passed: boolean; charCount: number; minChars?: number; maxChars?: number; lengthPassed: boolean; missingFacts: string[] };
     diagnosticDegraded?: boolean;
     diagnosticWarning?: string;
     mode?: string;
@@ -399,6 +401,7 @@ interface UseJobPollingResult {
 }
 
 interface StartJobOptions {
+  qualityConstraints?: QualityConstraints;
   contextOptions?: ContextOptions;
   qualityMode?: QualityMode;
   selectedText?: string;
@@ -448,6 +451,7 @@ export function useJobPolling(): UseJobPollingResult {
           projectId: options?.projectId,
           jobType,
           qualityMode: options?.qualityMode,
+          qualityConstraints: options?.qualityConstraints,
           contextOptions: options?.contextOptions,
           selectedText: options?.selectedText,
           instruction: options?.instruction,

@@ -18,6 +18,7 @@ import { OutlinePanel } from "./outline-panel";
 import type { JobSummary } from "./use-workspace-data";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import type { QualityMode } from "@ai-novel/shared/generation/performance";
+import type { QualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
 
 type TabKey =
   | "ai" | "characters" | "world" | "threads" | "memories"
@@ -44,7 +45,7 @@ interface Props {
   projectId: string | null;
   chapterId: string | null;
   currentChapterText: string;
-  onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions) => void;
+  onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions, qualityConstraints?: QualityConstraints) => void;
   onDiagnose: (qualityMode: QualityMode) => void;
   onContinue: () => void;
   onBatchContinue: (chapterCount: number, extractMemory: boolean) => void;

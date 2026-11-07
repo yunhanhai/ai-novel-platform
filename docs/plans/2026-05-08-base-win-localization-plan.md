@@ -1080,3 +1080,13 @@ git diff --check
 - [x] Verify 1003 tests passed + 1 skipped, typecheck5/5 and production build; retain actual model evidence outsideGit and document quality/latency/cost limits.
 - [x] Close final Step diagnostic as a 120s timeout failure without retry or invented scores; retain the receipt, preserve successful prose, and record partial acceptance in reports/2026-11-07-napi-real-acceptance.md. Integrate the reviewed change and synchronize both master refs with external commit/tree receipts.
 - [ ] Remaining quality work: generated length/death-preview fidelity, GLM full-task reliability, Step diagnostic completion, small balanced run and independent supplier evaluation; no claim of full13-task or browser real acceptance.
+## Task 56: 2026-11-07 Diagnostic and Quality Follow-up
+
+- [x] Inspect raw response/config/job/step evidence; separate absent final content from successful HTTP, and avoid using reasoning as output.
+- [x] Add opt-in profile reasoning/JSON settings and apply existing tuning fields at runtime; validate API inputs and preserve plain-text draft/continuation behavior.
+- [x] Fix degraded JSON detection, diagnostic/generation failed-step closure, explicit score direction and actual continuation latency with RED/GREEN coverage.
+- [x] Carry explicit length/required-fragment constraints from UI through API and pipeline, report deterministic pass/failure honestly, and reuse at most one budget-limited balanced revision.
+- [x] Real Step diagnostic succeeded without fallback; fast generation length failure and balanced120s timeout preserved; explicit continuation retains prefix, version2 and nonzero measured latency.
+- [x] Verify1029 tests+1 skipped, typecheck5/5, production build, browser3 passed+1 skipped in process-scoped fake mode, real SDK loopback7 and rollback-only real DB failure fixture.
+- [x] Update report/progress/manual; keep private files and prose outsideGit; integrate task branch into master and synchronize both remotes with commit/tree receipts outsideGit.
+- [ ] Remaining: stable balanced generation under the chosen channel, causal/content quality reviewed by the author, GLM full-task reliability and independent scoring evidence.

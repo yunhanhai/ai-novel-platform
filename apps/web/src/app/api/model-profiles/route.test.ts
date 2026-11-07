@@ -103,3 +103,17 @@ it("returns 404 for foreign provider/project profile associations", async () => 
   const res = await POST(req({ providerId: "foreign", name: "x", modelName: "x", taskType: "default" }));
   expect(res.status).toBe(404);
 });
+it("persists validated profile JSON tuning from the setup API", async () => {
+  cp().mockResolvedValue({ id: "tuned" });
+  await POST(req({ providerId: "mp1", name: "json", modelName: "step-test", taskType: "default", settings: { reasoningEffort: "low", jsonMode: true } }));
+  expect(cp()).toHaveBeenLastCalledWith(expect.objectContaining({ settings: { reasoningEffort: "low", jsonMode: true } }));
+});
+
+it("rejects unsupported reasoning effort before saving", async () => {
+  const response = await POST(req({ providerId: "mp1", name: "bad", modelName: "step-test", taskType: "default", settings: { reasoningEffort: "infinite" } }));
+  expect(response.status).toBe(400);
+});
+it("rejects array-shaped reasoning effort", async () => {
+  const response = await POST(req({ providerId: "mp1", name: "bad", modelName: "step-test", taskType: "default", settings: { reasoningEffort: ["low"] } }));
+  expect(response.status).toBe(400);
+});

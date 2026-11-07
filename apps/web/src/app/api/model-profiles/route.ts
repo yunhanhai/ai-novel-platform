@@ -1,3 +1,4 @@
+import { validProfileSettings } from "../../../server/model-profile-settings";
 import { NextResponse } from "next/server";
 import { sanitizeServerMessage } from "../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
@@ -14,6 +15,7 @@ const VALID_TASK_TYPES = new Set([
 ]);
 
 interface CreateBody {
+  settings?: { reasoningEffort?: "low" | "medium" | "high" | null; jsonMode?: boolean };
   providerId?: string;
   name?: string;
   modelName?: string;
@@ -46,7 +48,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = (await request.json()) as CreateBody;
-  const { providerId, name, modelName, taskType, projectId, temperature, topP, maxOutputTokens } = body;
+  const { providerId, name, modelName, taskType, projectId, temperature, topP, maxOutputTokens, settings } = body;
+  if (settings !== undefined && !validProfileSettings(settings)) return NextResponse.json({ success: false, error: "模型推理强度或JSON模式设置无效" }, { status: 400 });
 
   if (!providerId || !name || !modelName || !taskType) {
     return NextResponse.json(
@@ -73,6 +76,7 @@ export async function POST(request: Request) {
       ...(typeof temperature === "number" ? { temperature } : {}),
       ...(typeof topP === "number" ? { topP } : {}),
       ...(typeof maxOutputTokens === "number" ? { maxOutputTokens } : {}),
+      ...(settings !== undefined ? { settings } : {}),
       prisma
     });
     return NextResponse.json({ success: true, data: profile }, { status: 201 });

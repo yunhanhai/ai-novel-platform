@@ -78,3 +78,25 @@ describe.each(["openai", "anthropic"] as const)("%s SDK request limits through r
     } finally { await stop(local.server); }
   });
 });
+
+it("sends JSON mode and reasoning effort through the real OpenAI SDK over loopback HTTP", async () => {
+  let payload: Record<string, unknown> | undefined;
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", data => { body += data.toString(); });
+    req.on("end", () => {
+      payload = JSON.parse(body);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ id: "local-json", object: "chat.completion", created: 0, model: "loopback-model", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: '{"ok":true}' } }], usage: { prompt_tokens: 2, completion_tokens: 4 } }));
+    });
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing local address");
+    const model = createOpenAIAdapter({ apiKey: "loopback-placeholder", baseUrl: `http://127.0.0.1:${address.port}/v1`, modelName: "loopback-model", providerType: "OPENAI_COMPATIBLE" });
+    const result = await model.generate("Return JSON", { responseFormat: "json_object", reasoningEffort: "low", maxOutputTokens: 128, timeoutMs: 2000, maxRetries: 0 });
+    expect(result.text).toBe('{"ok":true}');
+    expect(payload).toMatchObject({ model: "loopback-model", response_format: { type: "json_object" }, reasoning_effort: "low", max_tokens: 128 });
+  } finally { await stop(server); }
+});

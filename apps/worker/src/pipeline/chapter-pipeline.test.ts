@@ -214,3 +214,32 @@ describe("chapter-pipeline", () => {
     expect(result.performanceSummary.modelCalls).toBe(2);
   });
 });
+it("propagates explicit length and required facts through plan, draft, review and revision", async()=>{
+  const deps=mockDeps();
+  deps.job.input={chapterId:"c5",qualityConstraints:{minChars:700,maxChars:900,requiredFacts:["死亡时间","明天"]}};
+  await runChapterPipeline(deps);
+  const calls=(deps.model.generate as ReturnType<typeof vi.fn>).mock.calls;
+  for(const [prompt] of calls.slice(0,4)){
+    expect(prompt).toContain("700"); expect(prompt).toContain("900"); expect(prompt).toContain("死亡时间");
+  }
+});
+it("uses the existing balanced revise step for measured length failures even when model review passes",async()=>{
+  const model={generate:vi.fn()
+    .mockResolvedValueOnce({text:'{"chapterGoal":"write","sceneBeats":[],"charactersInScene":[]}',inputTokens:1,outputTokens:1})
+    .mockResolvedValueOnce({text:"短正文",inputTokens:1,outputTokens:1})
+    .mockResolvedValueOnce({text:'{"issues":[],"passed":true}',inputTokens:1,outputTokens:1})
+    .mockResolvedValueOnce({text:"完整正文",inputTokens:1,outputTokens:1})
+    .mockResolvedValueOnce({text:"{}",inputTokens:1,outputTokens:1})};
+  const deps=mockDeps({model});deps.job.input={chapterId:"c5",qualityConstraints:{minChars:700,maxChars:900,requiredFacts:["死亡时间"]}};
+  await runChapterPipeline(deps);
+  expect(model.generate.mock.calls[3]?.[0]).toContain("实际3字");
+  expect(model.generate.mock.calls[3]?.[0]).toContain("死亡时间");
+  expect(deps.persistVersion).toHaveBeenCalledWith(expect.objectContaining({content:"完整正文"}));
+});
+it("closes the active generation step when the provider fails without replacing its error",async()=>{
+  const failure=new Error("Request timed out.");
+  const deps=mockDeps({model:{generate:vi.fn().mockRejectedValue(failure)}});
+  await expect(runChapterPipeline(deps)).rejects.toBe(failure);
+  expect(deps.updateStep).toHaveBeenCalledWith(expect.objectContaining({status:"FAILED",promptSnapshot:expect.stringContaining("小说策划")}));
+  expect(deps.persistVersion).not.toHaveBeenCalled();
+});

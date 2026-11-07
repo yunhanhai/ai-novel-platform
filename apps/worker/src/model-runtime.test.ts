@@ -201,3 +201,21 @@ describe("model-runtime", () => {
     expect(getEncryptionKey({ ENCRYPTION_KEY: key })).toBeNull();
   });
 });
+
+it("honors profile tuning, caps step output and gates structured output by profile capability", async () => {
+  const adapter = { generate: vi.fn().mockResolvedValue({ text: "{}", inputTokens: 3, outputTokens: 3 }) };
+  mockResolveModelProfile.mockResolvedValue({ provider: platformProvider, modelName: "step-test", temperature: { toString: () => "0.5" }, topP: 0.9, maxOutputTokens: 2048, settings: { reasoningEffort: "low", jsonMode: true, apiKey: "ignored" } });
+  mockCreateAdapter.mockResolvedValue(adapter);
+  const model = await createJobModelResolver({ prisma: {} as never, useFakeModel: false, env: {} })(baseJob);
+  const signal = new AbortController().signal;
+  await model!.generate("json", { maxOutputTokens: 4096, responseFormat: "json_object", signal, maxRetries: 0 } as never);
+  expect(adapter.generate).toHaveBeenLastCalledWith("json", expect.objectContaining({ temperature: 0.5, topP: 0.9, maxOutputTokens: 2048, reasoningEffort: "low", responseFormat: "json_object", signal, maxRetries: 0 }));
+  await model!.generate("draft", { maxOutputTokens: 1024 });
+  expect(adapter.generate.mock.calls.at(-1)?.[1]).toMatchObject({ maxOutputTokens: 1024 });
+  expect(adapter.generate.mock.calls.at(-1)?.[1]).not.toHaveProperty("responseFormat");
+  expect(adapter.generate.mock.calls.at(-1)?.[1]).not.toHaveProperty("apiKey");
+  mockResolveModelProfile.mockResolvedValue({ provider: platformProvider, modelName: "legacy" });
+  const legacy = await createJobModelResolver({ prisma: {} as never, useFakeModel: false, env: {} })(baseJob);
+  await legacy!.generate("json", { responseFormat: "json_object" } as never);
+  expect(adapter.generate.mock.calls.at(-1)?.[1]).not.toHaveProperty("responseFormat");
+});

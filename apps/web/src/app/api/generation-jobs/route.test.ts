@@ -186,3 +186,8 @@ describe("POST /api/generation-jobs", () => {
     expect(res.status).toBe(400);
   });
 });
+
+it("rejects reversed chapter length bounds before creating a job",async()=>{
+  const res=await POST(new Request("http://localhost/api/generation-jobs",{method:"POST",body:JSON.stringify({chapterId:"ch-1",jobType:"GENERATE_CHAPTER",input:{qualityConstraints:{minChars:900,maxChars:700}}})}));
+  expect(res.status).toBe(400);
+});
