@@ -1,3 +1,4 @@
+import { lockMemorySourceChapter, supersedeChapterMemories } from "@ai-novel/db/chapter-memory";
 import type { PrismaClient } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { withVersionRetry } from "./version-retry";
@@ -56,14 +57,15 @@ export async function restoreChapterVersion({ organizationId, versionId, updated
 
   return withVersionRetry(() =>
     prisma.$transaction(async (tx) => {
+      const current = await lockMemorySourceChapter({ tx, organizationId, chapterId: chapter.id });
       // 当前正文先快照成新版本（避免被覆盖丢失）
-      if (chapter.content && chapter.content.trim().length > 0) {
+      if (current.content && current.content.trim().length > 0) {
         const latest = await tx.contentVersion.findFirst({
           where: { entityType: "CHAPTER", entityId: chapter.id },
           orderBy: { versionNo: "desc" },
           select: { versionNo: true, content: true }
         });
-        if (!latest || latest.content !== chapter.content) {
+        if (!latest || latest.content !== current.content) {
           await tx.contentVersion.create({
             data: {
               organizationId,
@@ -71,7 +73,7 @@ export async function restoreChapterVersion({ organizationId, versionId, updated
               entityType: "CHAPTER",
               entityId: chapter.id,
               versionNo: (latest?.versionNo ?? 0) + 1,
-              content: chapter.content,
+              content: current.content,
               source: "MANUAL",
               createdById: updatedById
             }
@@ -79,7 +81,7 @@ export async function restoreChapterVersion({ organizationId, versionId, updated
         }
       }
 
-      return tx.chapter.update({
+      const restored = await tx.chapter.update({
         where: { id: chapter.id },
         data: {
           content: version.content,
@@ -87,6 +89,8 @@ export async function restoreChapterVersion({ organizationId, versionId, updated
           updatedById
         }
       });
+      if (current.content !== version.content) await supersedeChapterMemories({ tx, organizationId, projectId: current.projectId, chapterId: current.id });
+      return restored;
     })
   );
 }

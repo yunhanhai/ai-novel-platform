@@ -1108,3 +1108,12 @@ git diff --check
 - [x] Run one real Step extraction,verify13 scoped memories,unchanged800char chapter and accepted summary in next-chapter context; no extra real generation calls.
 - [x] Verify1058 tests+1skip,typecheck5/5,build,e2e3pass+1skip,4rollback DB cases and status-write rollback; update report/manual/progress, integrate and synchronize both masters with external receipts.
 - [ ] Remaining: author-approved prose/summary semantics,long-chapter coverage and repeated independent-provider quality/reliability evidence.
+## Task 59: 2026-11-07 Source Memory Freshness
+
+- [x] Reproduce active stale source memory after body edit/delete, missing context source filter and stale-tab reacceptance.
+- [x] Lock scoped chapters and supersede old active memories atomically for manual/DESLOP/restore/worker finalize/delete; unchanged body preserves memory.
+- [x] Reject deleted/foreign source context, keep manual source-less project memory, preserve new extraction after invalidation.
+- [x] Repair nonexistent acceptedAt write; lock/reread/conditionally activate memory, reject superseded/rejected and proposed bypass with409.
+- [x] Verify1072 tests+1skip,typecheck5/5,build,e2e3pass+1skip,9rollback DB scenarios,real concurrent lock and invalidation failure rollback; independent83 checks clear.
+- [x] Record report/progress/manual and integrate/synchronize both master refs with external receipts; no external model calls,private prose changes,migration or deployment.
+- [ ] Remaining: author-approved prose/summary semantics,legacy stale-memory audit and actual next-chapter quality under a reliable provider.

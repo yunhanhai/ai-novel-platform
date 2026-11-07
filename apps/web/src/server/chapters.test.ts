@@ -11,10 +11,12 @@ import {
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
   const txClient = {
+    projectMemory: {updateMany: vi.fn().mockResolvedValue({count:0})},
     chapter: { findFirst: vi.fn(), update: vi.fn() },
     contentVersion: { findFirst: vi.fn(), create: vi.fn() }
   };
-  return {
+  const prisma = {
+    projectMemory: {updateMany: vi.fn().mockResolvedValue({count:0})},
     volume: { create: vi.fn() },
     chapter: { create: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     contentVersion: { create: vi.fn(), findFirst: vi.fn() },
@@ -25,6 +27,9 @@ function mockPrisma(overrides: Record<string, unknown> = {}) {
     _tx: typeof txClient;
     $transaction: ReturnType<typeof vi.fn>;
   };
+  Object.assign(txClient, {$queryRaw: vi.fn(async()=>[await txClient.chapter.findFirst()])});
+  Object.assign(prisma, {$queryRaw: vi.fn(async()=>[await prisma.chapter.findFirst()])});
+  return prisma;
 }
 
 const volume = { id: "v1", organizationId: "org1", projectId: "p1", title: "第一卷", orderIndex: 1 };
@@ -370,3 +375,26 @@ describe("chapters", () => {
 function sha256Hex(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
+
+it.each([true,false])("invalidates derived memories only for changed manual content: %s",async changed=>{
+ const old="原正文";const content=changed?"新正文":old;
+ const tx={chapter:{findFirst:vi.fn().mockResolvedValue({id:"c1",projectId:"p1",content:old}),update:vi.fn().mockResolvedValue({id:"c1",content})},$queryRaw:vi.fn().mockResolvedValue([{id:"c1",projectId:"p1",content:old}]),projectMemory:{updateMany:vi.fn().mockResolvedValue({count:1})},contentVersion:{findFirst:vi.fn().mockResolvedValue({versionNo:1,content:old,createdAt:new Date()}),count:vi.fn().mockResolvedValue(1)}};
+ const prisma={$transaction:async(cb:any)=>cb(tx)};
+ await updateChapterContent({organizationId:"org1",chapterId:"c1",content,wordCount:3,updatedById:"u1",prisma:prisma as never});
+ if(changed)expect(tx.projectMemory.updateMany).toHaveBeenCalledWith({where:{organizationId:"org1",projectId:"p1",sourceChapterId:"c1",status:{in:["proposed","accepted"]}},data:{status:"superseded"}});
+ else expect(tx.projectMemory.updateMany).not.toHaveBeenCalled();
+});
+it("supersedes source memories in the soft-delete transaction",async()=>{
+ const {softDeleteChapter}=await import("./chapters");
+ const tx={chapter:{update:vi.fn().mockResolvedValue({id:"c1",deletedAt:new Date()})},$queryRaw:vi.fn().mockResolvedValue([{id:"c1",projectId:"p1",content:"正文"}]),projectMemory:{updateMany:vi.fn().mockResolvedValue({count:2})}};
+ const prisma={$transaction:vi.fn(async(cb:any)=>cb(tx))};
+ await softDeleteChapter("org1","c1",prisma as never);
+ expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+ expect(tx.projectMemory.updateMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({organizationId:"org1",projectId:"p1",sourceChapterId:"c1"}),data:{status:"superseded"}}));
+});
+
+it("propagates memory-invalidation failures so the chapter write transaction can roll back",async()=>{
+ const failure=new Error("memory database failure");
+ const tx={$queryRaw:vi.fn().mockResolvedValue([{id:"c1",projectId:"p1",content:"旧正文"}]),chapter:{update:vi.fn().mockResolvedValue({})},projectMemory:{updateMany:vi.fn().mockRejectedValue(failure)},contentVersion:{findFirst:vi.fn().mockResolvedValue({createdAt:new Date()}),count:vi.fn()}};
+ await expect(updateChapterContent({organizationId:"org1",chapterId:"c1",content:"新正文",wordCount:3,updatedById:"u1",prisma:{$transaction:async(cb:any)=>cb(tx)} as never})).rejects.toBe(failure);
+});

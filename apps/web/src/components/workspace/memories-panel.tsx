@@ -75,8 +75,8 @@ export function MemoriesPanel({ projectId }: { projectId: string | null }) {
 
       <div className="memories-help">
         <p className="muted">
-          记忆来自写后抽取，<strong>需要你确认才会成为项目真源</strong>。
-          已驳回的记忆不会进入后续上下文。
+          章节摘要会自动纳入上下文，其他抽取记忆<strong>需要你审核后采纳</strong>。
+          来源正文修改后旧记忆会失效；已驳回或失效的记忆不会进入后续上下文。
         </p>
       </div>
     </div>

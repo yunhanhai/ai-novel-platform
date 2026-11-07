@@ -1996,3 +1996,13 @@ git diff --check   通过
 - 验证1058单测+1跳过（21/67/50/289/631）、typecheck5/5、build、完整e2e3通过+1跳过（进程fake）；4项真实DB回滚夹具+finalize失败savepoint回滚；独立复核70通过，凭据扫描无泄露。
 - 报告`reports/2026-11-07-memory-grounding.md`保留内容质量限制：摘要语义需人工核对，原AI背景仍需作者修订，不把accepted当人工认可；本轮未验证长章尾部/独立供应商/渠道稳定。
 - 分支codex/memory-grounding完成后快进master并同步双远程、仓库外保存hash回执；不改旧实验、不提交凭据/正文、不部署。下一步作者真实审核记忆，再少量验证下一章影响。
+---
+
+## 2026-11-07 — 来源改写后的记忆失效与采纳修复
+
+- 独立复核确认改写/恢复/续写/删除后旧摘要仍accepted并进入上下文。共享章节行锁与同事务supersede覆盖manual、DESLOP、restore、worker共用finalize和软删除；同正文不失效，新生成合法记忆在同次finalize保存，历史条目保留。
+- web/worker上下文排除已删除或跨域来源，保留source-null人工项目记忆；版本恢复快照读取锁后的最新正文。
+- 浏览器实测发现采纳写不存在acceptedAt导致500，已移除；采纳/proposed状态转移锁来源并条件更新，superseded/rejected无法复活，旧标签页采纳409。面板说明如实区分自动accepted摘要与人工审核。
+- 验证1072单测+1跳过（25/67/50/290/640）、typecheck5/5、build、完整e2e3通过+1跳过（fake）；九项DB回滚场景、真实并发行锁、失效失败回滚及状态绕过检查；最终独立83项通过。外部模型调用0，原800字真实章/13记忆未改。
+- 报告`reports/2026-11-07-memory-freshness.md`记录限制：不批量清洗旧版本已改写来源的遗留摘要，不保证已发出模型请求自动刷新，不证明语义质量。
+- codex/memory-freshness完成后快进master同步双远程并保存hash回执，不改原实验/私有配置，不部署或迁移。下一步作者核对来源章与摘要后再验证真实下一章。

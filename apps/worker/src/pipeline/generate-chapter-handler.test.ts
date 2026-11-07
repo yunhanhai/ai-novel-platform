@@ -19,6 +19,8 @@ const baseJob: GenerationJob = {
 
 function createTxStub(overrides: Partial<TxStub> = {}): TxStub {
   return {
+    $queryRaw: vi.fn().mockResolvedValue([{id:"chapter-1",projectId:"proj-1",content:null}]),
+    projectMemory: {updateMany:vi.fn().mockResolvedValue({count:0})},
     chapter: {
       findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", projectId: "proj-1" }),
       update: vi.fn().mockResolvedValue({})
@@ -42,6 +44,8 @@ function createTxStub(overrides: Partial<TxStub> = {}): TxStub {
 }
 
 interface TxStub {
+  $queryRaw: ReturnType<typeof vi.fn>;
+  projectMemory: {updateMany:ReturnType<typeof vi.fn>};
   chapter: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
   contentVersion: {
     findFirst: ReturnType<typeof vi.fn>;
@@ -648,4 +652,12 @@ it("persists successful pipeline memories in the same finalize transaction as th
  expect(store.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({memoryType:"chapter_summary",sourceChapterId:"chapter-1",sourceJobId:"job-1",status:"accepted"})}));
  expect(store.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({memoryType:"world_fact",status:"proposed"})}));
  expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+});
+it("invalidates prior source memories before saving a generated chapter",async()=>{
+ const {prisma,tx}=createPrismaStub();
+ const store={updateMany:vi.fn().mockResolvedValue({count:2})};
+ const locked={...tx,$queryRaw:vi.fn().mockResolvedValue([{id:"chapter-1",projectId:"proj-1",content:"旧正文"}]),projectMemory:store};
+ prisma.$transaction.mockImplementation(async cb=>cb(locked));
+ await commitFinalize({prisma:prisma as never,job:baseJob,chapter:{id:"chapter-1",projectId:"proj-1",organizationId:"org-1"},finalContent:"新正文",wordCount:3});
+ expect(store.updateMany).toHaveBeenCalledWith({where:{organizationId:"org-1",projectId:"proj-1",sourceChapterId:"chapter-1",status:{in:["proposed","accepted"]}},data:{status:"superseded"}});
 });

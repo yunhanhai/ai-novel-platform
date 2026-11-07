@@ -7,6 +7,7 @@ import {
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
   const prisma = {
+    projectMemory: {updateMany: vi.fn().mockResolvedValue({count:0})},
     contentVersion: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -19,6 +20,7 @@ function mockPrisma(overrides: Record<string, unknown> = {}) {
     ...overrides
   } as unknown as Record<string, unknown> & Parameters<typeof listChapterVersions>[0]["prisma"];
 
+  Object.assign(prisma, {$queryRaw: vi.fn(async()=>[await prisma.chapter.findFirst()])});
   // 事务 mock：直接把 prisma 自身当作 tx 传给回调
   (prisma as Record<string, unknown>).$transaction = vi.fn(
     async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)
@@ -165,4 +167,13 @@ describe("content-versions", () => {
       expect(create).not.toHaveBeenCalled();
     });
   });
+});
+
+it("snapshots the locked current body and invalidates it when restoring an older version",async()=>{
+ const memoryUpdate=vi.fn().mockResolvedValue({count:1}),create=vi.fn();
+ const tx={$queryRaw:vi.fn().mockResolvedValue([{id:"c1",projectId:"p1",content:"并发编辑后的当前正文"}]),projectMemory:{updateMany:memoryUpdate},chapter:{update:vi.fn().mockResolvedValue({id:"c1"})},contentVersion:{findFirst:vi.fn().mockResolvedValue(null),create}};
+ const prisma={contentVersion:{findFirst:vi.fn().mockResolvedValue({id:"v1",entityId:"c1",content:"待恢复版本"})},chapter:{findFirst:vi.fn().mockResolvedValue({id:"c1",projectId:"p1",content:"事务前旧正文"})},$transaction:async(cb:any)=>cb(tx)};
+ await restoreChapterVersion({organizationId:"org1",versionId:"v1",updatedById:"u1",prisma:prisma as never});
+ expect(create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({content:"并发编辑后的当前正文"})}));
+ expect(memoryUpdate).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({sourceChapterId:"c1"}),data:{status:"superseded"}}));
 });

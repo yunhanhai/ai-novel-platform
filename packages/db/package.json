@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./chapter-memory": "./src/chapter-memory.ts",
     "./tenant": "./src/tenant.ts"
   },
   "scripts": {

@@ -1,4 +1,5 @@
-﻿import { persistExtractedMemories } from "./extracted-memory-store";
+﻿import { lockMemorySourceChapter, supersedeChapterMemories, activeMemorySourceFilter } from "@ai-novel/db/chapter-memory";
+import { persistExtractedMemories } from "./extracted-memory-store";
 import type { ExtractOutput } from "./extraction-output";
 import { parseQualityConstraints, checkQualityConstraints, type QualitySummary } from "@ai-novel/shared/generation/quality-constraints";
 import type { PrismaClient, Prisma } from "@ai-novel/db";
@@ -314,7 +315,7 @@ async function buildWorkerContextPacket(params: {
     delegates.character?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, status: "active", deletedAt: null }, orderBy: { createdAt: "asc" } }) ?? Promise.resolve([]),
     delegates.worldItem?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, status: "active", deletedAt: null }, orderBy: [{ priority: "desc" }, { createdAt: "asc" }] }) ?? Promise.resolve([]),
     delegates.plotThread?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, deletedAt: null, status: { in: ["planted", "progressing", "deferred"] } }, orderBy: [{ priority: "desc" }, { createdAt: "asc" }] }) ?? Promise.resolve([]),
-    delegates.projectMemory?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, status: "accepted" }, orderBy: { createdAt: "desc" }, take: 20 }) ?? Promise.resolve([]),
+    delegates.projectMemory?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, status: "accepted", ...activeMemorySourceFilter(job.organizationId, job.projectId) }, orderBy: { createdAt: "desc" }, take: 20 }) ?? Promise.resolve([]),
     delegates.styleProfile?.findFirst({ where: { organizationId: job.organizationId, projectId: job.projectId, isActive: true }, orderBy: { updatedAt: "desc" } }) ?? Promise.resolve(null)
   ]);
 
@@ -517,6 +518,7 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
 
   return prisma.$transaction(async (tx: Tx) => {
     await assertChapterStillValid(tx, chapter, job);
+    const source = await lockMemorySourceChapter({ tx, organizationId: job.organizationId, projectId: job.projectId, chapterId: chapter.id });
     const nextVersionNo = await pickNextVersionNo(tx, chapter.id);
     const finishedAt = new Date();
 
@@ -545,6 +547,7 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       select: { id: true, versionNo: true }
     });
 
+    if (source.content !== finalContent) await supersedeChapterMemories({ tx, organizationId: job.organizationId, projectId: job.projectId, chapterId: chapter.id });
     if (extracted) await persistExtractedMemories({ tx, job, chapter: { id: chapter.id, content: finalContent }, extracted });
 
     const rules = job.jobType === "GENERATE_CHAPTER" ? parseQualityConstraints((job.input as { qualityConstraints?: unknown } | null)?.qualityConstraints) : undefined;

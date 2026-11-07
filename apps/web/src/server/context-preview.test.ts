@@ -112,6 +112,7 @@ describe("buildChapterContextPreview", () => {
     expect(preview?.included.some((asset) => asset.id === "world-1")).toBe(true);
     expect(preview?.available).toEqual(expect.any(Array));
     expect(preview?.promptPreview).toContain("Starfall");
+    expect(prisma.projectMemory.findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({OR:[{sourceChapterId:null},{sourceChapter:{is:{organizationId:"org-1",projectId:"project-1",deletedAt:null}}}]})}));
     expect(preview?.promptPreview).toContain("Hero must pay a debt to open the gate");
     expect(prisma.chapter.findFirst).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ project: { select: expect.objectContaining({ premise: true }) } }) }));
   });

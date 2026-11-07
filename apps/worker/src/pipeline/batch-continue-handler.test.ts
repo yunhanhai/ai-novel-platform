@@ -31,6 +31,8 @@ function makePrisma(contentAtCall: () => string) {
     );
   };
   const tx = {
+    $queryRaw: vi.fn(async()=>[{id:"ch-1",projectId:"proj-1",content:contentAtCall()}]),
+    projectMemory: {updateMany:vi.fn().mockResolvedValue({count:0})},
     chapter: { findFirst: vi.fn().mockImplementation(findFirstImpl), update: vi.fn().mockResolvedValue({}) },
     contentVersion: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: "v-1", versionNo: 1 }) },
     generationStep: { create: vi.fn().mockResolvedValue({}) },

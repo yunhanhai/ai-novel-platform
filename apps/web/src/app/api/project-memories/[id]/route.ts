@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sanitizeServerMessage } from "../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
-import { setMemoryStatus } from "../../../../server/writing-assets";
+import { setMemoryStatus, MemoryStatusConflictError } from "../../../../server/writing-assets";
 import { getOrganizationId, isUnauthorizedError } from "../../../../server/context";
 
 interface RouteContext {
@@ -45,6 +45,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (error instanceof MemoryStatusConflictError) return NextResponse.json({ success: false, error: error.message }, { status: 409 });
   if (isUnauthorizedError(error)) {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }

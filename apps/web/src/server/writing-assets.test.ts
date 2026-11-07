@@ -132,25 +132,33 @@ describe("writing-assets", () => {
       expect(result).toHaveLength(1);
     });
 
-    it("sets acceptedAt when accepting and clears it for non-accepted statuses", async () => {
-      const update = vi.fn().mockResolvedValue({ id: "pm1", status: "accepted" });
-      const prisma = mockPrisma({ projectMemory: { update } });
-
-      await setMemoryStatus("org1", "pm1", "accepted", prisma);
-      await setMemoryStatus("org1", "pm1", "rejected", prisma);
-
-      expect(update).toHaveBeenNthCalledWith(1, expect.objectContaining({
-        data: expect.objectContaining({
-          status: "accepted",
-          acceptedAt: expect.any(Date)
-        })
-      }));
-      expect(update).toHaveBeenNthCalledWith(2, expect.objectContaining({
-        data: {
-          status: "rejected",
-          acceptedAt: null
-        }
-      }));
+    it("updates rejection status using existing schema fields", async () => {
+      const update = vi.fn().mockResolvedValue({ id: "pm1", status: "rejected" });
+      await setMemoryStatus("org1", "pm1", "rejected", mockPrisma({ projectMemory: { update } }));
+      expect(update).toHaveBeenCalledWith({where:{id:"pm1",organizationId:"org1"},data:{status:"rejected"}});
     });
   });
+});
+
+it("rejects reaccepting a source-derived superseded memory from a stale tab",async()=>{
+ const update=vi.fn(),updateMany=vi.fn();const row={id:"m",organizationId:"org1",projectId:"p1",sourceChapterId:"c1",status:"superseded"};
+ const tx={projectMemory:{findFirst:vi.fn().mockResolvedValue(row),update,updateMany},$queryRaw:vi.fn().mockResolvedValue([{id:"c1",projectId:"p1",content:"新正文"}])};
+ const prisma={...tx,$transaction:async(cb:any)=>cb(tx)};
+ await expect(setMemoryStatus("org1","m","accepted",prisma as never)).rejects.toThrow("记忆已失效");
+ expect(update).not.toHaveBeenCalled();expect(updateMany).not.toHaveBeenCalled();
+});
+
+it("accepts a proposed memory without writing a nonexistent acceptedAt column",async()=>{
+ const row={id:"m",organizationId:"org1",projectId:"p1",sourceChapterId:"c1",status:"proposed"};const update=vi.fn().mockResolvedValue({...row,status:"accepted"});
+ const tx={projectMemory:{findFirst:vi.fn().mockResolvedValue(row),update,updateMany:vi.fn().mockResolvedValue({count:1})},$queryRaw:vi.fn().mockResolvedValue([{id:"c1",projectId:"p1",content:"正文"}])};
+ await setMemoryStatus("org1","m","accepted",{...tx,$transaction:async(cb:any)=>cb(tx)}as never);
+ expect(JSON.stringify(update.mock.calls)).not.toContain("acceptedAt");
+ expect(tx.$queryRaw).toHaveBeenCalled();
+});
+
+it.each(["superseded","rejected"])("cannot reactivate %s memory by first proposing it again",async currentStatus=>{
+ const row={id:"m",organizationId:"org1",projectId:"p1",sourceChapterId:"c1",status:currentStatus};
+ const tx={projectMemory:{findFirst:vi.fn().mockResolvedValue(row),updateMany:vi.fn(),update:vi.fn()},$queryRaw:vi.fn().mockResolvedValue([{id:"c1",projectId:"p1",content:"新正文"}])};
+ await expect(setMemoryStatus("org1","m","proposed",{...tx,$transaction:async(cb:any)=>cb(tx)}as never)).rejects.toThrow("记忆已失效");
+ expect(tx.projectMemory.updateMany).not.toHaveBeenCalled();expect(tx.projectMemory.update).not.toHaveBeenCalled();
 });

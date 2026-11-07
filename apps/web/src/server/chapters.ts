@@ -1,3 +1,4 @@
+import { lockMemorySourceChapter, supersedeChapterMemories } from "@ai-novel/db/chapter-memory";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
@@ -73,9 +74,11 @@ export async function softDeleteChapter(
   chapterId: string,
   prisma: PrismaClient
 ) {
-  return prisma.chapter.update({
-    where: { id: chapterId, organizationId },
-    data: { deletedAt: new Date() }
+  return prisma.$transaction(async tx => {
+    const chapter = await lockMemorySourceChapter({ tx, organizationId, chapterId });
+    const deleted = await tx.chapter.update({ where: { id: chapterId, organizationId }, data: { deletedAt: new Date() } });
+    await supersedeChapterMemories({ tx, organizationId, projectId: chapter.projectId, chapterId });
+    return deleted;
   });
 }
 
@@ -164,11 +167,7 @@ export async function updateChapterContent({
 }: UpdateContentParams) {
   return withVersionRetry(() =>
     prisma.$transaction(async (tx) => {
-      const chapter = await tx.chapter.findFirst({
-        where: { id: chapterId, organizationId, deletedAt: null },
-        select: { id: true, projectId: true, content: true }
-      });
-      if (!chapter) throw new Error("章节不存在");
+      const chapter = await lockMemorySourceChapter({ tx, organizationId, chapterId });
 
       const oldContent = chapter.content ?? "";
       let snapshotCreated = false;
@@ -223,6 +222,7 @@ export async function updateChapterContent({
         data: { content, wordCount, updatedById }
       });
 
+      if (content !== oldContent) await supersedeChapterMemories({ tx, organizationId, projectId: chapter.projectId, chapterId });
       return { chapter: updatedChapter, snapshotCreated };
     })
   );
@@ -259,10 +259,7 @@ export async function applyDeslopEdit({
   // 整个事务回滚，用户看到「应用失败」。包一层重试让它自愈。
   return withVersionRetry(() =>
     prisma.$transaction(async (tx) => {
-      const chapter = await tx.chapter.findFirst({
-        where: { id: chapterId, organizationId, deletedAt: null }
-      });
-      if (!chapter) throw new Error("章节不存在");
+      const chapter = await lockMemorySourceChapter({ tx, organizationId, chapterId });
 
     if (baseContentHash && sha256Hex(chapter.content ?? "") !== baseContentHash) {
       throw new Error(CONTENT_STALE_ERROR);
@@ -318,6 +315,7 @@ export async function applyDeslopEdit({
       select: { id: true, versionNo: true }
     });
 
+    if (nextContent !== (chapter.content ?? "")) await supersedeChapterMemories({ tx, organizationId, projectId: chapter.projectId, chapterId });
     return { chapter: updatedChapter, version };
     })
   );

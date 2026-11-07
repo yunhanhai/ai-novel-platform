@@ -99,6 +99,33 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(editor).not.toBeEmpty({ timeout: 10_000 });
 
   await expect(page.getByText("正文约束检查通过", { exact: true })).toBeVisible();
+  // 来源记忆在正文未变化时保留，实际编辑后失效。
+  const freshnessFixture = await page.evaluate(async () => {
+    const projectId = location.pathname.split("/")[2]!;
+    const chapters = await (await fetch(`/api/projects/${projectId}/chapters?page=1&pageSize=10`)).json();
+    const chapterId = chapters.data.items[0].id;
+    const marker = `旧摘要失效标记-${Date.now()}`;
+    const created = await (await fetch("/api/project-memories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, sourceChapterId: chapterId, memoryType: "chapter_summary", scopeType: "chapter", scopeId: chapterId, content: marker }) })).json();
+    await fetch(`/api/project-memories/${created.data.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "accepted" }) });
+    return { projectId, chapterId, id: created.data.id, marker };
+  });
+  await expect.poll(async () => page.evaluate(async fixture => {
+    const body = await (await fetch(`/api/chapters/${fixture.chapterId}`)).json();
+    await fetch(`/api/chapters/${fixture.chapterId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: body.data.content }) });
+    const memories = await (await fetch(`/api/project-memories?projectId=${fixture.projectId}`)).json();
+    return memories.data.find((m: { id: string }) => m.id === fixture.id)?.status;
+  }, freshnessFixture)).toBe("accepted");
+  await editor.fill(`${await editor.inputValue()}\n正文内容已实际修改。`);
+  await expect.poll(async () => page.evaluate(async fixture => {
+    const memories = await (await fetch(`/api/project-memories?projectId=${fixture.projectId}`)).json();
+    return memories.data.find((m: { id: string }) => m.id === fixture.id)?.status;
+  }, freshnessFixture), { timeout: 15000 }).toBe("superseded");
+  const staleAccept = await page.evaluate(async fixture => {
+    const response = await fetch(`/api/project-memories/${fixture.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "accepted" }) });
+    return { status: response.status, body: await response.json() };
+  }, freshnessFixture);
+  expect(staleAccept.status).toBe(409);
+  expect(staleAccept.body.error).toContain("失效");
   await expect(page.getByText("正文已保存 · 审阅未完成", { exact: true })).toBeVisible();
   await expect(page.getByText(/上下文约 .* tokens/)).toBeVisible();
   await page.getByRole("tab", { name: "性能", exact: true }).click();

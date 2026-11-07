@@ -1,3 +1,4 @@
+import { lockMemorySourceChapter } from "@ai-novel/db/chapter-memory";
 import type { PrismaClient } from "@ai-novel/db";
 
 type PrismaJson = Parameters<PrismaClient["projectMemory"]["create"]>[0]["data"]["contentJson"];
@@ -303,17 +304,33 @@ export async function findMemoriesByProject(
   });
 }
 
+export class MemoryStatusConflictError extends Error {}
+
 export async function setMemoryStatus(
   organizationId: string,
   memoryId: string,
   status: "proposed" | "accepted" | "rejected" | "superseded",
   prisma: PrismaClient
 ) {
-  return prisma.projectMemory.update({
-    where: { id: memoryId, organizationId },
-    data: {
-      status,
-      acceptedAt: status === "accepted" ? new Date() : null
+  if (status !== "accepted" && status !== "proposed") return prisma.projectMemory.update({ where: { id: memoryId, organizationId }, data: { status } });
+  return prisma.$transaction(async tx => {
+    const existing = await tx.projectMemory.findFirst({ where: { id: memoryId, organizationId } });
+    if (!existing) throw new Error("记忆不存在");
+    if (existing.sourceChapterId) {
+      try { await lockMemorySourceChapter({ tx, organizationId, projectId: existing.projectId, chapterId: existing.sourceChapterId }); }
+      catch (error) {
+        if (error instanceof Error && error.message.startsWith("章节不存在")) throw new MemoryStatusConflictError("记忆来源章节已失效，请重新抽取后审核");
+        throw error;
+      }
     }
+    // Re-read after acquiring the editor/extractor's source lock.
+    const current = await tx.projectMemory.findFirst({ where: { id: memoryId, organizationId, projectId: existing.projectId } });
+    if (!current || !["proposed", "accepted"].includes(current.status)) throw new MemoryStatusConflictError("记忆已失效或被驳回，请刷新并重新抽取后审核");
+    const result = await tx.projectMemory.updateMany({
+      where: { id: memoryId, organizationId, projectId: existing.projectId, sourceChapterId: existing.sourceChapterId, status: current.status },
+      data: { status }
+    });
+    if (!result.count) throw new MemoryStatusConflictError("记忆状态已变化，请刷新后重试");
+    return tx.projectMemory.findFirst({ where: { id: memoryId, organizationId } });
   });
 }

@@ -25,6 +25,8 @@ function makePrisma(content: string | null = existingContent) {
       ? null
       : { id: "ch-1", projectId: "proj-1", organizationId: "org-1", content, title: "第一章" };
   const tx = {
+    $queryRaw: vi.fn().mockResolvedValue(chapterRow?[chapterRow]:[]),
+    projectMemory: {updateMany:vi.fn().mockResolvedValue({count:0})},
     chapter: {
       findFirst: vi.fn().mockResolvedValue(chapterRow),
       update: vi.fn().mockResolvedValue({})
