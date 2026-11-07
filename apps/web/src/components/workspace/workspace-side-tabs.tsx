@@ -45,6 +45,7 @@ interface Props {
   projectId: string | null;
   chapterId: string | null;
   currentChapterText: string;
+  onPrepareVersionRestore: () => Promise<boolean>;
   onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions, qualityConstraints?: QualityConstraints) => void;
   onDiagnose: (qualityMode: QualityMode) => void;
   onContinue: () => void;
@@ -68,6 +69,7 @@ export function WorkspaceSideTabs({
   projectId,
   chapterId,
   currentChapterText,
+  onPrepareVersionRestore,
   onGenerate,
   onDiagnose,
   onContinue,
@@ -124,7 +126,7 @@ export function WorkspaceSideTabs({
           />
         )}
         {active === "versions" && (
-          <VersionsPanel chapterId={chapterId} onRestored={onChapterContentRefreshed} />
+          <VersionsPanel key={chapterId} chapterId={chapterId} currentContent={currentChapterText} prepareRestore={onPrepareVersionRestore} onRestored={onChapterContentRefreshed} />
         )}
         {active === "outline" && (
           <OutlinePanel projectId={projectId} job={job} isStarting={isStarting} onGenerateOutline={onGenerateOutline} />

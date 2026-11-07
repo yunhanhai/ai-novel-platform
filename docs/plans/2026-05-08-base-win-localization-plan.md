@@ -1281,3 +1281,12 @@ git diff --check
 - [x] Document synchronous-event versus paint/CPU limits and sparse-change fallback;no new external model calls/private prose/provider/schema/deployment changes.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts.
 - [ ] Remaining:production input-to-paint/IME/device/large-project benchmarks,dispersed edit exactness and real semantic quality need separate evidence.
+
+### 2026-11-08 — Version restore source protection
+
+- [x] Reproduce stale restore overwriting concurrent prose in rollback DB fixture and missing editor flush in browser.
+- [x] Require chapter/base hash, validate locked source, reject differing stale body without writes; same target reads have no snapshot/timestamp/memory side effects.
+- [x] Preserve transactional current-prose snapshot/memory invalidation; flush before confirmation and recheck source before submit, isolate old list/diff/restore responses across chapters.
+- [x] Independent14actual DB checks including distinct-connection races,5controlled actual-component checks and19service/API tests clear; browser9targeted scenarios pass.
+- [x] Verify1201tests+1skip,typecheck5/5,build,e2e69pass+1skip including10new restore/HTTP cases;update final report,integrate master and synchronize both remotes with external receipts.
+- [ ] Remaining:hash ABA/durable operation receipts,version retention/list pagination and true semantic quality require separate scoped evidence.

@@ -52,7 +52,7 @@ describe("POST /api/content-versions/[id] (restore)", () => {
   it("restores version and returns 200", async () => {
     rv().mockResolvedValue({ versionId: "v-1", chapterId: "ch-1" });
     const res = await POST(new Request("http://localhost/api/content-versions/v-1", {
-      method: "POST", body: JSON.stringify({})
+      method: "POST", body: JSON.stringify({chapterId: "11111111-1111-1111-1111-111111111111", baseContentHash: "a".repeat(64)})
     }), routeCtx("v-1"));
     expect(res.status).toBe(200);
   });
@@ -60,8 +60,20 @@ describe("POST /api/content-versions/[id] (restore)", () => {
   it("returns 404 when target version not found", async () => {
     rv().mockRejectedValue(new Error("版本不存在"));
     const res = await POST(new Request("http://localhost/api/content-versions/v-1", {
-      method: "POST", body: JSON.stringify({})
+      method: "POST", body: JSON.stringify({chapterId: "11111111-1111-1111-1111-111111111111", baseContentHash: "a".repeat(64)})
     }), routeCtx("v-1"));
     expect(res.status).toBe(404);
   });
+});
+
+
+it.each([null, {}, { chapterId: 'invalid', baseContentHash: 'a'.repeat(64) }, { chapterId: '11111111-1111-1111-1111-111111111111', baseContentHash: 'bad' }])('rejects invalid restore confirmation %j before service writes', async body => {
+  vi.clearAllMocks();
+  const response = await POST(new Request('http://localhost/api/content-versions/v1', { method: 'POST', body: JSON.stringify(body) }), routeCtx('v1'));
+  expect(response.status).toBe(400); expect(rv()).not.toHaveBeenCalled();
+});
+it('returns a readable 409 when locked content changed', async () => {
+  rv().mockRejectedValueOnce(new Error('CHAPTER_CONTENT_STALE'));
+  const response = await POST(new Request('http://localhost/api/content-versions/v1', { method: 'POST', body: JSON.stringify({ chapterId: '11111111-1111-1111-1111-111111111111', baseContentHash: 'a'.repeat(64) }) }), routeCtx('v1'));
+  expect(response.status).toBe(409); expect((await response.json()).error).toContain('未执行回滚');
 });

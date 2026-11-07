@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -37,82 +37,122 @@ interface VersionDiff {
 
 interface Props {
   chapterId: string | null;
+  currentContent: string;
+  prepareRestore: () => Promise<boolean>;
   onRestored?: () => void;
 }
 
-export function VersionsPanel({ chapterId, onRestored }: Props) {
+interface Confirmation { versionId: string; content: string; baseContentHash: string }
+
+export function VersionsPanel({ chapterId, currentContent, prepareRestore, onRestored }: Props) {
   const [versions, setVersions] = useState<ChapterVersionItem[]>([]);
   const [isLoading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [diff, setDiff] = useState<VersionDiff | null>(null);
   const [diffLoadingId, setDiffLoadingId] = useState<string | null>(null);
+  const alive = useRef(false);
+  const listSequence = useRef(0);
+  const diffSequence = useRef(0);
+  const busy = useRef(false);
+  const source = useRef({ chapterId, content: currentContent });
+  source.current = { chapterId, content: currentContent };
+  const isCurrent = (id: string | null) => alive.current && source.current.chapterId === id;
 
   const reload = useCallback(async () => {
-    if (!chapterId) {
-      setVersions([]);
-      return;
-    }
-    setLoading(true);
-    setError(null);
+    const sequence = ++listSequence.current;
+    if (!chapterId) { setVersions([]); return; }
+    setLoading(true); setError(null);
     try {
       const res = await fetch(`/api/chapters/${chapterId}/versions`);
       const json = (await res.json()) as ApiEnvelope<ChapterVersionItem[]>;
+      if (!alive.current || source.current.chapterId !== chapterId || listSequence.current !== sequence) return;
       if (!res.ok || !json.success) throw new Error(json.error ?? `加载失败 (${res.status})`);
       setVersions(json.data ?? []);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "加载失败");
+      if (alive.current && source.current.chapterId === chapterId && listSequence.current === sequence) setError(err instanceof Error ? err.message : "加载失败");
     } finally {
-      setLoading(false);
+      if (alive.current && source.current.chapterId === chapterId && listSequence.current === sequence) setLoading(false);
     }
   }, [chapterId]);
 
   useEffect(() => {
+    alive.current = true;
+    setVersions([]); setConfirmation(null); setDiff(null); setDiffLoadingId(null);
     void reload();
+    return () => { alive.current = false; listSequence.current++; diffSequence.current++; };
   }, [reload]);
 
-  async function handleRestore(versionId: string) {
-    setRestoringId(versionId);
-    setError(null);
+  useEffect(() => {
+    if (confirmation && confirmation.content !== currentContent) {
+      setConfirmation(null); setError("正文已变化，请重新选择回滚版本。");
+    }
+    diffSequence.current++; setDiff(null); setDiffLoadingId(null);
+  }, [currentContent, confirmation]);
+
+  async function beginRestore(versionId: string) {
+    if (!chapterId || busy.current) return;
+    const id = chapterId, content = source.current.content;
+    busy.current = true; setPreparing(true); setError(null); setConfirmation(null);
     try {
-      const res = await fetch(`/api/content-versions/${versionId}`, { method: "POST" });
-      const json = (await res.json()) as ApiEnvelope<unknown>;
-      if (!res.ok || !json.success) throw new Error(json.error ?? `回滚失败 (${res.status})`);
-      setConfirmId(null);
-      setDiff(null);
-      await reload();
-      onRestored?.();
+      if (!await prepareRestore()) throw new Error("正文尚未保存或已变化，请先保存并处理冲突后再回滚。");
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+      if (!isCurrent(id)) return;
+      if (source.current.content !== content) throw new Error("正文已变化，请重新选择回滚版本。");
+      setConfirmation({ versionId, content, baseContentHash: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("") });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "回滚失败");
+      if (isCurrent(id)) setError(err instanceof Error ? err.message : "回滚准备失败");
     } finally {
-      setRestoringId(null);
+      busy.current = false; if (isCurrent(id)) setPreparing(false);
+    }
+  }
+
+  async function handleRestore(versionId: string) {
+    const confirmed = confirmation, id = chapterId;
+    if (!id || !confirmed || confirmed.versionId !== versionId || busy.current) return;
+    busy.current = true; setRestoringId(versionId); setError(null);
+    try {
+      if (source.current.content !== confirmed.content || !await prepareRestore()) throw new Error("正文尚未保存或已变化，请重新确认回滚。");
+      if (!isCurrent(id)) return;
+      if (source.current.content !== confirmed.content) throw new Error("正文已变化，未提交回滚。请重新选择版本。");
+      const res = await fetch(`/api/content-versions/${versionId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chapterId: id, baseContentHash: confirmed.baseContentHash })
+      });
+      const json = (await res.json()) as ApiEnvelope<{ id: string; content: string }>;
+      if (!isCurrent(id)) return;
+      if (!res.ok || !json.success) {
+        if (res.status === 409) setConfirmation(null);
+        throw new Error(json.error ?? `回滚失败 (${res.status})`);
+      }
+      if (!json.data || json.data.id !== id || typeof json.data.content !== "string") throw new Error("回滚结果未确认，请重试并核对正文。");
+      setConfirmation(null); setDiff(null);
+      onRestored?.();
+      await reload();
+    } catch (err: unknown) {
+      if (isCurrent(id)) setError(err instanceof Error ? err.message : "回滚失败");
+    } finally {
+      busy.current = false; if (isCurrent(id)) setRestoringId(null);
     }
   }
 
   async function handleToggleDiff(versionId: string) {
-    if (diff?.versionId === versionId) {
-      setDiff(null);
-      return;
-    }
-    setDiffLoadingId(versionId);
-    setError(null);
+    const id = chapterId, sequence = ++diffSequence.current;
+    if (diff?.versionId === versionId) { setDiff(null); setDiffLoadingId(null); return; }
+    setDiffLoadingId(versionId); setError(null);
     try {
-      const res = await fetch(`/api/chapters/${chapterId}/versions/diff?versionId=${versionId}`);
-      // dev 模式下首次请求可能命中路由编译，返回 HTML 错误页；
-      // 直接 res.json() 会抛出难以理解的 "Unexpected token '<'"，这里给出可读提示。
-      const contentType = res.headers.get("content-type") ?? "";
-      if (!contentType.includes("application/json")) {
-        throw new Error("对比服务尚未就绪，请稍后重试");
-      }
+      const res = await fetch(`/api/chapters/${id}/versions/diff?versionId=${versionId}`);
+      if (!res.headers.get("content-type")?.includes("application/json")) throw new Error("对比服务尚未就绪，请稍后重试");
       const json = (await res.json()) as ApiEnvelope<VersionDiff>;
+      if (!isCurrent(id) || diffSequence.current !== sequence) return;
       if (!res.ok || !json.success || !json.data) throw new Error(json.error ?? `对比失败 (${res.status})`);
       setDiff(json.data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "对比失败");
-      setDiff(null);
+      if (isCurrent(id) && diffSequence.current === sequence) { setError(err instanceof Error ? err.message : "对比失败"); setDiff(null); }
     } finally {
-      setDiffLoadingId(null);
+      if (isCurrent(id) && diffSequence.current === sequence) setDiffLoadingId(null);
     }
   }
 
@@ -155,17 +195,17 @@ export function VersionsPanel({ chapterId, onRestored }: Props) {
               {v.contentLength > 200 && <span className="muted">...</span>}
             </p>
 
-            {confirmId === v.id ? (
+            {confirmation?.versionId === v.id ? (
               <div className="version-confirm">
                 <p className="form-error">
-                  确认回滚到 v{v.versionNo}？当前正文会被自动快照为新版本，不会丢失。
+                  确认回滚到 v{v.versionNo}？将用此版本替换已确认正文；当前非空正文会保留在版本记录中。
                 </p>
                 <div className="resource-card-actions">
                   <button
                     type="button"
                     className="btn-ghost"
-                    onClick={() => setConfirmId(null)}
-                    disabled={restoringId === v.id}
+                    onClick={() => setConfirmation(null)}
+                    disabled={Boolean(restoringId) || preparing}
                   >
                     取消
                   </button>
@@ -173,7 +213,7 @@ export function VersionsPanel({ chapterId, onRestored }: Props) {
                     type="button"
                     className="btn-primary"
                     onClick={() => void handleRestore(v.id)}
-                    disabled={restoringId === v.id}
+                    disabled={Boolean(restoringId) || preparing}
                   >
                     {restoringId === v.id ? "回滚中..." : "确认回滚"}
                   </button>
@@ -192,7 +232,8 @@ export function VersionsPanel({ chapterId, onRestored }: Props) {
                 <button
                   type="button"
                   className="btn-ghost"
-                  onClick={() => setConfirmId(v.id)}
+                  onClick={() => void beginRestore(v.id)}
+                  disabled={preparing || Boolean(restoringId)}
                 >
                   回滚到此版本
                 </button>
@@ -225,7 +266,7 @@ export function VersionsPanel({ chapterId, onRestored }: Props) {
 
       <div className="memories-help">
         <p className="muted">
-          回滚操作不会丢失当前正文 — 它会先将正文保存为新版本，再把目标版本写入正文。
+          回滚前先保存编辑器稿，再保留当前非空正文的版本记录；正文变化时需重新确认。
         </p>
       </div>
     </div>

@@ -27,13 +27,21 @@ export async function GET(_request: Request, context: RouteContext) {
 
 // POST /api/content-versions/[id]/restore 风格的便捷接口：
 // 这里直接 POST {id} 视为 restore 操作，避免再加一层路由
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
   try {
     const organizationId = await getOrganizationId();
     const updatedById = await getUserId();
+    const body: unknown = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || !("chapterId" in body) || typeof body.chapterId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.chapterId) ||
+      !("baseContentHash" in body) || typeof body.baseContentHash !== "string" || !/^[0-9a-f]{64}$/i.test(body.baseContentHash)) {
+      return NextResponse.json({ success: false, error: "回滚需要有效的 chapterId 和 baseContentHash" }, { status: 400 });
+    }
     const chapter = await restoreChapterVersion({
       organizationId,
+      chapterId: body.chapterId,
+      baseContentHash: body.baseContentHash,
       versionId: id,
       updatedById,
       prisma
@@ -45,6 +53,9 @@ export async function POST(_request: Request, context: RouteContext) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (error instanceof Error && error.message === "CHAPTER_CONTENT_STALE") {
+    return NextResponse.json({ success: false, error: "正文已更新，未执行回滚。请先核对当前正文，再重新选择版本。" }, { status: 409 });
+  }
   if (isUnauthorizedError(error)) {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }

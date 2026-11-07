@@ -2187,3 +2187,13 @@ git diff --check   通过
 - 同输入CPU3999小修中位54.59→0.069ms，20k1.70→0.025ms且各1字准确计数，限定局部CPU非页面整体收益；独立30036重建/Unicode与45定向无阻断，root1000重建通过。
 - 最终1193单测+1skip（42/74/50/364/663）、typecheck5/5、build、完整e2e59pass+1skip（fake，4.6m），真实DB6项全回滚含大小改/节流/上限/换行；长稿即时刷新恢复完整全文，客户端不改。
 - 报告`reports/2026-11-08-long-editor-diff.md`记录实际测量和UTF16/4000变化区粗化/非input-to-paint边界。外部模型0，真实正文/记忆/配置不变，无迁移部署；codex/long-editor-performance验证后快进master同步双远程并外存commit/tree回执，原实验保留。
+
+---
+
+## 2026-11-08 — 版本回滚正文保护
+
+- 实际DB RED证实旧回滚覆盖确认后的新稿，浏览器RED确认未先存编辑器稿/失败无阻断。回滚POST要求chapterId/baseContentHash，锁章CAS过期409零写入；同目标无副作用返回，快照/正文/来源记忆同事务。
+- 页面选择前flush，来源稳定才确认；提交前再核对，改文/等待保存变文撤销。回滚在途输入保留dirty稿并提示冲突，列表/对比代际及key重挂隔离切章，旧回滚不刷新新章；确认丢失可同目标重试。
+- 独立实际DB14项通过（含双连接竞争/双持锁顺序/注入失败原子回滚），事务夹具回滚，多连接合成项目保留；独立实际组件5项及服务/API19定向无阻断，最终1201单测+1skip（42/74/50/364/671）、typecheck5/5、build、完整e2e69pass+1skip（fake，5.5m，新增10项）通过。
+- 报告`reports/2026-11-08-version-restore-guards.md`保留RED与验收脚本定位器/拦截器修正证据；明确哈希ABA、无持久操作凭证、切章不取消已发回滚、纯空白快照/50条列表等边界。
+- 外部模型0，真实正文/记忆/配置不变，无schema/迁移/部署；codex/version-restore-guards验证后快进master同步双远程并外存commit/tree回执，原实验保留。

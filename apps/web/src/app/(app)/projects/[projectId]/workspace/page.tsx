@@ -394,6 +394,7 @@ export default function WorkspacePage() {
         projectId={projectId}
         chapterId={activeChapterId}
         currentChapterText={content}
+        onPrepareVersionRestore={async () => !isLoadingContent && await flush()}
         onGenerate={handleGenerate}
         onDiagnose={handleDiagnose}
         onContinue={handleContinue}

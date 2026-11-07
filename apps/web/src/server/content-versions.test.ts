@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {
   listChapterVersions,
   getChapterVersion,
   restoreChapterVersion
 } from "./content-versions";
+const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
   const prisma = {
@@ -72,7 +74,7 @@ describe("content-versions", () => {
       await expect(
         restoreChapterVersion({
           organizationId: "org1",
-          versionId: "missing",
+          versionId: "missing", chapterId: "c1", baseContentHash: hash(""),
           updatedById: "u1",
           prisma
         })
@@ -97,7 +99,7 @@ describe("content-versions", () => {
 
       await restoreChapterVersion({
         organizationId: "org1",
-        versionId: "v2",
+        versionId: "v2", chapterId: "c1", baseContentHash: hash("当前正文"),
         updatedById: "u1",
         prisma
       });
@@ -132,7 +134,7 @@ describe("content-versions", () => {
 
       await restoreChapterVersion({
         organizationId: "org1",
-        versionId: "v1",
+        versionId: "v1", chapterId: "c1", baseContentHash: hash(""),
         updatedById: "u1",
         prisma
       });
@@ -159,7 +161,7 @@ describe("content-versions", () => {
 
       await restoreChapterVersion({
         organizationId: "org1",
-        versionId: "v1",
+        versionId: "v1", chapterId: "c1", baseContentHash: hash("same"),
         updatedById: "u1",
         prisma
       });
@@ -173,7 +175,34 @@ it("snapshots the locked current body and invalidates it when restoring an older
  const memoryUpdate=vi.fn().mockResolvedValue({count:1}),create=vi.fn();
  const tx={$queryRaw:vi.fn().mockResolvedValue([{id:"c1",projectId:"p1",content:"并发编辑后的当前正文"}]),projectMemory:{updateMany:memoryUpdate},chapter:{update:vi.fn().mockResolvedValue({id:"c1"})},contentVersion:{findFirst:vi.fn().mockResolvedValue(null),create}};
  const prisma={contentVersion:{findFirst:vi.fn().mockResolvedValue({id:"v1",entityId:"c1",content:"待恢复版本"})},chapter:{findFirst:vi.fn().mockResolvedValue({id:"c1",projectId:"p1",content:"事务前旧正文"})},$transaction:async(cb:any)=>cb(tx)};
- await restoreChapterVersion({organizationId:"org1",versionId:"v1",updatedById:"u1",prisma:prisma as never});
+ await restoreChapterVersion({organizationId:"org1",versionId:"v1",chapterId:"c1",baseContentHash:hash("并发编辑后的当前正文"),updatedById:"u1",prisma:prisma as never});
  expect(create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({content:"并发编辑后的当前正文"})}));
  expect(memoryUpdate).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({sourceChapterId:"c1"}),data:{status:"superseded"}}));
+});
+
+it("rejects a stale confirmed body under the chapter lock without writes", async () => {
+  const prisma = mockPrisma({
+    contentVersion: { findFirst: vi.fn().mockResolvedValue({ id: "v1", entityId: "c1", content: "target" }), create: vi.fn() },
+    chapter: { findFirst: vi.fn().mockResolvedValue({ id: "c1", projectId: "p1", content: "newer" }), update: vi.fn() }
+  });
+  await expect(restoreChapterVersion({ organizationId: "org1", chapterId: "c1", versionId: "v1", baseContentHash: hash("confirmed"), updatedById: "u1", prisma })).rejects.toThrow("CHAPTER_CONTENT_STALE");
+  expect(prisma.chapter.update).not.toHaveBeenCalled();
+  expect(prisma.contentVersion.create).not.toHaveBeenCalled();
+  expect(prisma.projectMemory.updateMany).not.toHaveBeenCalled();
+});
+it("rejects a target from another chapter", async () => {
+  const prisma = mockPrisma({ contentVersion: { findFirst: vi.fn().mockResolvedValue({ id: "v1", entityId: "other", content: "target" }) } });
+  await expect(restoreChapterVersion({ organizationId: "org1", chapterId: "c1", versionId: "v1", baseContentHash: hash("confirmed"), updatedById: "u1", prisma })).rejects.toThrow(/版本不存在/);
+  expect(prisma.chapter.update).not.toHaveBeenCalled();
+});
+it("acknowledges the same target without snapshots, timestamps or memory changes", async () => {
+  const current = { id: "c1", projectId: "p1", content: "target" };
+  const prisma = mockPrisma({
+    contentVersion: { findFirst: vi.fn().mockResolvedValue({ id: "v1", entityId: "c1", content: "target" }), create: vi.fn() },
+    chapter: { findFirst: vi.fn().mockResolvedValue(current), findFirstOrThrow: vi.fn().mockResolvedValue(current), update: vi.fn() }
+  });
+  expect(await restoreChapterVersion({ organizationId: "org1", chapterId: "c1", versionId: "v1", baseContentHash: hash("before"), updatedById: "u1", prisma })).toEqual(current);
+  expect(prisma.chapter.update).not.toHaveBeenCalled();
+  expect(prisma.contentVersion.create).not.toHaveBeenCalled();
+  expect(prisma.projectMemory.updateMany).not.toHaveBeenCalled();
 });
