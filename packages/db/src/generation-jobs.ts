@@ -110,16 +110,22 @@ export async function claimNextJob({ organizationId, lockKey, leaseDurationMs, p
 
     const leaseExpiresAt = new Date(Date.now() + leaseDurationMs);
 
-    return tx.generationJob.update({
-      where: { id: job.id },
-      data: {
-        status: "RUNNING",
-        lockKey,
-        leaseExpiresAt,
-        startedAt: new Date(),
-        attemptCount: { increment: 1 }
-      }
-    });
+    try {
+      return await tx.generationJob.update({
+        where: { id: job.id, status: job.status, attemptCount: job.attemptCount,
+          lockKey: job.lockKey, leaseExpiresAt: job.leaseExpiresAt, nextRunAt: job.nextRunAt },
+        data: {
+          status: "RUNNING",
+          lockKey,
+          leaseExpiresAt,
+          startedAt: new Date(),
+          attemptCount: { increment: 1 }
+        }
+      });
+    } catch (error) {
+      if (isMissingConditionalRow(error)) return null;
+      throw error;
+    }
   });
 }
 
@@ -212,6 +218,19 @@ export async function updateStep({ stepId, status, outputPreview, inputTokens, o
 }
 
 type RecoveryDb = Pick<PrismaClient, "generationJob">;
+
+export async function cancelGenerationJob(params: { organizationId: string; jobId: string; prisma: RecoveryDb }) {
+  const { organizationId, jobId, prisma } = params;
+  const cancelled = await prisma.generationJob.updateMany({
+    where: { id: jobId, organizationId, status: { in: ["QUEUED", "RUNNING"] } },
+    data: { status: "CANCELLED", finishedAt: new Date(), errorCode: "CANCELLED_BY_USER", errorMessage: "已由用户停止" }
+  });
+  if (cancelled.count) return { ok: true as const, job: { id: jobId, status: "CANCELLED" as const } };
+  const current = await prisma.generationJob.findFirst({ where: { id: jobId, organizationId }, select: { id: true, status: true } });
+  if (!current) return { ok: false as const, reason: "not_found" as const };
+  if (current.status === "CANCELLED") return { ok: true as const, job: { id: current.id, status: "CANCELLED" as const } };
+  return { ok: false as const, reason: "invalid_status" as const };
+}
 
 export async function retryFailedJob(params: { organizationId: string; jobId: string; prisma: RecoveryDb }) {
   const existing = await params.prisma.generationJob.findFirst({

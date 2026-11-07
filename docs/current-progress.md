@@ -2117,3 +2117,13 @@ git diff --check   通过
 - 验证1154单测+1skip（33/67/50/364/640）、typecheck5/5、build、完整e2e16pass+1skip（fake，2.0m），实际DB14项全回滚含空白ack/写失败原子回滚/401与503；独立3文件35项无阻断，后续定向39项通过。
 - 报告`reports/2026-11-07-rewrite-worker-guards.md`记录脚本括号修正及边界：预检不终止在途模型、usage best-effort、HTTP exactly-once/多worker/取消API迟到写/跨标签版本锁未扩展，无真实语义验收。
 - 外部模型0，真实正文/记忆/配置不变，无迁移部署；codex/rewrite-worker-guards验证后快进master同步双远程并外存commit/tree回执，原实验保留。
+
+---
+
+## 2026-11-07 — 取消与认领竞态
+
+- route/claim及真实DB RED复现成功后迟到取消覆盖、已取消排队任务被旧claim复活。cancelGenerationJob组织+active条件更新，重复取消幂等保留时间，完成/失败409；claim核对status/attempt/lock/lease/nextRun快照，P2025竞争null下tick。
+- 实际DB11项全回滚+4项真实多连接并发通过：双claim仅1胜/attempt1，取消先提交旧认领拒绝，双取消时间稳定，完成持锁先提交不被取消；合成fixture保留，外部模型0。
+- 最终1163单测+1skip（40/67/50/364/642）、typecheck5/5、build、完整e2e17pass+1skip（fake，2.4m），真实HTTP身份/范围/双取消/终态409；独立DB28/route7无阻断，建议真实交互事务竞争已补。
+- 报告`reports/2026-11-07-cancel-race.md`保留快速worker先处理夹具与runner未加载DB env失败，固定延后任务并加载本地env后重跑通过，不改产品/时限；取消不终止供应商、认领输者下tick及其余handler/提示边界明确。
+- 无schema/迁移/配置/部署，真实正文/记忆不变；codex/cancel-race验证后快进master同步双远程并外存commit/tree回执，原实验保持。

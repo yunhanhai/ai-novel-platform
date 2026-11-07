@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createJob, claimNextJob, requeueJobForRetry, releaseJobLease, updateJobStatus, createStep, updateStep } from "./generation-jobs";
+import { createJob, claimNextJob, requeueJobForRetry, releaseJobLease, updateJobStatus, createStep, updateStep, cancelGenerationJob } from "./generation-jobs";
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
   return {
@@ -316,4 +316,53 @@ it("only applies a late analysis failure while the job is still running", async 
   const prisma = mockPrisma({ generationJob: { update, findUniqueOrThrow: vi.fn().mockResolvedValue(succeeded) } });
   expect(await updateJobStatus({ jobId: "j1", status: "FAILED", expectedAttemptCount: 1, expectedStatus: "RUNNING", prisma } as Parameters<typeof updateJobStatus>[0])).toBe(succeeded);
   expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: "RUNNING", attemptCount: 1 }) }));
+});
+
+it("does not revive a queued job cancelled between claim lookup and update", async () => {
+  const state = { ...job, attemptCount: 0, nextRunAt: null, status: "QUEUED" };
+  const findFirst = vi.fn().mockImplementation(async () => { const snapshot = { ...state }; state.status = "CANCELLED"; return snapshot; });
+  const update = vi.fn().mockImplementation(async (args: { where: { status?: unknown }; data: unknown }) => {
+    if (args.where.status && args.where.status !== state.status) throw { code: "P2025" };
+    state.status = "RUNNING"; return { ...state };
+  });
+  const prisma = mockPrisma({ $transaction: vi.fn(async cb => cb({ generationJob: { findFirst, update } })) });
+  const result = await claimNextJob({ prisma, lockKey: "worker", leaseDurationMs: 60000 });
+  expect(result).toBeNull(); expect(state.status).toBe("CANCELLED");
+});
+
+describe("cancelGenerationJob conditional transition", () => {
+  it("cancels only currently active jobs in the session organization", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 }); const findFirst = vi.fn();
+    const prisma = mockPrisma({ generationJob: { updateMany, findFirst } });
+    expect(await cancelGenerationJob({ organizationId: "org1", jobId: "j1", prisma })).toEqual({ ok: true, job: { id: "j1", status: "CANCELLED" } });
+    expect(updateMany).toHaveBeenCalledWith({ where: { id: "j1", organizationId: "org1", status: { in: ["QUEUED", "RUNNING"] } }, data: { status: "CANCELLED", finishedAt: expect.any(Date), errorCode: "CANCELLED_BY_USER", errorMessage: "已由用户停止" } });
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+  it.each(["SUCCEEDED", "FAILED"])("does not overwrite concurrent %s completion", async status => {
+    const state = { status: "RUNNING" };
+    const updateMany = vi.fn().mockImplementation(async () => { state.status = status; return { count: 0 }; });
+    const findFirst = vi.fn().mockImplementation(async () => ({ id: "j1", status: state.status }));
+    const result = await cancelGenerationJob({ organizationId: "org1", jobId: "j1", prisma: mockPrisma({ generationJob: { updateMany, findFirst } }) });
+    expect(result).toEqual({ ok: false, reason: "invalid_status" }); expect(state.status).toBe(status);
+  });
+  it("returns idempotent success without resetting cancellation metadata", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const prisma = mockPrisma({ generationJob: { updateMany, findFirst: vi.fn().mockResolvedValue({ id: "j1", status: "CANCELLED" }) } });
+    expect(await cancelGenerationJob({ organizationId: "org1", jobId: "j1", prisma })).toEqual({ ok: true, job: { id: "j1", status: "CANCELLED" } });
+    expect(updateMany).toHaveBeenCalledOnce();
+  });
+  it("does not reveal missing or foreign organization jobs", async () => {
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const prisma = mockPrisma({ generationJob: { updateMany: vi.fn().mockResolvedValue({ count: 0 }), findFirst } });
+    expect(await cancelGenerationJob({ organizationId: "org1", jobId: "j1", prisma })).toEqual({ ok: false, reason: "not_found" });
+    expect(findFirst).toHaveBeenCalledWith({ where: { id: "j1", organizationId: "org1" }, select: { id: true, status: true } });
+  });
+});
+
+it("does not claim a snapshot already acquired by another worker", async () => {
+  const update = vi.fn().mockRejectedValue({ code: "P2025" });
+  const snapshot = { ...job, attemptCount: 1, nextRunAt: null, leaseExpiresAt: new Date(0), lockKey: "old-worker" };
+  const prisma = mockPrisma({ $transaction: vi.fn(async cb => cb({ generationJob: { findFirst: vi.fn().mockResolvedValue(snapshot), update } })) });
+  expect(await claimNextJob({ prisma, lockKey: "new-worker", leaseDurationMs: 60000 })).toBeNull();
+  expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: job.id, status: job.status, attemptCount: 1, nextRunAt: null, leaseExpiresAt: new Date(0), lockKey: "old-worker" } }));
 });

@@ -1218,3 +1218,12 @@ git diff --check
 - [x] Verify1154 tests+1skip,typecheck5/5,build,e2e16pass+1skip and14rollback DB cases;independent35 tests clear,final39 targeted passed.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
 - [ ] Remaining:provider exactly-once/abort,multiworker load,cancel API late writes,best-effort usage completeness and real semantic quality require separate evidence.
+
+## Task 71: 2026-11-07 Cancellation and Job Claim Races
+
+- [x] Reproduce late cancellation overwriting completion and stale claim reviving cancellation in unit and actual PostgreSQL baselines.
+- [x] Cancel only scoped active jobs conditionally,return stable idempotent cancellation and terminal409;preserve existing output/metadata.
+- [x] Guard claim updates by status/attempt/lock/lease/nextRun snapshot and return null on lost conditional competition.
+- [x] Verify1163 tests+1skip,typecheck5/5,build,e2e17pass+1skip,11rollback DB cases and4real multi-connection races;independent28DB/7route tests clear.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
+- [ ] Remaining:provider abort/exactly-once,all-handler in-flight delivery,queue throughput pressure,stop error UI and server prose version locks require separate evidence.

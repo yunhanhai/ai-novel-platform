@@ -7,6 +7,7 @@ export {
   requeueJobForRetry,
   releaseJobLease,
   retryFailedJob,
+  cancelGenerationJob,
   recoverExpiredJobLeases,
   updateJobStatus,
   createStep,
