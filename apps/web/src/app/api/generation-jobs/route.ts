@@ -1,7 +1,7 @@
 import { parseQualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
 import { NextResponse } from "next/server";
 import { sanitizeServerMessage } from "../../../server/api-errors";
-import { prisma, createJob } from "@ai-novel/db";
+import { prisma, createJob, JobRequestConflict } from "@ai-novel/db";
 import { normalizeContextOptions } from "@ai-novel/shared/context-composer/options";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import { normalizeQualityMode, normalizePerformanceBudget } from "@ai-novel/shared/generation/performance";
@@ -24,6 +24,7 @@ type JobType =
   | "CONTINUITY_CHECK";
 
 interface CreateJobBody {
+  requestId?: string;
   chapterId?: string;
   projectId?: string;
   jobType?: JobType;
@@ -109,6 +110,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = (await request.json()) as CreateJobBody;
+  if (body.requestId !== undefined && (typeof body.requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId))) {
+    return NextResponse.json({ success: false, error: "请求凭证格式无效" }, { status: 400 });
+  }
   const { chapterId, jobType: rawJobType } = body;
   const jobType = rawJobType ?? "GENERATE_CHAPTER";
   try { if (jobType === "GENERATE_CHAPTER") parseQualityConstraints((body.input as { qualityConstraints?: unknown } | undefined)?.qualityConstraints); }
@@ -170,6 +174,8 @@ export async function POST(request: Request) {
       targetEntityType = "CHAPTER";
       targetEntityId = chapter.id;
     } else if (body.projectId) {
+      const project = await prisma.project.findFirst({ where: { id: body.projectId, organizationId, deletedAt: null }, select: { id: true } });
+      if (!project) return NextResponse.json({ success: false, error: "项目不存在" }, { status: 404 });
       targetEntityType = "PROJECT";
       targetEntityId = body.projectId;
     }
@@ -192,6 +198,7 @@ export async function POST(request: Request) {
       userId,
       jobType,
       input: input as unknown as Parameters<typeof createJob>[0]["input"],
+      ...(body.requestId ? { requestId: body.requestId } : {}),
       ...(body.modelProfileId ? { modelProfileId: body.modelProfileId } : {}),
       ...(targetEntityType ? { targetEntityType } : {}),
       ...(targetEntityId ? { targetEntityId } : {}),
@@ -205,6 +212,11 @@ export async function POST(request: Request) {
           id: job.id,
           jobType: job.jobType,
           status: job.status,
+          progress: job.progress,
+          output: job.output,
+          errorMessage: job.errorMessage,
+          startedAt: job.startedAt,
+          finishedAt: job.finishedAt,
           chapterId: chapterId ?? null,
           projectId: job.projectId
         }
@@ -217,6 +229,7 @@ export async function POST(request: Request) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (error instanceof JobRequestConflict) return NextResponse.json({ success: false, error: error.message }, { status: 409 });
   if (isUnauthorizedError(error)) {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }

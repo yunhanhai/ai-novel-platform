@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@ai-novel/db", () => ({
+vi.mock("@ai-novel/db", async importOriginal => ({
+  JobRequestConflict: (await importOriginal<typeof import("@ai-novel/db")>()).JobRequestConflict,
   prisma: {
     generationJob: { findMany: vi.fn() },
-    chapter: { findFirst: vi.fn() }
+    chapter: { findFirst: vi.fn() },
+    project: { findFirst: vi.fn().mockResolvedValue({ id: "proj-1" }) }
   },
   createJob: vi.fn()
 }));
@@ -190,4 +192,31 @@ describe("POST /api/generation-jobs", () => {
 it("rejects reversed chapter length bounds before creating a job",async()=>{
   const res=await POST(new Request("http://localhost/api/generation-jobs",{method:"POST",body:JSON.stringify({chapterId:"ch-1",jobType:"GENERATE_CHAPTER",input:{qualityConstraints:{minChars:900,maxChars:700}}})}));
   expect(res.status).toBe(400);
+});
+
+it("rejects invalid request receipts before creating a job", async () => {
+  const response = await POST(new Request("http://localhost/api/generation-jobs", { method: "POST", body: JSON.stringify({ chapterId: "ch-1", requestId: "invalid" }) }));
+  expect(response.status).toBe(400);
+});
+it("passes a request receipt and returns a completed job result intact", async () => {
+  p().chapter.findFirst.mockResolvedValue({ id: "ch-1", projectId: "proj-1" });
+  cj().mockResolvedValue({ id: "job-1", jobType: "POLISH", status: "SUCCEEDED", projectId: "proj-1", progress: "100", output: { newText: "完整候选" }, errorMessage: null, startedAt: "start", finishedAt: "finish" });
+  const response = await POST(new Request("http://localhost/api/generation-jobs", { method: "POST", body: JSON.stringify({ chapterId: "ch-1", jobType: "POLISH", input: { selectedText: "原文" }, requestId: "10000000-0000-4000-8000-000000000001" }) }));
+  expect(response.status).toBe(201);
+  expect((await response.json()).data).toMatchObject({ status: "SUCCEEDED", progress: "100", output: { newText: "完整候选" }, finishedAt: "finish" });
+  expect(cj()).toHaveBeenCalledWith(expect.objectContaining({ requestId: "10000000-0000-4000-8000-000000000001" }));
+});
+it("maps a reused request with different parameters to409", async () => {
+  const { JobRequestConflict } = await import("@ai-novel/db");
+  p().chapter.findFirst.mockResolvedValue({ id: "ch-1", projectId: "proj-1" }); cj().mockRejectedValueOnce(new JobRequestConflict());
+  const response = await POST(new Request("http://localhost/api/generation-jobs", { method: "POST", body: JSON.stringify({ chapterId: "ch-1" }) }));
+  expect(response.status).toBe(409);
+});
+
+it("rejects foreign project targets before creating a receipt", async () => {
+  const project = prisma as unknown as { project: { findFirst: ReturnType<typeof vi.fn> } };
+  project.project.findFirst.mockResolvedValueOnce(null);
+  const response = await POST(new Request("http://localhost/api/generation-jobs", { method: "POST", body: JSON.stringify({ projectId: "foreign", jobType: "GENERATE_OUTLINE" }) }));
+  expect(response.status).toBe(404);
+  expect(project.project.findFirst).toHaveBeenCalledWith({ where: { id: "foreign", organizationId: "org-1", deletedAt: null }, select: { id: true } });
 });

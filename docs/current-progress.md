@@ -2137,3 +2137,13 @@ git diff --check   通过
 - 最终1163单测+1skip（40/67/50/364/642）、typecheck5/5、build、完整e2e30pass+1skip（fake，3.2m，新增13项停止/乱序）；最终独立原hook受控慢刷新/终态timer/卸载验证无阻断，7项请求构造通过。
 - 报告`reports/2026-11-08-stop-feedback.md`保留重叠dev服务teardown导致首个单项CONNECTION_REFUSED及隔离RED/GREEN；明确取消不终止供应商、创建响应丢失/未取消旧服务端任务、取消后补读失败不持续追踪等边界。
 - 外部模型0，真实正文/记忆/配置未修改，无迁移部署；codex/stop-feedback验证后快进master同步双远程并外存commit/tree回执，原实验保留。
+
+---
+
+## 2026-11-08 — 创建任务凭证与确认恢复
+
+- 原始DB RED同requestId两行、浏览器未携带凭证。可选UUID请求key以域/org/user派生确定主键，createMany跳过重复再核参数；不同409、无key兼容，终态完整结果原样返回不重排；项目target补组织/未删除范围。
+- 页面未确认同body复用key，网络/5xx/非法确认保留、确认后新操作新key，同hook在途防重入；独立审查补RED确认恢复旧候选误绑新稿，完成effect增加worker来源hash/chapter核对，异步计算后保留原请求/全文检查。
+- 最终1169单测+1skip（42/67/50/364/646）、typecheck5/5、build、完整e2e35pass+1skip（fake，3.4m，新增5项），真实DB10组全回滚+2并发；真实HTTP重放/终态/范围/冲突；独立最终58项无阻断。
+- 报告`reports/2026-11-08-job-create-receipts.md`记录错误文案/选区长度夹具修正与TS多余abort修复；说明内存单凭证/刷新与变参失效、无key兼容不去重、无HTTP exactly-once及未做真实语义验收。
+- 外部模型0，真实正文/记忆/配置不变，无schema/迁移/部署；codex/job-create-receipts验证后快进master同步双远程并外存commit/tree回执，原实验保留。

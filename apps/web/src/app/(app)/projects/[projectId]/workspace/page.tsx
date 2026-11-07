@@ -29,6 +29,7 @@ interface RewriteResult {
 
 interface RewriteRequest extends Omit<RewriteResult, "jobId" | "newText"> {
   jobId: string | null;
+  sourceSha256: string | null;
 }
 
 export default function WorkspacePage() {
@@ -96,7 +97,9 @@ export default function WorkspacePage() {
       if (!request || request.jobId !== job.id) return;
       rewriteRequestRef.current = null;
       if (request.chapterId !== currentEditorRef.current.chapterId) return;
-      if (request.sourceContent !== currentEditorRef.current.content) {
+      if (request.sourceContent !== currentEditorRef.current.content ||
+        (out?.sourceSha256 !== undefined && out.sourceSha256 !== request.sourceSha256) ||
+        (out?.chapterId !== undefined && out.chapterId !== request.chapterId)) {
         setRewriteNotice("原文已发生变化，无法应用。请重新选择文字后再试。");
       } else if (out?.newText && out.selectedText === request.selectedText) {
         setRewriteResult({
@@ -215,7 +218,7 @@ export default function WorkspacePage() {
       const sel = selectionRef.current;
       if (!activeChapterId || !sel || !sel.text.trim() || isLoadingContent || rewriteRequestRef.current) return;
       if (content.slice(sel.start, sel.end) !== sel.text) return;
-      const request: RewriteRequest = { jobId: null, chapterId: activeChapterId, sourceContent: content, mode: jobType, selectedText: sel.text, start: sel.start, end: sel.end };
+      const request: RewriteRequest = { jobId: null, sourceSha256: null, chapterId: activeChapterId, sourceContent: content, mode: jobType, selectedText: sel.text, start: sel.start, end: sel.end };
       rewriteRequestRef.current = request;
       setPreparingRewrite(true);
       setRewriteResult(null);
@@ -224,6 +227,9 @@ export default function WorkspacePage() {
         const saved = await flush();
         if (rewriteRequestRef.current !== request) return;
         if (!saved) { rewriteRequestRef.current = null; setRewriteNotice("正文保存失败，未提交改写任务；请保存后重试。"); return; }
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(request.sourceContent));
+        request.sourceSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+        if (rewriteRequestRef.current !== request) return;
         const current = currentEditorRef.current;
         if (current.chapterId !== request.chapterId || current.content !== request.sourceContent) {
           rewriteRequestRef.current = null;

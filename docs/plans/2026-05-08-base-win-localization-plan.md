@@ -1236,3 +1236,12 @@ git diff --check
 - [x] Verify1163 tests+1skip,typecheck5/5,build,e2e30pass+1skip including13new controlled browser cases;independent original-hook checks and7request tests clear.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
 - [ ] Remaining:lost create acknowledgments/idempotent creation,task history persistence,cancelled side-effect tracking and cross-tab/server prose version locks need separate evidence.
+
+## Task 73: 2026-11-08 Job Creation Receipts
+
+- [x] Reproduce duplicate actual DB rows and missing browser request identity after uncertain creation.
+- [x] Add optional scoped deterministic creation receipts using existing primary key,conditional duplicate insert and immutable payload checks;preserve all terminal results and legacy no-key behavior.
+- [x] Reuse same pending request key after uncertain response,issue new key after confirmation,guard same-hook reentry;verify returned rewrite source hash/chapter before accepting replayed candidates.
+- [x] Verify1169 tests+1skip,typecheck5/5,build,e2e35pass+1skip,10rollback DB groups and2real concurrent scenarios;independent58 checks clear.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
+- [ ] Remaining:cross-refresh request/history persistence,receipt retention,provider exactly-once and real semantic quality need separate evidence.

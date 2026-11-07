@@ -3,6 +3,7 @@ export { Prisma } from "./generated/client";
 export { prisma } from "./client";
 export {
   createJob,
+  JobRequestConflict,
   claimNextJob,
   requeueJobForRetry,
   releaseJobLease,

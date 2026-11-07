@@ -366,3 +366,19 @@ it("does not claim a snapshot already acquired by another worker", async () => {
   expect(await claimNextJob({ prisma, lockKey: "new-worker", leaseDurationMs: 60000 })).toBeNull();
   expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: job.id, status: job.status, attemptCount: 1, nextRunAt: null, leaseExpiresAt: new Date(0), lockKey: "old-worker" } }));
 });
+
+it("uses a scoped stable receipt for duplicate creation", async () => {
+  const first = { ...job, id: "receipt-id", userId: "u1", modelProfileId: null, input: { b: 2, a: 1 } };
+  const create = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce({ ...first, id: "duplicate-id" });
+  const createMany = vi.fn().mockResolvedValue({ count: 0 }); const findFirst = vi.fn().mockResolvedValue(first);
+  const prisma = mockPrisma({ generationJob: { create, createMany, findFirst } });
+  const params = { organizationId: "org1", projectId: "p1", userId: "u1", jobType: "GENERATE_CHAPTER" as const, input: { a: 1, b: 2 }, targetEntityType: "CHAPTER" as const, targetEntityId: "c1", requestId: "10000000-0000-4000-8000-000000000001", prisma };
+  const one = await createJob(params); const two = await createJob(params);
+  expect(two.id).toBe(one.id); expect(create).not.toHaveBeenCalled();
+  expect(createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true, data: expect.objectContaining({ id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/) }) }));
+});
+
+it("rejects reusing a request receipt for a different payload", async () => {
+  const prisma = mockPrisma({ generationJob: { create: vi.fn().mockResolvedValue(job), createMany: vi.fn().mockResolvedValue({ count: 0 }), findFirst: vi.fn().mockResolvedValue({ ...job, input: { instruction: "original" }, modelProfileId: null }) } });
+  await expect(createJob({ organizationId: "org1", projectId: "p1", userId: "u1", jobType: "GENERATE_CHAPTER", input: { instruction: "changed" }, requestId: "10000000-0000-4000-8000-000000000001", prisma })).rejects.toThrow("请求凭证");
+});

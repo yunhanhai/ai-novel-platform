@@ -1,10 +1,12 @@
 import type { PrismaClient } from "./generated/client";
+import { createHash } from "node:crypto";
 
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
 type InputJson = Parameters<PrismaClient["generationJob"]["create"]>[0]["data"]["input"];
 
 interface CreateJobParams {
+  requestId?: string;
   organizationId: string;
   projectId: string;
   userId: string;
@@ -68,15 +70,39 @@ interface UpdateStepParams {
 
 export async function createJob(params: CreateJobParams) {
   const { organizationId, projectId, userId, jobType, input, modelProfileId, targetEntityType, targetEntityId, prisma } = params;
+  const data = {
+    organizationId, projectId, userId, jobType, input,
+    status: "QUEUED" as const, progress: "0",
+    ...(modelProfileId ? { modelProfileId } : {}),
+    ...(targetEntityType ? { targetEntityType } : {}),
+    ...(targetEntityId ? { targetEntityId } : {})
+  };
+  if (!params.requestId) return prisma.generationJob.create({ data });
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.requestId)) throw new Error("请求凭证格式无效");
+  const digest = createHash("sha256").update(JSON.stringify(["generation-job-request-v1", organizationId, userId, params.requestId.toLowerCase()])).digest();
+  digest[6] = (digest[6]! & 0x0f) | 0x80;
+  digest[8] = (digest[8]! & 0x3f) | 0x80;
+  const hex = digest.subarray(0, 16).toString("hex");
+  const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  // ON CONFLICT DO NOTHING also remains usable inside an interactive transaction.
+  await prisma.generationJob.createMany({ data: { ...data, id }, skipDuplicates: true });
+  const existing = await prisma.generationJob.findFirst({ where: { id, organizationId, userId } });
+  if (!existing) throw new Error("无法确认任务创建结果，请使用原请求凭证重试");
+  if (existing.projectId !== projectId || existing.jobType !== jobType || existing.modelProfileId !== (modelProfileId ?? null) ||
+    existing.targetEntityType !== (targetEntityType ?? null) || existing.targetEntityId !== (targetEntityId ?? null) ||
+    canonicalJson(existing.input) !== canonicalJson(input)) throw new JobRequestConflict();
+  return existing;
+}
 
-  return prisma.generationJob.create({
-    data: {
-      organizationId, projectId, userId, jobType, input,
-      status: "QUEUED", progress: "0",
-      ...(modelProfileId ? { modelProfileId } : {}),
-      ...(targetEntityType ? { targetEntityType } : {}),
-      ...(targetEntityId ? { targetEntityId } : {})
-    }
+export class JobRequestConflict extends Error {
+  constructor() { super("请求凭证已用于不同参数，请重新发起任务"); }
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    const record = item as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(record).sort().map(key => [key, record[key]]));
   });
 }
 

@@ -376,6 +376,8 @@ export interface JobSummary {
     mode?: string;
     selectedText?: string;
     newText?: string;
+    chapterId?: string;
+    sourceSha256?: string;
     review?: {
       summary: string;
       passed: boolean;
@@ -441,6 +443,7 @@ export function useJobPolling(): UseJobPollingResult {
   const readRef = useRef<{ sequence: number; controller: AbortController | null }>({ sequence: 0, controller: null });
   const stopRef = useRef<AbortController | null>(null);
   const createRef = useRef<AbortController | null>(null);
+  const pendingCreateRef = useRef<{ fingerprint: string; requestId: string } | null>(null);
 
   const stopPolling = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -497,24 +500,30 @@ export function useJobPolling(): UseJobPollingResult {
   }, [stopPolling]);
 
   const startJob = useCallback(async (chapterId: string | null, jobType: string = "GENERATE_CHAPTER", options?: StartJobOptions): Promise<JobSummary | null> => {
+    if (createRef.current) return null;
     const scope = ++scopeRef.current;
-    stopPolling(); stopRef.current?.abort(); stopRef.current = null; createRef.current?.abort();
+    stopPolling(); stopRef.current?.abort(); stopRef.current = null;
     const controller = new AbortController(); createRef.current = controller;
     setStarting(true); setError(null); setStopping(false); setStopError(null);
     try {
       const body = buildGenerationRequestBody({ chapterId, projectId: options?.projectId, jobType,
         qualityMode: options?.qualityMode, qualityConstraints: options?.qualityConstraints, contextOptions: options?.contextOptions,
         selectedText: options?.selectedText, instruction: options?.instruction, chapterCount: options?.chapterCount, extractMemory: options?.extractMemory });
+      const fingerprint = JSON.stringify(body);
+      if (pendingCreateRef.current?.fingerprint !== fingerprint) pendingCreateRef.current = { fingerprint, requestId: crypto.randomUUID() };
+      body.requestId = pendingCreateRef.current.requestId;
       const response = await fetch("/api/generation-jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
-      const json = await response.json() as ApiEnvelope<{ id: string; jobType: string; status: JobSummary["status"] }>;
+      const json = await response.json() as ApiEnvelope<JobSummary>;
       if (scopeRef.current !== scope || controller.signal.aborted) return null;
+      if ([400, 401, 403, 404, 409].includes(response.status)) pendingCreateRef.current = null;
       if (!response.ok || !json.success || !json.data || typeof json.data.id !== "string" || !["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"].includes(json.data.status)) throw new Error(json.error ?? `创建生成任务失败 (${response.status})`);
-      const initial: JobSummary = { id: json.data.id, jobType: json.data.jobType, status: json.data.status, progress: "0", errorMessage: null, startedAt: null, finishedAt: null };
+      pendingCreateRef.current = null;
+      const initial: JobSummary = { ...json.data, progress: json.data.progress ?? "0", errorMessage: json.data.errorMessage ?? null, startedAt: json.data.startedAt ?? null, finishedAt: json.data.finishedAt ?? null };
       jobRef.current = initial; setJob(initial); poll(scope, initial.id);
       return initial;
     } catch (err: unknown) {
       if (scopeRef.current === scope && !controller.signal.aborted) {
-        setError(err instanceof Error ? err.message : "创建生成任务失败");
+        setError(err instanceof Error && /[\u4e00-\u9fff]/.test(err.message) ? err.message : "未确认任务是否创建；再次提交相同参数可找回原任务。");
         // Keep observing the previous task if creation failed.
         if (jobRef.current) poll(scope, jobRef.current.id);
       }
