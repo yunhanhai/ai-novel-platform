@@ -56,7 +56,6 @@ export default function WorkspacePage() {
 
   // 字数变化不会改变章节数量，侧栏统计需要显式刷新信号。
   const [statsVersion, setStatsVersion] = useState(0);
-  const [stoppingJob, setStoppingJob] = useState(false);
   const bumpStats = useCallback(() => setStatsVersion((v) => v + 1), []);
 
   const {
@@ -70,7 +69,7 @@ export default function WorkspacePage() {
     acceptExternalUpdate,
     dismissExternalUpdate
   } = useChapterContent(activeChapterId, { onSaved: bumpStats });
-  const { job, startJob, isStarting, error: jobError } = useJobPolling();
+  const { job, startJob, isStarting, error: jobError, stopJob, isStopping, stopError } = useJobPolling();
 
   const [selection, setSelection] = useState<EditorSelection | null>(null);
   const [rewriteResult, setRewriteResult] = useState<RewriteResult | null>(null);
@@ -162,20 +161,6 @@ export default function WorkspacePage() {
     if (!activeChapterId) return;
     await flush();
     await startJob(activeChapterId, "BATCH_CONTINUE", { chapterCount, extractMemory });
-  }
-
-  // 停止当前任务：排队中的立即取消；运行中的连更会在当前章完成后停止。
-  // 轮询会自动拉到 CANCELLED 状态并刷新卡片。
-  async function handleStopJob() {
-    if (!job?.id) return;
-    setStoppingJob(true);
-    try {
-      await fetch(`/api/generation-jobs/${job.id}/cancel`, { method: "POST" });
-    } catch {
-      // 取消失败不弹错：轮询会继续反映真实状态
-    } finally {
-      setStoppingJob(false);
-    }
   }
 
   // 章节状态流转（待写/草稿/审阅中/定稿）：写库后刷新列表让侧栏标签同步
@@ -394,8 +379,9 @@ export default function WorkspacePage() {
         onDiagnose={handleDiagnose}
         onContinue={handleContinue}
         onBatchContinue={handleBatchContinue}
-        onStopJob={() => void handleStopJob()}
-        stopping={stoppingJob}
+        onStopJob={() => void stopJob()}
+        stopping={isStopping}
+        stopError={stopError}
         onReview={() => void handleReview()}
         onGenerateOutline={(count) => void handleGenerateOutline(count)}
         onApplyReviewReplacement={applyReviewReplacement}

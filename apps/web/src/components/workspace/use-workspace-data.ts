@@ -409,6 +409,9 @@ export interface JobSummary {
 }
 
 interface UseJobPollingResult {
+  stopJob: () => Promise<void>;
+  isStopping: boolean;
+  stopError: string | null;
   job: JobSummary | null;
   startJob: (chapterId: string | null, jobType?: string, options?: StartJobOptions) => Promise<JobSummary | null>;
   isStarting: boolean;
@@ -430,79 +433,130 @@ export function useJobPolling(): UseJobPollingResult {
   const [job, setJob] = useState<JobSummary | null>(null);
   const [isStarting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isStopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const scopeRef = useRef(0);
+  const jobRef = useRef<JobSummary | null>(null);
+  const readRef = useRef<{ sequence: number; controller: AbortController | null }>({ sequence: 0, controller: null });
+  const stopRef = useRef<AbortController | null>(null);
+  const createRef = useRef<AbortController | null>(null);
 
   const stopPolling = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
+    readRef.current.sequence++;
+    readRef.current.controller?.abort();
+    readRef.current.controller = null;
   }, []);
 
-  const poll = useCallback((jobId: string) => {
+  const isCurrent = useCallback((scope: number, id: string) => scopeRef.current === scope && jobRef.current?.id === id, []);
+  const isTerminal = (status: string) => ["SUCCEEDED", "FAILED", "CANCELLED"].includes(status);
+  const acceptJob = useCallback((next: JobSummary) => {
+    const current = jobRef.current;
+    // A read issued before cancellation/completion must never regress a terminal card.
+    if (current?.id === next.id && isTerminal(current.status) && current.status !== next.status) return;
+    jobRef.current = next;
+    setJob(next);
+  }, []);
+
+  const refreshJob = useCallback(async (scope: number, id: string): Promise<boolean> => {
+    if (!isCurrent(scope, id)) return false;
     stopPolling();
+    const sequence = readRef.current.sequence;
+    const controller = new AbortController();
+    readRef.current.controller = controller;
+    try {
+      const response = await fetch(`/api/generation-jobs/${id}`, { signal: controller.signal });
+      const json = await response.json() as ApiEnvelope<JobSummary>;
+      if (!isCurrent(scope, id) || controller.signal.aborted || readRef.current.sequence !== sequence) return false;
+      if (!response.ok || !json.success || !json.data || json.data.id !== id || !["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"].includes(json.data.status)) return false;
+      acceptJob(json.data);
+      return true;
+    } catch { return false; }
+    finally { if (readRef.current.controller === controller) readRef.current.controller = null; }
+  }, [acceptJob, isCurrent, stopPolling]);
+
+  const poll = useCallback(function schedule(scope: number, id: string) {
+    if (!isCurrent(scope, id) || isTerminal(jobRef.current!.status)) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const scheduledSequence = readRef.current.sequence;
     timerRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/generation-jobs/${jobId}`);
-        const json = (await res.json()) as ApiEnvelope<JobSummary>;
-        if (json.success && json.data) {
-          setJob(json.data);
-          if (["SUCCEEDED", "FAILED", "CANCELLED"].includes(json.data.status)) return;
-        }
-      } catch {
-        // Ignore one polling failure and retry on the next tick.
-      }
-      poll(jobId);
+      if (!isCurrent(scope, id) || readRef.current.sequence !== scheduledSequence) return;
+      timerRef.current = null;
+      // refreshJob advances the read generation synchronously before awaiting I/O.
+      const ownedSequence = scheduledSequence + 1;
+      await refreshJob(scope, id);
+      if (isCurrent(scope, id) && readRef.current.sequence === ownedSequence && !isTerminal(jobRef.current!.status)) schedule(scope, id);
     }, 1500);
+  }, [isCurrent, refreshJob]);
+
+  useEffect(() => () => {
+    scopeRef.current++;
+    stopPolling(); stopRef.current?.abort(); createRef.current?.abort();
   }, [stopPolling]);
 
-  useEffect(() => stopPolling, [stopPolling]);
-
-  const startJob = useCallback(
-    async (chapterId: string | null, jobType: string = "GENERATE_CHAPTER", options?: StartJobOptions): Promise<JobSummary | null> => {
-      setStarting(true);
-      setError(null);
-      try {
-        const body = buildGenerationRequestBody({
-          chapterId,
-          projectId: options?.projectId,
-          jobType,
-          qualityMode: options?.qualityMode,
-          qualityConstraints: options?.qualityConstraints,
-          contextOptions: options?.contextOptions,
-          selectedText: options?.selectedText,
-          instruction: options?.instruction,
-          chapterCount: options?.chapterCount,
-          extractMemory: options?.extractMemory
-        });
-        const res = await fetch("/api/generation-jobs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
-        const json = (await res.json()) as ApiEnvelope<{ id: string; jobType: string; status: JobSummary["status"] }>;
-        if (!res.ok || !json.success || !json.data) {
-          throw new Error(json.error ?? `创建生成任务失败 (${res.status})`);
-        }
-        const initial: JobSummary = {
-          id: json.data.id,
-          jobType: json.data.jobType,
-          status: json.data.status,
-          progress: "0",
-          errorMessage: null,
-          startedAt: null,
-          finishedAt: null
-        };
-        setJob(initial);
-        poll(initial.id);
-        return initial;
-      } catch (err: unknown) {
+  const startJob = useCallback(async (chapterId: string | null, jobType: string = "GENERATE_CHAPTER", options?: StartJobOptions): Promise<JobSummary | null> => {
+    const scope = ++scopeRef.current;
+    stopPolling(); stopRef.current?.abort(); stopRef.current = null; createRef.current?.abort();
+    const controller = new AbortController(); createRef.current = controller;
+    setStarting(true); setError(null); setStopping(false); setStopError(null);
+    try {
+      const body = buildGenerationRequestBody({ chapterId, projectId: options?.projectId, jobType,
+        qualityMode: options?.qualityMode, qualityConstraints: options?.qualityConstraints, contextOptions: options?.contextOptions,
+        selectedText: options?.selectedText, instruction: options?.instruction, chapterCount: options?.chapterCount, extractMemory: options?.extractMemory });
+      const response = await fetch("/api/generation-jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
+      const json = await response.json() as ApiEnvelope<{ id: string; jobType: string; status: JobSummary["status"] }>;
+      if (scopeRef.current !== scope || controller.signal.aborted) return null;
+      if (!response.ok || !json.success || !json.data || typeof json.data.id !== "string" || !["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"].includes(json.data.status)) throw new Error(json.error ?? `创建生成任务失败 (${response.status})`);
+      const initial: JobSummary = { id: json.data.id, jobType: json.data.jobType, status: json.data.status, progress: "0", errorMessage: null, startedAt: null, finishedAt: null };
+      jobRef.current = initial; setJob(initial); poll(scope, initial.id);
+      return initial;
+    } catch (err: unknown) {
+      if (scopeRef.current === scope && !controller.signal.aborted) {
         setError(err instanceof Error ? err.message : "创建生成任务失败");
-        return null;
-      } finally {
-        setStarting(false);
+        // Keep observing the previous task if creation failed.
+        if (jobRef.current) poll(scope, jobRef.current.id);
       }
-    },
-    [poll]
-  );
+      return null;
+    } finally {
+      if (scopeRef.current === scope) { setStarting(false); if (createRef.current === controller) createRef.current = null; }
+    }
+  }, [poll, stopPolling]);
 
-  return { job, startJob, isStarting, error };
+  const stopJob = useCallback(async () => {
+    const current = jobRef.current;
+    if (!current || isTerminal(current.status) || stopRef.current || createRef.current) return;
+    const scope = scopeRef.current; const id = current.id;
+    const controller = new AbortController(); stopRef.current = controller;
+    setStopping(true); setStopError(null);
+    try {
+      const response = await fetch(`/api/generation-jobs/${id}/cancel`, { method: "POST", signal: controller.signal });
+      const json = await response.json().catch(() => null) as ApiEnvelope<{ id: string; status: string }> | null;
+      if (!isCurrent(scope, id) || controller.signal.aborted) return;
+      if (response.status === 409) {
+        setStopError("任务已结束，无需停止；正在刷新状态。");
+        const refreshed = await refreshJob(scope, id);
+        if (isCurrent(scope, id)) setStopError(refreshed ? "任务已结束，无需停止。" : "任务已结束，无需停止；暂未取得最新状态，将继续刷新。");
+      } else if (response.ok && json?.success && json.data?.id === id && json.data.status === "CANCELLED") {
+        stopPolling();
+        acceptJob({ ...jobRef.current!, status: "CANCELLED" });
+        await refreshJob(scope, id);
+      } else {
+        const message = response.status === 401 ? "未登录或会话已过期，请重新登录后查看任务状态。"
+          : response.status === 404 ? "任务不存在或无权访问，未确认停止。"
+          : !response.ok && typeof json?.error === "string" && json.error.trim() ? json.error : "未确认任务已停止，请重试或查看最新状态。";
+        setStopError(message);
+      }
+    } catch {
+      if (isCurrent(scope, id) && !controller.signal.aborted) setStopError("网络异常，未确认任务已停止；请重试。");
+    } finally {
+      if (isCurrent(scope, id) && stopRef.current === controller) {
+        stopRef.current = null; setStopping(false);
+        if (!isTerminal(jobRef.current!.status)) poll(scope, id);
+      }
+    }
+  }, [acceptJob, isCurrent, poll, refreshJob, stopPolling]);
+
+  return { job, startJob, isStarting, error, stopJob, isStopping, stopError };
 }

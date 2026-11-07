@@ -26,11 +26,12 @@ interface AiPanelProps {
   chapterId: string | null;
   onStopJob: () => void;
   stopping: boolean;
+  stopError?: string | null;
 }
 
 const QUALITY_MODES: QualityMode[] = ["fast", "balanced", "deep"];
 
-export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId, onStopJob, stopping }: AiPanelProps) {
+export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId, onStopJob, stopping, stopError }: AiPanelProps) {
   const isRunning = job ? ["QUEUED", "RUNNING"].includes(job.status) : false;
   const [contextSelection, setContextSelection] = useState<{ chapterId: string | null; options: ContextOptions | undefined } | null>(null);
   const contextOptions = contextSelection?.chapterId === chapterId ? contextSelection.options : undefined;
@@ -222,6 +223,7 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, o
             </div>
           )}
           {job.errorMessage && <p className="form-error">{job.errorMessage}</p>}
+          {stopError && <p className="form-error" role="alert" aria-label="停止任务反馈">{stopError}</p>}
           {job.status === "QUEUED" && (
             <p className="form-hint">
               任务排队中。若长时间无进展，请到「设置 → 模型设置」确认 worker 是否在线。

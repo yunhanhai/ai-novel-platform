@@ -1227,3 +1227,12 @@ git diff --check
 - [x] Verify1163 tests+1skip,typecheck5/5,build,e2e17pass+1skip,11rollback DB cases and4real multi-connection races;independent28DB/7route tests clear.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
 - [ ] Remaining:provider abort/exactly-once,all-handler in-flight delivery,queue throughput pressure,stop error UI and server prose version locks require separate evidence.
+
+## Task 72: 2026-11-08 Stop Feedback and Poll Lifecycle
+
+- [x] Reproduce invisible cancellation failures/conflicts/invalid confirmations in browser before implementation.
+- [x] Centralize stop with task polling,validate same-job cancellation acknowledgments,show retryable errors and refresh409 truth without invented status.
+- [x] Fence scope/id/read generation/controllers/finally across creation,stop,poll and unmount;fix independent-review slow-refresh interruption with owned scheduling generations.
+- [x] Verify1163 tests+1skip,typecheck5/5,build,e2e30pass+1skip including13new controlled browser cases;independent original-hook checks and7request tests clear.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
+- [ ] Remaining:lost create acknowledgments/idempotent creation,task history persistence,cancelled side-effect tracking and cross-tab/server prose version locks need separate evidence.

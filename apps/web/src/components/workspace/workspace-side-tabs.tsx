@@ -51,6 +51,7 @@ interface Props {
   onBatchContinue: (chapterCount: number, extractMemory: boolean) => void;
   onStopJob: () => void;
   stopping: boolean;
+  stopError?: string | null;
   onReview: () => void;
   onGenerateOutline: (chapterCount: number) => void;
   onApplyReviewReplacement: (quote: string, replacement: string) => boolean;
@@ -73,6 +74,7 @@ export function WorkspaceSideTabs({
   onBatchContinue,
   onStopJob,
   stopping,
+  stopError,
   onReview,
   onGenerateOutline,
   onApplyReviewReplacement,
@@ -111,6 +113,7 @@ export function WorkspaceSideTabs({
             onBatchContinue={onBatchContinue}
             onStopJob={onStopJob}
             stopping={stopping}
+            stopError={stopError}
             onDeslop={onDeslop}
             onExtractMemory={onExtractMemory}
             isStarting={isStarting}

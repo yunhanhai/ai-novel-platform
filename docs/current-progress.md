@@ -1,6 +1,6 @@
 # Current Progress
 
-> Last updated: 2026-11-07
+> Last updated: 2026-11-08
 
 ## Completed
 
@@ -2127,3 +2127,13 @@ git diff --check   通过
 - 最终1163单测+1skip（40/67/50/364/642）、typecheck5/5、build、完整e2e17pass+1skip（fake，2.4m），真实HTTP身份/范围/双取消/终态409；独立DB28/route7无阻断，建议真实交互事务竞争已补。
 - 报告`reports/2026-11-07-cancel-race.md`保留快速worker先处理夹具与runner未加载DB env失败，固定延后任务并加载本地env后重跑通过，不改产品/时限；取消不终止供应商、认领输者下tick及其余handler/提示边界明确。
 - 无schema/迁移/配置/部署，真实正文/记忆不变；codex/cancel-race验证后快进master同步双远程并外存commit/tree回执，原实验保持。
+
+---
+
+## 2026-11-08 — 停止反馈与轮询隔离
+
+- 浏览器3项RED确认取消HTTP/网络失败无反馈，整合stop到useJobPolling；明确401/404/503/网络/非法确认，只有同任务CANCELLED确认才更新，409即时刷新真实状态、补读失败不冒称已取消。
+- scope/id/controller隔离创建/停止/读与finally，terminal不回退，新任务/卸载淘汰旧响应。独立审查补RED复现旧poll重排timer打断慢刷新，以scheduled/owned读代际修复并GREEN。
+- 最终1163单测+1skip（40/67/50/364/642）、typecheck5/5、build、完整e2e30pass+1skip（fake，3.2m，新增13项停止/乱序）；最终独立原hook受控慢刷新/终态timer/卸载验证无阻断，7项请求构造通过。
+- 报告`reports/2026-11-08-stop-feedback.md`保留重叠dev服务teardown导致首个单项CONNECTION_REFUSED及隔离RED/GREEN；明确取消不终止供应商、创建响应丢失/未取消旧服务端任务、取消后补读失败不持续追踪等边界。
+- 外部模型0，真实正文/记忆/配置未修改，无迁移部署；codex/stop-feedback验证后快进master同步双远程并外存commit/tree回执，原实验保留。
