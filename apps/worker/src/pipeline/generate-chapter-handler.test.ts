@@ -666,6 +666,7 @@ it("queries only earlier source chapters when composing a generation prompt",asy
  const findMany=vi.fn().mockResolvedValue([]);const model={generate:vi.fn().mockResolvedValue({text:"正文",inputTokens:2,outputTokens:2})};
  await createGenerateChapterHandler({prisma:{...prisma,projectMemory:{findMany}}as never,updateJobStatus:vi.fn(),model})({...baseJob,input:{qualityMode:"fast",performanceBudget:{maxModelCalls:2}}});
  expect(findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({OR:[{sourceChapterId:null},{sourceChapter:{is:{organizationId:"org-1",projectId:"proj-1",deletedAt:null,chapterNo:{lt:3}}}}]})}));
+ expect(findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({memoryType:"chapter_summary"}),take:5,orderBy:[{sourceChapter:{chapterNo:"desc"}},{createdAt:"desc"},{id:"desc"}]}));
 });
 
 it("keeps the requested database memory excluded from actual worker plan and draft prompts", async () => {

@@ -1153,3 +1153,12 @@ git diff --check
 - [x] Verify1088 tests+1skip,typecheck5/5,build,e2e7pass+1skip including4 controlled-response browser cases, abort signals and intercepted generation input; independent13 targeted checks clear.
 - [x] Update report/progress/manual, integrate task branch and synchronize both master refs with external receipts; zero external model calls, no migration/deployment or private-content changes.
 - [ ] Remaining: creation-time20-memory retrieval, preview/execution snapshots and real semantic quality remain separate work.
+
+## Task 64: 2026-11-07 Nearby Chapter Summary Retrieval
+
+- [x] Reproduce actual DB starvation:21 newer early-chapter facts displace the adjacent chapter summary from all20 candidates.
+- [x] Share bounded retrieval:up to5 nearest distinct prior-source summaries then newest accepted memories to20,stable ordering and scoped filters; avoid reserved-source duplicate summaries.
+- [x] Verify1091 tests+1skip,typecheck5/5,build,e2e7pass+1skip and5rollback-only PostgreSQL scenarios including actual worker prompts/reorder/invalid sources/first chapter;independent34 targeted checks passed.
+- [x] Document candidate-versus-token limits,Prisma distinct scanning and multi-query snapshot limitations; no external model calls,provider/prose/schema changes or deployment.
+- [x] Update report/progress/manual,integrate branch and synchronize both master refs with external receipts.
+- [ ] Remaining:large-project retrieval cost,nonreserved legacy duplication,read snapshots and real semantic quality require separate evidence.

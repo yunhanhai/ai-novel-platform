@@ -32,3 +32,42 @@ export function activeMemorySourceFilter(organizationId: string, projectId: stri
     ]
   };
 }
+
+const GENERATION_MEMORY_LIMIT = 20;
+const RECENT_SUMMARY_LIMIT = 5;
+
+export async function findGenerationMemories(params: {
+  prisma: Pick<PrismaClient, "projectMemory">;
+  organizationId: string;
+  projectId: string;
+  beforeChapterNo: number;
+}) {
+  const { prisma, organizationId, projectId, beforeChapterNo } = params;
+  const recent = await prisma.projectMemory.findMany({
+    where: {
+      organizationId, projectId, status: "accepted", memoryType: "chapter_summary",
+      sourceChapterId: { not: null },
+      sourceChapter: { is: { organizationId, projectId, deletedAt: null, chapterNo: { lt: beforeChapterNo } } }
+    },
+    orderBy: [{ sourceChapter: { chapterNo: "desc" } }, { createdAt: "desc" }, { id: "desc" }],
+    distinct: ["sourceChapterId"],
+    take: RECENT_SUMMARY_LIMIT
+  });
+  const sourceIds = recent.flatMap(memory => memory.sourceChapterId ? [memory.sourceChapterId] : []);
+  const remaining = await prisma.projectMemory.findMany({
+    where: {
+      organizationId, projectId, status: "accepted",
+      ...activeMemorySourceFilter(organizationId, projectId, beforeChapterNo),
+      id: { notIn: recent.map(memory => memory.id) },
+      // Legacy duplicate summaries from a reserved chapter must not consume the rest.
+      ...(sourceIds.length ? { AND: [{ OR: [
+        { sourceChapterId: null },
+        { memoryType: { not: "chapter_summary" } },
+        { sourceChapterId: { notIn: sourceIds } }
+      ] }] } : {})
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: GENERATION_MEMORY_LIMIT - recent.length
+  });
+  return [...new Map([...recent, ...remaining].map(memory => [memory.id, memory])).values()].slice(0, GENERATION_MEMORY_LIMIT);
+}

@@ -1,4 +1,4 @@
-﻿import { lockMemorySourceChapter, supersedeChapterMemories, activeMemorySourceFilter } from "@ai-novel/db/chapter-memory";
+﻿import { lockMemorySourceChapter, supersedeChapterMemories, findGenerationMemories } from "@ai-novel/db/chapter-memory";
 import { persistExtractedMemories } from "./extracted-memory-store";
 import type { ExtractOutput } from "./extraction-output";
 import { parseQualityConstraints, checkQualityConstraints, type QualitySummary } from "@ai-novel/shared/generation/quality-constraints";
@@ -315,7 +315,7 @@ async function buildWorkerContextPacket(params: {
     delegates.character?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, status: "active", deletedAt: null }, orderBy: { createdAt: "asc" } }) ?? Promise.resolve([]),
     delegates.worldItem?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, status: "active", deletedAt: null }, orderBy: [{ priority: "desc" }, { createdAt: "asc" }] }) ?? Promise.resolve([]),
     delegates.plotThread?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, deletedAt: null, status: { in: ["planted", "progressing", "deferred"] } }, orderBy: [{ priority: "desc" }, { createdAt: "asc" }] }) ?? Promise.resolve([]),
-    delegates.projectMemory?.findMany({ where: { organizationId: job.organizationId, projectId: job.projectId, status: "accepted", ...activeMemorySourceFilter(job.organizationId, job.projectId, chapter?.chapterNo ?? 0) }, orderBy: { createdAt: "desc" }, take: 20 }) ?? Promise.resolve([]),
+    delegates.projectMemory ? findGenerationMemories({ prisma, organizationId: job.organizationId, projectId: job.projectId, beforeChapterNo: chapter?.chapterNo ?? 0 }) : Promise.resolve([]),
     delegates.styleProfile?.findFirst({ where: { organizationId: job.organizationId, projectId: job.projectId, isActive: true }, orderBy: { updatedAt: "desc" } }) ?? Promise.resolve(null)
   ]);
 

@@ -2044,3 +2044,15 @@ git diff --check   通过
 - 验证1088单测+1skip（26/67/50/305/640）、typecheck5/5、build；完整e2e7pass+1skip（fake，1.3m），新增4项真实响应乱序/取消/卸载/恢复及生成请求选项检查；独立13定向通过，无阻断，采纳取消信号证据建议。
 - 报告`reports/2026-11-07-context-preview-race.md`记录客户端取消边界、Next dev取消日志、无预览快照。外部模型调用0，既有真实章/13记忆/配置不变，无迁移/部署。
 - codex/context-preview-race完成后快进master同步双远程，最终commit/tree回执外存，原实验保持；下一步继续核对实际上下文检索与作者语义反馈。
+
+---
+
+## 2026-11-07 — 邻近章节摘要候选检索
+
+- 真实DB先复现第30章近邻第29章摘要被第1章21条新事实挤出全部20候选。共享findGenerationMemories改为最多5个最近前置来源章摘要（每源最新一条），剩余创建时间补足，总数仍20，web/worker共用。
+- 预留来源的旧副本不占剩余槽位，createdAt/id稳定排序，沿用租户/来源时序/删除过滤，source-null人工记忆仍有剩余槽位通道；不扩大token预算，候选仍可能被裁剪。
+- 验证1091单测+1skip（29/67/50/305/640）、typecheck5/5、build、完整e2e7pass+1skip（fake，1.3m）；真实DB5项全回滚含21条挤占/多源重复/实际plan-draft/重排/跨项目删除首章，外部模型0。
+- 独立只读34项定向检查通过，无阻断，采纳补记人工摘要验证建议。
+- 补测发现初版NOT重复排除组合因SQL NULL误排source-null人工摘要，真实DB RED后显式保留null修复；普通人工事实/人工摘要通道均实证，相关全量检查重跑。
+- 报告`reports/2026-11-07-memory-retrieval.md`说明distinct查询扫描、两次读取/无快照、其余创建时间及token裁剪限制；既有真实章/13记忆与配置不变，无schema/迁移/部署。
+- codex/memory-retrieval完成后快进master同步双远程并外存commit/tree回执，原实验保持。下一步基于作者核对继续检查有效上下文，不宣称语义或性能基准通过。

@@ -115,6 +115,7 @@ describe("buildChapterContextPreview", () => {
     expect(preview?.promptPreview).toContain("Starfall");
     expect(prisma.projectMemory.findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({OR:[{sourceChapterId:null},{sourceChapter:{is:{organizationId:"org-1",projectId:"project-1",deletedAt:null,chapterNo:{lt:3}}}}]})}));
     expect(preview?.included.filter(asset => asset.sourceType === "memory").map(asset => asset.id)).toEqual(["memory:memory-key"]);
+    expect(prisma.projectMemory.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ memoryType: "chapter_summary" }), orderBy: [{ sourceChapter: { chapterNo: "desc" } }, { createdAt: "desc" }, { id: "desc" }], take: 5 }));
     expect(preview?.promptPreview).toContain("Hero must pay a debt to open the gate");
     expect(prisma.chapter.findFirst).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ project: { select: expect.objectContaining({ premise: true }) } }) }));
   });

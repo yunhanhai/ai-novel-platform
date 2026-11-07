@@ -1,4 +1,4 @@
-import { activeMemorySourceFilter } from "@ai-novel/db/chapter-memory";
+import { findGenerationMemories } from "@ai-novel/db/chapter-memory";
 import type { PrismaClient } from "@ai-novel/db";
 import { normalizeContextOptions, resolveTokenBudget } from "@ai-novel/shared/context-composer/options";
 import type { ContextAsset, ContextOptions, ContextBudgetPreset } from "@ai-novel/shared/context-composer/types";
@@ -72,11 +72,7 @@ export async function buildChapterContextPreview({
       },
       orderBy: [{ priority: "desc" }, { createdAt: "asc" }]
     }),
-    prisma.projectMemory.findMany({
-      where: { organizationId, projectId: chapter.projectId, status: "accepted", ...activeMemorySourceFilter(organizationId, chapter.projectId, chapter.chapterNo) },
-      orderBy: { createdAt: "desc" },
-      take: 20
-    }),
+    findGenerationMemories({ prisma, organizationId, projectId: chapter.projectId, beforeChapterNo: chapter.chapterNo }),
     prisma.styleProfile.findFirst({
       where: { organizationId, projectId: chapter.projectId, isActive: true },
       orderBy: { updatedAt: "desc" }
