@@ -2025,3 +2025,12 @@ git diff --check   通过
 - 验证1082单测+1跳过（26/67/50/299/640）、typecheck5/5、build、完整e2e3pass+1skip（fake，1.1m）；4项真实DB全回滚包含实际worker plan/draft，浏览器先RED复现缺恢复入口再GREEN通过插入/刷新/恢复。
 - 报告`reports/2026-11-07-context-selection.md`记录旧位置选项兼容限制、单次选择范围和未验语义/关键词间接作用。模型外部调用0，既有真实正文/13记忆与凭据未变，无迁移/部署；本轮主智能体自审，未声称独立审查。
 - codex/context-selection完成后快进master同步双远程并外存commit/tree回执，原实验工作树保持。下一步优先核对被选素材与预览/实际请求一致性，再有限验证真实正文质量。
+
+---
+
+## 2026-11-07 — 排除素材与关键词激活一致
+
+- RED复现排除记忆仍触发世界背景进入worker plan/draft、inactive排除项丢恢复入口、强制/排除统计冲突。共享packet激活前过滤记忆与sources，excluded取有效全集，forced过滤排除；章纲等允许来源的独立触发保留。
+- 验证1088单测+1skip（26/67/50/305/640）、typecheck5/5、build、完整e2e3pass+1skip（fake，59.5s）；5项真实DB全回滚覆盖preview/worker/恢复/冲突；独立只读55项通过，无阻断。浏览器首轮测试遗漏异步恢复状态等待，已补可观察断言后完整重跑。
+- 报告`reports/2026-11-07-context-exclusion.md`记录排除语义与限制。外部模型调用0，真实正文/13记忆及配置未动，不迁移或部署。20条检索、预算裁剪对激活的影响和请求竞态未扩展。
+- codex/context-exclusion完成后快进master同步双远程，commit/tree回执外存；后续继续按可复现上下文一致性问题推进，真实语义仍需作者核对。

@@ -119,11 +119,13 @@ export function buildContextPacket(input: PacketInput): PacketResult {
     sections.push(`章节目标：${input.currentChapter.outlineSummary}`);
   }
 
-  const keywordSources = buildKeywordSources(input);
+  const keywordSources = buildKeywordSources(input).filter(source => !excludedIds.has(source.id));
   const triggerText = [
     input.currentChapter.title,
     input.currentChapter.outlineSummary ?? "",
-    input.recentMemories.map((memory) => memory.content).join(" ")
+    input.recentMemories
+      .filter(memory => !excludedIds.has(`memory:${memory.id}`))
+      .map(memory => memory.content).join(" ")
   ].join(" ");
   const activationReport = activateByKeywords({ sources: keywordSources, triggerText });
   const activatedIds = new Set(activationReport.activated.map((asset) => asset.id));
@@ -131,10 +133,11 @@ export function buildContextPacket(input: PacketInput): PacketResult {
   const candidates = buildDefaultCandidates(input, activationReport);
   const allAssets = buildAllOptionalAssets(input, activationReport);
   const forcedAssets = allAssets.filter(
-    (asset) => forcedIds.has(asset.id) && !candidates.some((candidate) => candidate.id === asset.id)
+    (asset) => forcedIds.has(asset.id) && !excludedIds.has(asset.id) && !candidates.some((candidate) => candidate.id === asset.id)
   );
   const selectedCandidates = [...candidates, ...forcedAssets];
-  const excludedAssets = selectedCandidates.filter((asset) => !asset.required && excludedIds.has(asset.id));
+  // Keep valid exclusions recoverable even when their keyword trigger disappears.
+  const excludedAssets = allAssets.filter((asset) => !asset.required && excludedIds.has(asset.id));
   const budgetItems = selectedCandidates.filter((asset) => asset.required || !excludedIds.has(asset.id));
 
   const budget = input.tokenBudget - estimateTokens(sections.join("\n"));

@@ -1135,3 +1135,12 @@ git diff --check
 - [x] Verify1082 tests+1skip,typecheck5/5,build,e2e3pass+1skip and4rollback-only real DB scenarios including actual worker plan/draft; external model calls0.
 - [x] Update report/progress/manual, self-review diff, integrate branch and synchronize both master refs with external receipts; no schema/provider/prose change or deployment.
 - [ ] Remaining: legacy queued positional options require reselection; creation-time memory retrieval, indirect keyword effects and real content semantics remain separate verification work.
+
+## Task 62: 2026-11-07 Context Exclusion and Activation Consistency
+
+- [x] Reproduce excluded memories indirectly activating world context, inactive exclusions disappearing from recovery and contradictory forced counts.
+- [x] Apply exclusions before keyword triggers/source activation; retain valid inactive exclusions for restore and give exclusions priority over force.
+- [x] Verify independent outline triggers remain valid; actual web/worker prompts agree through5rollback-only PostgreSQL scenarios, with no external model calls.
+- [x] Verify1088 tests+1skip,typecheck5/5,build,e2e3pass+1skip and independent55 targeted tests; document initial e2e synchronization assertion correction.
+- [x] Update report/progress/manual, integrate task branch and synchronize both master refs with external receipts; preserve private content/config and original experiment.
+- [ ] Remaining: creation-time20-memory selection, preview request ordering and real semantic quality require separate evidence.

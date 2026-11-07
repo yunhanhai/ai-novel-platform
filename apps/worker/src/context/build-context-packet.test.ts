@@ -232,3 +232,60 @@ describe("stable memory choices", () => {
     expect(packet([a], ["mem-0"]).prompt).toContain(a.content);
   });
 });
+
+
+describe("exclusions before keyword activation", () => {
+  function fixture(excludedAssetIds: string[], forcedAssetIds: string[] = [], outlineSummary = "仅核对案卷") {
+    return buildContextPacket({
+      ...baseInput, currentChapter: { id: "current", chapterNo: 5, title: "调查", outlineSummary },
+      characters: [], plotThreads: [],
+      worldItems: [{ id: "secret-world", name: "暗井", itemType: "location", content: "仅由记忆触发的隐藏背景", activationKeywords: ["暗井"] }],
+      recentMemories: [{ id: "trigger-memory", memoryType: "world_fact", content: "在暗井调查", scopeType: "project" }],
+      contextOptions: { budgetPreset: "standard", excludedAssetIds, forcedAssetIds }
+    });
+  }
+  it("does not activate world context from an excluded memory", () => {
+    expect(fixture([]).prompt).toContain("隐藏背景");
+    const result = fixture(["memory:trigger-memory"]);
+    expect(result.prompt).not.toContain("隐藏背景");
+    expect(result.activationReport.triggeredBy).not.toContain("暗井");
+    expect(result.activationReport.activated).toEqual([]);
+    expect(result.assets.available.map(item => item.id)).toContain("secret-world");
+  });
+  it("preserves independent activation from the current chapter outline", () => {
+    const result = fixture(["memory:trigger-memory"], [], "进入暗井");
+    expect(result.prompt).toContain("隐藏背景");
+    expect(result.activationReport.activated.map(item => item.id)).toContain("secret-world");
+  });
+  it("does not report an explicitly excluded world asset as activated", () => {
+    const result = fixture(["secret-world"]);
+    expect(result.activationReport.activated.map(item => item.id)).not.toContain("secret-world");
+    expect(result.assets.excluded.map(item => item.id)).toContain("secret-world");
+  });
+  it("keeps inactive excluded assets restorable", () => {
+    const result = buildContextPacket({ ...baseInput, characters: [], plotThreads: [], recentMemories: [],
+      worldItems: [{ id: "secret-world", name: "暗井", itemType: "location", content: "隐藏背景", activationKeywords: ["暗井"] }],
+      contextOptions: { budgetPreset: "standard", excludedAssetIds: ["secret-world"], forcedAssetIds: [] }
+    });
+    expect(result.assets.excluded.map(item => item.id)).toEqual(["secret-world"]);
+    expect(result.assets.available.map(item => item.id)).not.toContain("secret-world");
+    expect(result.prompt).not.toContain("隐藏背景");
+  });
+  it("lets exclusion win over force without counting the asset as forced", () => {
+    const result = buildContextPacket({ ...baseInput, characters: [], plotThreads: [], recentMemories: [],
+      worldItems: [{ id: "secret-world", name: "暗井", itemType: "location", content: "隐藏背景", activationKeywords: ["暗井"] }],
+      contextOptions: { budgetPreset: "standard", excludedAssetIds: ["secret-world"], forcedAssetIds: ["secret-world"] }
+    });
+    expect(result.assets.forced).toEqual([]);
+    expect(result.assets.excluded.map(item => item.id)).toContain("secret-world");
+    expect(result.prompt).not.toContain("隐藏背景");
+  });
+});
+
+it("does not list an excluded character in the keyword activation report", () => {
+  const result = buildContextPacket({ ...baseInput, currentChapter: { ...baseInput.currentChapter, outlineSummary: "陈锋调查" },
+    contextOptions: { budgetPreset: "standard", excludedAssetIds: ["ch1"], forcedAssetIds: [] }
+  });
+  expect(result.activationReport.activated.map(item => item.id)).not.toContain("ch1");
+  expect(result.assets.excluded.map(item => item.id)).toContain("ch1");
+});

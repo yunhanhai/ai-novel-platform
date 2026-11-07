@@ -104,17 +104,24 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
     const projectId = location.pathname.split("/")[2]!;
     const chapters = await (await fetch(`/api/projects/${projectId}/chapters?page=1&pageSize=10`)).json();
     const chapterId = chapters.data.items[0].id;
-    const marker = `选择目标-${Date.now()}`;
+    const worldName = `隐井-${Date.now()}`;
+    const worldContent = `仅由排除记忆触发的背景-${Date.now()}`;
+    const world = await fetch("/api/world-items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, name: worldName, itemType: "location", summary: worldContent, activationKeywords: [worldName] }) });
+    if (!world.ok) throw new Error("world fixture creation failed");
+    const marker = `选择目标-${Date.now()} ${worldName}`;
     const created = await (await fetch("/api/project-memories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, memoryType: "world_fact", scopeType: "project", content: marker }) })).json();
     const accepted = await fetch(`/api/project-memories/${created.data.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "accepted" }) });
     if (!accepted.ok) throw new Error("selection fixture acceptance failed");
     const preview = await (await fetch(`/api/chapters/${chapterId}/context-preview`)).json();
     const asset = preview.data.included.find((item: { content: string }) => item.content.includes(marker));
-    return { projectId, chapterId, marker, assetName: asset.name };
+    return { projectId, chapterId, marker, assetName: asset.name, worldName, worldContent };
   });
   const composer = page.getByRole("region", { name: "上下文编排器" });
   await composer.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(composer.locator(".context-prompt-preview pre")).toContainText(selectionFixture.marker);
+  await expect(composer.locator(".context-prompt-preview pre")).toContainText(selectionFixture.worldContent);
+  await composer.locator(".context-asset-group li").filter({ hasText: selectionFixture.worldName }).getByRole("button", { name: "排除", exact: true }).click();
+  await expect(composer.locator(".context-prompt-preview pre")).not.toContainText(selectionFixture.worldContent);
   await composer.locator(".context-asset-group li").filter({ hasText: selectionFixture.assetName }).getByRole("button", { name: "排除", exact: true }).click();
   await expect(composer.locator(".context-prompt-preview pre")).not.toContainText(selectionFixture.marker);
   await expect(composer.getByRole("heading", { name: "已排除", exact: true })).toBeVisible();
@@ -128,9 +135,15 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await composer.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(composer.locator(".context-prompt-preview pre")).toContainText(insertedMarker);
   await expect(composer.locator(".context-prompt-preview pre")).not.toContainText(selectionFixture.marker);
+  // 世界项失去关键词触发后仍保留在排除列表，可以恢复。
+  await composer.locator(".context-asset-group li").filter({ hasText: selectionFixture.worldName }).getByRole("button", { name: "恢复", exact: true }).click();
+  await expect(composer.getByRole("button", { name: "恢复", exact: true })).toHaveCount(1);
+  // 仅恢复世界项，不应继续被尚未恢复的记忆间接激活。
+  await expect(composer.locator(".context-prompt-preview pre")).not.toContainText(selectionFixture.worldContent);
   await composer.getByRole("button", { name: "恢复", exact: true }).click();
   await expect(composer.getByRole("heading", { name: "已排除", exact: true })).toHaveCount(0);
   await expect(composer.locator(".context-prompt-preview pre")).toContainText(selectionFixture.marker);
+  await expect(composer.locator(".context-prompt-preview pre")).toContainText(selectionFixture.worldContent);
 
   // 来源记忆在正文未变化时保留，实际编辑后失效。
   const freshnessFixture = await page.evaluate(async () => {
