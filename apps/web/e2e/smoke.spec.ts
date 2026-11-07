@@ -227,11 +227,11 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
     page.locator(".chapter-list-item").filter({ hasText: CHAPTER_TITLE }).locator(".chapter-status")
   ).toHaveText("定稿", { timeout: 15_000 });
 
-  // 8.7 审校（REVIEW）：切到审校 tab 触发，等待结果面板出现
-  //     job-status-card 只在 AI tab 渲染，因此这里以审校面板自身作为完成信号
+  // 8.7 fake 返回散文，不得将缺少结构化依据的审校显示为通过。
   await page.getByRole("tab", { name: "审校" }).click();
   await page.getByRole("button", { name: "开始审校" }).click();
-  await expect(page.locator(".review-summary")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".review-panel .form-error")).toContainText("模型未返回完整的审校 JSON", { timeout: 30_000 });
+  await expect(page.locator(".review-summary")).toHaveCount(0);
   await page.getByRole("tab", { name: "AI", exact: true }).click();
 
   // 8.8 大纲 tab：AI 批量生成细纲入口可用（fake 模型返回散文，应看到明确的失败提示而非崩溃）

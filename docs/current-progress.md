@@ -2207,3 +2207,13 @@ git diff --check   通过
 - 服务RED新增8项失败后36定向通过，实际DB10项全回滚/双连接竞争通过，多连接合成数据保留。独立实际组件发现等待保存时取消无效P2，禁用取消/替换input并加同步ref守卫后6项GREEN无阻断。
 - 浏览器专项8项通过，补Unicode前缀/非法位置/真实HTTP身份组织与哈希幂等，最终1213单测+1skip（42/74/50/364/683）、完整e2e79pass+1skip（fake，5.8m，新增10项）及P2修复后1浏览器定向通过，typecheck5/5、build通过。外部模型0，真实正文/记忆/配置不变，无schema/迁移/部署。
 - 报告`reports/2026-11-08-deslop-apply-source.md`记录RED/GREEN与哈希ABA/无持久操作凭证/已提交不取消等边界；codex/deslop-apply-source验证后快进master同步双远程并外存commit/tree回执，旧实验保留。
+
+---
+
+## 2026-11-08 — 审校报告可信度与来源保护
+
+- 浏览器RED确认旧报告在选区外改文后可采纳、重复引用自动定位第一处。UI核对worker章ID/全文hash，旧hash/旧job/卸载淘汰，组件与父page采纳同步双检全文唯一引用；采纳一项后重审，发起flush期间改文撤销。
+- worker完整正文<=20000Unicode字，超限提前失败；严格JSON/字段无效不宣称通过，重复/不存在引用仅参考。范围/RUNNING/attempt预检、锁章→锁review job核来源终态，step+报告/拒绝原子完成；用量含无效/丢弃，最终step凭证防确认丢失，清理仅RUNNING。
+- worker RED30失败后35定向与79邻近通过，实际DB17全回滚+双连接2持锁竞争通过；真实正文/时间未变，多连接合成项目保留。独立65定向+实际组件6项通过，429有限续跑补结论无阻断。
+- 最终1241单测+1skip（42/74/50/392/683）、typecheck5/5、build、完整e2e88pass+1skip（fake，6.1m，新增9项）。报告保留test.each收集错误和index同名编译失败，修正后重验，不改时限；fake审校散文明确FAILED。
+- 报告`reports/2026-11-08-review-source-guards.md`明确语义验收/采纳反馈非保存凭证/ABA/usage尽力等边界。外部模型0，真实作品/记忆/配置/schema不变，无迁移部署；codex/review-source-guards快进master同步双远程并外存commit/tree回执，旧实验保留。

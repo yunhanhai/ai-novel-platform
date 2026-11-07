@@ -10,7 +10,7 @@ import { PlotThreadsPanel } from "./plot-threads-panel";
 import { MemoriesPanel } from "./memories-panel";
 import { VersionsPanel } from "./versions-panel";
 import { DeslopPanel } from "./deslop-panel";
-import { ReviewPanel } from "./review-panel";
+import { ReviewPanel, type ReviewSource } from "./review-panel";
 import { StatsPanel } from "./stats-panel";
 import { PerformancePanel } from "./performance-panel";
 import { ProjectInfoPanel } from "./project-info-panel";
@@ -54,8 +54,10 @@ interface Props {
   stopping: boolean;
   stopError?: string | null;
   onReview: () => void;
+  preparingReview: boolean;
+  reviewNotice?: string | null;
   onGenerateOutline: (chapterCount: number) => void;
-  onApplyReviewReplacement: (quote: string, replacement: string) => boolean;
+  onApplyReviewReplacement: (quote: string, replacement: string, source: ReviewSource) => boolean;
   onDeslop: () => void;
   onExtractMemory: () => void;
   isStarting: boolean;
@@ -78,6 +80,8 @@ export function WorkspaceSideTabs({
   stopping,
   stopError,
   onReview,
+  preparingReview,
+  reviewNotice,
   onGenerateOutline,
   onApplyReviewReplacement,
   onDeslop,
@@ -136,11 +140,13 @@ export function WorkspaceSideTabs({
         {active === "project" && <ProjectInfoPanel projectId={projectId} />}
         {active === "review" && (
           <ReviewPanel
+            key={chapterId}
             chapterId={chapterId}
             chapterContent={currentChapterText}
             job={job}
             onRun={onReview}
-            isStarting={isStarting}
+            isStarting={isStarting || preparingReview}
+            runNotice={reviewNotice}
             onApplyReplacement={onApplyReviewReplacement}
           />
         )}

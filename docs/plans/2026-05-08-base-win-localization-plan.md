@@ -1299,3 +1299,12 @@ git diff --check
 - [x] Real DB10cases and service/API36tests clear;independent cancel-during-save P2 fixed,6actual-component checks clear;browser8targeted cases pass.
 - [x] Verify1213tests+1skip,e2e79pass+1skip,typecheck5/5,build and1final targeted browser case;update documentation,integrate master and synchronize both remotes with external receipts.
 - [ ] Remaining:hash ABA/durable receipts,version retention and real model semantic quality require separate evidence.
+
+### 2026-11-08 — Review report validity and source protection
+
+- [x] Reproduce outdated and repeated-quote replacement;bind review report to chapter/full-source hash and recheck synchronously at editor adoption.
+- [x] Include complete source up to20000Unicode chars,fail oversized/invalid report honestly,verify unique exact quotes only;retain references without automatic ambiguous replacement.
+- [x] Protect worker source/terminal/attempt with chapter then job locks,atomic final report/step,measured response usage and commit receipt recovery.
+- [x] Verify1241tests+1skip,typecheck5/5,build,e2e88pass+1skip,actualDB17rollback+2connection-order cases;independent65tests/6actual-component checks clear.
+- [x] Update reports/progress/manual,integrate master and synchronize both remotes with external commit/tree receipts;zero model calls,no real prose/config/schema/deployment changes.
+- [ ] Remaining:real model semantic calibration,durable adoption/save feedback,hash ABA and broader feedback concurrency governance require separate evidence.

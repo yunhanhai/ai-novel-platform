@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JobSummary } from "./use-workspace-data";
 
 interface ReviewSuggestion {
@@ -22,13 +22,15 @@ interface ReviewPayload {
   degraded: boolean;
 }
 
+export interface ReviewSource { chapterId: string; content: string }
 interface ReviewPanelProps {
   chapterId: string | null;
   chapterContent: string;
   job: JobSummary | null;
   onRun: () => void;
   isStarting: boolean;
-  onApplyReplacement: (quote: string, replacement: string) => boolean;
+  runNotice?: string | null;
+  onApplyReplacement: (quote: string, replacement: string, source: ReviewSource) => boolean;
 }
 
 const ISSUE_TYPE_LABELS: Record<string, string> = {
@@ -55,40 +57,58 @@ export function ReviewPanel({
   job,
   onRun,
   isStarting,
-  onApplyReplacement
+  onApplyReplacement,
+  runNotice
 }: ReviewPanelProps) {
-  const [payload, setPayload] = useState<ReviewPayload | null>(null);
+  const [snapshot, setSnapshot] = useState<{ payload: ReviewPayload; source: ReviewSource; jobId: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [applied, setApplied] = useState<Set<string>>(new Set());
+  const sourceRef = useRef({ chapterId, content: chapterContent });
+  sourceRef.current = { chapterId, content: chapterContent };
+  const applying = useRef(false);
+  const payload = snapshot?.payload;
 
   const isRunning = job ? ["QUEUED", "RUNNING"].includes(job.status) : false;
   const isReviewJob = job?.jobType === "REVIEW";
 
   useEffect(() => {
-    if (!isReviewJob) return;
-    if (job?.status === "SUCCEEDED") {
-      const review = (job.output as { review?: ReviewPayload } | null | undefined)?.review;
-      if (review) {
-        setPayload(review);
-        setNotice(null);
-        setApplied(new Set());
+    let active = true;
+    setSnapshot(null);
+    if (!isReviewJob || !job || !chapterId) return;
+    if (["QUEUED", "RUNNING"].includes(job.status)) setNotice(null);
+    if (["FAILED", "CANCELLED"].includes(job.status)) setNotice(job.errorMessage ?? (job.status === "CANCELLED" ? "审校已取消" : "审校失败"));
+    if (job.status === "SUCCEEDED") {
+      const output = job.output;
+      if (!output?.review || output.chapterId !== chapterId || !output.sourceSha256 || !/^[a-f0-9]{64}$/i.test(output.sourceSha256)) {
+        setNotice("审校结果来源无法核对，请重新审校。");
+      } else {
+        const source: ReviewSource = { chapterId, content: chapterContent };
+        void crypto.subtle.digest("SHA-256", new TextEncoder().encode(source.content)).then(digest => {
+          if (!active || sourceRef.current.chapterId !== source.chapterId || sourceRef.current.content !== source.content) return;
+          const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+          if (hash !== output.sourceSha256!.toLowerCase()) { setNotice("正文已变化，请重新审校。"); return; }
+          setSnapshot({ payload: output.review!, source, jobId: job.id }); setNotice(null);
+        }).catch(() => { if (active) setNotice("无法核对审校来源，请重新审校。"); });
       }
     }
-    if (job?.status === "FAILED") {
-      setNotice(job.errorMessage ?? "审校失败");
-    }
-  }, [isReviewJob, job?.status, job?.output, job?.errorMessage]);
+    return () => { active = false; };
+  }, [isReviewJob, job?.id, job?.status, job?.output, job?.errorMessage, chapterId, chapterContent]);
 
   const handleApply = useCallback(
     (item: ReviewSuggestion) => {
-      if (!item.verified || !item.replacement) return;
-      const ok = onApplyReplacement(item.quote, item.replacement);
+      if (!snapshot || applying.current || !item.verified || !item.replacement) return;
+      const source = snapshot.source;
+      const index = source.content.indexOf(item.quote);
+      if (sourceRef.current.chapterId !== source.chapterId || sourceRef.current.content !== source.content || !item.quote || index < 0 || source.content.indexOf(item.quote, index + 1) !== -1) {
+        setSnapshot(null); setNotice("正文或引用位置无法核对，请重新审校。"); return;
+      }
+      applying.current = true;
+      const ok = onApplyReplacement(item.quote, item.replacement, source);
+      applying.current = false;
       if (ok) {
-        setApplied((prev) => new Set(prev).add(item.quote));
-        setNotice(null);
+        setSnapshot(null); setNotice("已应用到编辑器；其余建议请基于新稿重新审校。");
         // 采纳行为回写 job，作为评审质量的行为信号（评测：应用数/建议总数=采纳率）
-        if (job?.id) {
-          void fetch(`/api/generation-jobs/${job.id}/feedback`, {
+        if (snapshot.jobId) {
+          void fetch(`/api/generation-jobs/${snapshot.jobId}/feedback`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ quote: item.quote })
@@ -98,7 +118,7 @@ export function ReviewPanel({
         setNotice(`无法应用：「${item.quote.slice(0, 16)}…」在当前正文中已不存在，请重新审校。`);
       }
     },
-    [onApplyReplacement, job?.id]
+    [onApplyReplacement, snapshot]
   );
 
   if (!chapterId) {
@@ -116,7 +136,7 @@ export function ReviewPanel({
         </button>
       </div>
 
-      {notice && <p className="form-error">{notice}</p>}
+      {(runNotice || notice) && <p className="form-error">{runNotice || notice}</p>}
 
       {!payload && !busy && (
         <p className="muted review-empty">
@@ -148,17 +168,18 @@ export function ReviewPanel({
             <ul className="review-list">
               {payload.suggestions.map((item, index) => {
                 const key = `${item.quote}-${index}`;
-                const isApplied = applied.has(item.quote);
-                const canApply = item.verified && Boolean(item.replacement);
+                const quoteStart = snapshot!.source.content.indexOf(item.quote);
+                const unique = item.quote.length > 0 && quoteStart >= 0 && snapshot!.source.content.indexOf(item.quote, quoteStart + 1) === -1;
+                const canApply = item.verified && unique && Boolean(item.replacement);
                 return (
-                  <li key={key} className={`review-item review-severity-${item.severity} ${isApplied ? "review-applied" : ""}`}>
+                  <li key={key} className={`review-item review-severity-${item.severity}`}>
                     <div className="review-item-head">
                       <span className={`tag tag-risk-${item.severity === "error" ? "high" : item.severity === "warning" ? "medium" : "low"}`}>
                         {SEVERITY_LABELS[item.severity] ?? item.severity}
                       </span>
                       <span className="review-issue-type">{ISSUE_TYPE_LABELS[item.issueType] ?? item.issueType}</span>
                       {!item.verified && <span className="tag tag-muted">引文未核对</span>}
-                      {isApplied && <span className="tag tag-active">已应用</span>}
+                      {item.verified && !unique && <span className="tag tag-muted">引用无法唯一定位，仅供参考</span>}
                     </div>
                     <blockquote className="review-quote">{item.quote}</blockquote>
                     <p className="review-problem">{item.problem}</p>
@@ -174,7 +195,7 @@ export function ReviewPanel({
                         type="button"
                         className="btn-ghost btn-small"
                         onClick={() => handleApply(item)}
-                        disabled={!canApply || isApplied || chapterContent.length === 0}
+                        disabled={!canApply || chapterContent.length === 0}
                         title={
                           !item.verified
                             ? "引文未在正文中核对到，不能自动替换"
@@ -183,7 +204,7 @@ export function ReviewPanel({
                               : undefined
                         }
                       >
-                        {isApplied ? "已应用" : "应用替换"}
+                        应用替换
                       </button>
                     </div>
                   </li>

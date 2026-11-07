@@ -8,6 +8,7 @@ import { useParams } from "next/navigation";
 import { AssetSidebar } from "../../../../../components/workspace/asset-sidebar";
 import { EditorPane, type EditorSelection } from "../../../../../components/workspace/editor-pane";
 import { WorkspaceSideTabs } from "../../../../../components/workspace/workspace-side-tabs";
+import type { ReviewSource } from "../../../../../components/workspace/review-panel";
 import {
   useChapters,
   useChapterContent,
@@ -77,6 +78,9 @@ export default function WorkspacePage() {
   const [rewriteResult, setRewriteResult] = useState<RewriteResult | null>(null);
   const [rewriteNotice, setRewriteNotice] = useState<string | null>(null);
   const [preparingRewrite, setPreparingRewrite] = useState(false);
+  const [preparingReview, setPreparingReview] = useState(false);
+  const [reviewNotice, setReviewNotice] = useState<string | null>(null);
+  const reviewPreparingRef = useRef(false);
   const rewriteRequestRef = useRef<RewriteRequest | null>(null);
   const currentEditorRef = useRef({ chapterId: activeChapterId, content });
   currentEditorRef.current = { chapterId: activeChapterId, content };
@@ -134,6 +138,7 @@ export default function WorkspacePage() {
     setSelection(null);
     setRewriteResult(null);
     setRewriteNotice(null);
+    setReviewNotice(null);
     setActiveChapterId(id);
   }
 
@@ -183,9 +188,15 @@ export default function WorkspacePage() {
   }
 
   async function handleReview() {
-    if (!activeChapterId) return;
-    if (!await flush()) return;
-    await startJob(activeChapterId, "REVIEW");
+    if (!activeChapterId || isLoadingContent || isStarting || reviewPreparingRef.current) return;
+    const source = currentEditorRef.current;
+    reviewPreparingRef.current = true; setPreparingReview(true); setReviewNotice(null);
+    try {
+      const saved = await flush();
+      if (source.chapterId !== currentEditorRef.current.chapterId) return;
+      if (!saved || source.content !== currentEditorRef.current.content) { setReviewNotice("正文未保存或已变化，请核对后重新审校。"); return; }
+      await startJob(source.chapterId, "REVIEW");
+    } finally { reviewPreparingRef.current = false; setPreparingReview(false); }
   }
 
   async function handleGenerateOutline(chapterCount: number) {
@@ -198,14 +209,17 @@ export default function WorkspacePage() {
   // 引证已由 worker 端核对过存在性，这里再做一次当前正文的实时校验，
   // 防止审校后用户手动改过正文导致替换错位。
   const applyReviewReplacement = useCallback(
-    (quote: string, replacement: string): boolean => {
-      if (!quote) return false;
-      const index = content.indexOf(quote);
-      if (index < 0) return false;
-      setContent(content.slice(0, index) + replacement + content.slice(index + quote.length));
+    (quote: string, replacement: string, source: ReviewSource): boolean => {
+      const current = currentEditorRef.current;
+      if (!quote || current.chapterId !== source.chapterId || current.content !== source.content) return false;
+      const index = current.content.indexOf(quote);
+      if (index < 0 || current.content.indexOf(quote, index + 1) !== -1) return false;
+      const next = current.content.slice(0, index) + replacement + current.content.slice(index + quote.length);
+      currentEditorRef.current = { chapterId: current.chapterId, content: next };
+      setContent(next);
       return true;
     },
-    [content, setContent]
+    [setContent]
   );
 
   async function handleExtractMemory() {
@@ -403,6 +417,8 @@ export default function WorkspacePage() {
         stopping={isStopping}
         stopError={stopError}
         onReview={() => void handleReview()}
+        preparingReview={preparingReview}
+        reviewNotice={reviewNotice}
         onGenerateOutline={(count) => void handleGenerateOutline(count)}
         onApplyReviewReplacement={applyReviewReplacement}
         onDeslop={handleDeslop}
