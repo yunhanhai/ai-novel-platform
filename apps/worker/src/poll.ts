@@ -1,3 +1,4 @@
+import { ChapterSourceChanged, ContinuationAttemptChanged } from "./pipeline/continuation-save";
 import { classifyModelError } from "./pipeline/model-error-classifier";
 
 export interface GenerationJob {
@@ -77,7 +78,12 @@ export function createPoller(deps: PollerDeps): Poller {
       await handler(job);
       return "processed";
     } catch (error: unknown) {
+      if (error instanceof ContinuationAttemptChanged) return "processed";
       const message = error instanceof Error ? error.message : "Unknown error";
+      if (error instanceof ChapterSourceChanged) {
+        await updateForAttempt({ jobId: job.id, status: "FAILED", errorCode: "CHAPTER_SOURCE_CHANGED", errorMessage: error.message });
+        return "error";
+      }
       const attemptCount = job.attemptCount ?? 1;
       const maxAttempts = job.maxAttempts ?? 3;
 

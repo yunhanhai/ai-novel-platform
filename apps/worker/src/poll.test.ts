@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ChapterSourceChanged, ContinuationAttemptChanged } from "./pipeline/continuation-save";
 import { backoffDelayMs, createPoller } from "./poll";
 
 function mockUpdateFn() {
@@ -205,4 +206,22 @@ describe("poller", () => {
       expect(backoffDelayMs(7)).toBe(10 * 60_000);
     });
   });
+});
+
+it("does not retry a continuation against a changed chapter body", async () => {
+  const updateJobStatus = mockUpdateFn(); const requeueForRetry = mockRequeueFn();
+  const poller = createPoller({ claimNext: async () => ({ ...baseJob, jobType: "CONTINUE_CHAPTER" }), updateJobStatus, requeueForRetry, pollIntervalMs: 1,
+    handlers: new Map([["CONTINUE_CHAPTER", vi.fn().mockRejectedValue(new ChapterSourceChanged())]]) });
+  expect(await poller.tick()).toBe("error");
+  expect(requeueForRetry).not.toHaveBeenCalled();
+  expect(updateJobStatus).toHaveBeenCalledWith(expect.objectContaining({ status: "FAILED", errorCode: "CHAPTER_SOURCE_CHANGED", expectedAttemptCount: 1 }));
+});
+
+it("leaves a continuation completed or owned by another attempt untouched", async () => {
+  const updateJobStatus = mockUpdateFn(); const requeueForRetry = mockRequeueFn();
+  const poller = createPoller({ claimNext: async () => ({ ...baseJob, jobType: "CONTINUE_CHAPTER", attemptCount: 3 }), updateJobStatus, requeueForRetry, pollIntervalMs: 1,
+    handlers: new Map([["CONTINUE_CHAPTER", vi.fn().mockRejectedValue(new ContinuationAttemptChanged())]]) });
+  expect(await poller.tick()).toBe("processed");
+  expect(updateJobStatus).not.toHaveBeenCalled();
+  expect(requeueForRetry).not.toHaveBeenCalled();
 });

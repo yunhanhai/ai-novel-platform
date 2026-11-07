@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { createFakeModel } from "./fake-model";
+import { recoverSavedContinuation } from "./continuation-save";
 import { commitFinalize } from "./generate-chapter-handler";
 import type { GenerationJob } from "../poll";
 
@@ -12,6 +13,7 @@ type UpdateStatusFn = (params: {
   output?: Record<string, unknown>;
   errorCode?: string;
   errorMessage?: string;
+  expectedAttemptCount?: number;
 }) => Promise<unknown>;
 
 interface HandlerDeps {
@@ -73,10 +75,9 @@ export function createContinueChapterHandler(deps: HandlerDeps) {
   const { prisma, updateJobStatus } = deps;
   const builtinModel = deps.model ?? createFakeModel();
   const resolveModel = deps.resolveModel;
-  const fail = (jobId: string, code: ErrorCode, message: string) =>
-    updateJobStatus({ jobId, status: "FAILED", errorCode: code, errorMessage: message });
-
   return async function handle(job: GenerationJob): Promise<void> {
+    const fail = (jobId: string, code: ErrorCode, message: string) =>
+      updateJobStatus({ jobId, status: "FAILED", errorCode: code, errorMessage: message, expectedAttemptCount: job.attemptCount ?? 1 });
     const input = (job.input ?? {}) as ContinueInput;
     const chapterId =
       typeof input.chapterId === "string" && input.chapterId.length > 0
@@ -91,6 +92,10 @@ export function createContinueChapterHandler(deps: HandlerDeps) {
 
     const instruction = typeof input.instruction === "string" ? input.instruction.trim() : "";
     const targetLength = normalizeTargetLength(input.targetLength);
+
+    const current = await prisma.generationJob.findFirst({ where: { id: job.id, organizationId: job.organizationId, projectId: job.projectId }, select: { status: true, attemptCount: true } });
+    if (!current || current.status !== "RUNNING" || current.attemptCount !== (job.attemptCount ?? 1)) return;
+    if (await recoverSavedContinuation(prisma, job, chapterId)) return;
 
     let model = builtinModel;
     let modelName = "fake-model";
@@ -132,30 +137,29 @@ export function createContinueChapterHandler(deps: HandlerDeps) {
     const separator = existing.length === 0 ? "" : existing.endsWith("\n") ? "\n" : "\n\n";
     const finalContent = `${existing}${separator}${continuation}`;
 
-    const finalOutput = await commitFinalize({
-      prisma,
-      job,
-      chapter,
-      finalContent,
-      wordCount: computeWordCount(finalContent),
-      usage: {
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-        latencyMs,
-        modelName,
-        billingSource
-      }
-    });
-
-    await updateJobStatus({
-      jobId: job.id,
-      status: "SUCCEEDED",
-      output: {
-        ...(finalOutput as unknown as Record<string, unknown>),
-        mode: "CONTINUE_CHAPTER",
-        addedChars: continuation.length,
-        targetLength
-      }
-    });
+    try {
+      await commitFinalize({
+        expectedContent: existing,
+        continuationResult: { mode: "CONTINUE_CHAPTER", addedChars: continuation.length, targetLength },
+        prisma,
+        job,
+        chapter,
+        finalContent,
+        wordCount: computeWordCount(finalContent),
+        usage: {
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          latencyMs,
+          modelName,
+          billingSource
+        }
+      });
+    } catch (error) {
+      // A transaction can commit while its acknowledgment is lost. Verify the
+      // persisted receipt before allowing poll to fail or retry the saved job.
+      try { if (await recoverSavedContinuation(prisma, job, chapterId)) return; }
+      catch { /* Preserve the original failure if receipt verification is unavailable. */ }
+      throw error;
+    }
   };
 }

@@ -1,4 +1,5 @@
 ﻿import { lockMemorySourceChapter, supersedeChapterMemories, findGenerationMemories } from "@ai-novel/db/chapter-memory";
+import { ChapterSourceChanged, ContinuationAttemptChanged, continuationVersionWhere, lockContinuationJob } from "./continuation-save";
 import { BatchCheckpointConflict, lockBatchJob, readBatchCheckpoint, type BatchCheckpoint } from "./batch-checkpoint";
 import { persistExtractedMemories } from "./extracted-memory-store";
 import type { ExtractOutput } from "./extraction-output";
@@ -484,6 +485,8 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 interface CommitParams {
+  expectedContent?: string;
+  continuationResult?: { mode: "CONTINUE_CHAPTER"; addedChars: number; targetLength: number };
   batchCheckpoint?: BatchCheckpoint;
   extracted?: ExtractOutput;
   prisma: PrismaClient;
@@ -517,7 +520,7 @@ interface FinalOutput {
 }
 
 export async function commitFinalize(params: CommitParams): Promise<FinalOutput> {
-  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, generationWarnings, usage, extracted, batchCheckpoint } = params;
+  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, generationWarnings, usage, extracted, batchCheckpoint, expectedContent, continuationResult } = params;
 
   return prisma.$transaction(async (tx: Tx) => {
     await assertChapterStillValid(tx, chapter, job);
@@ -531,6 +534,15 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       }
       batchStatus = locked.status;
     }
+    let continuationStatus: string | undefined;
+    if (continuationResult) {
+      const locked = await lockContinuationJob(tx, job);
+      continuationStatus = locked.status;
+      if (locked.status === "SUCCEEDED") throw new ContinuationAttemptChanged();
+      const saved = await tx.contentVersion.findFirst({ where: continuationVersionWhere(job, chapter.id), orderBy: { versionNo: "desc" } });
+      if (saved) throw new ContinuationAttemptChanged();
+    }
+    if (expectedContent !== undefined && (source.content ?? "") !== expectedContent) throw new ChapterSourceChanged();
     const nextVersionNo = await pickNextVersionNo(tx, chapter.id);
     const finishedAt = new Date();
 
@@ -572,7 +584,8 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       ...(generationWarnings?.length ? { generationWarnings } : {}),
       ...(rules ? { qualitySummary: checkQualityConstraints(finalContent, rules) } : {}),
       ...(performanceSummary ? { performanceSummary } : {}),
-      ...(batchCheckpoint ?? {})
+      ...(batchCheckpoint ?? {}),
+      ...(continuationResult ?? {})
     };
 
     await tx.generationStep.create({
@@ -593,7 +606,8 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
         progress: String(Math.min(99, Math.round(batchCheckpoint.completedChapters / batchCheckpoint.requestedChapters * 100))),
         ...(batchStatus !== "CANCELLED" ? { finishedAt: null, errorCode: null, errorMessage: null } : {}),
         output: output as unknown as Prisma.InputJsonValue
-      } : { status: "SUCCEEDED", progress: "100", finishedAt, output: output as unknown as Prisma.InputJsonValue }
+      } : continuationStatus === "CANCELLED" ? { output: output as unknown as Prisma.InputJsonValue }
+        : { status: "SUCCEEDED", progress: "100", finishedAt, ...(continuationResult ? { errorCode: null, errorMessage: null } : {}), output: output as unknown as Prisma.InputJsonValue }
     });
 
     if (usage) {

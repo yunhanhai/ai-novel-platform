@@ -1172,3 +1172,12 @@ git diff --check
 - [x] Verify1107 tests+1skip,typecheck5/5,build,e2e7pass+1skip,DB retry RED/GREEN plus9rollback-only cases;independent5files76 tests clear.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private-prose/provider/schema/deployment changes.
 - [ ] Remaining:multiworker/lease HTTP duplication,in-flight editor conflicts and single continuation acknowledgment recovery require separate work.
+
+## Task 66: 2026-11-07 Continuation Save Receipts and Body Conflicts
+
+- [x] Reproduce actual DB duplicate continuation after post-commit result failure and lost manual edits during model generation.
+- [x] Save continuation metadata atomically; recover by scoped same-job AI version before resolving models,without rewriting later author text.
+- [x] Recheck expected source content under row lock for single/batch continuation; stop stale results without model retries,preserve cancellation and fence duplicate/old attempts.
+- [x] Verify1112 tests+1skip,typecheck5/5,build,e2e7pass+1skip and10rollback DB scenarios;independent70 tests clear;retain Next generated-file/HTML404 failures and rerun evidence.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;no external model calls/private-prose/config/schema/deployment changes.
+- [ ] Remaining:provider exactly-once requests,persistent receipt-check outages and concurrency for other rewriting paths require separate evidence.

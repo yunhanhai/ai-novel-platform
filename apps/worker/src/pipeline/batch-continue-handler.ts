@@ -199,6 +199,7 @@ export function createBatchContinueHandler(deps: HandlerDeps) {
         generationWarnings: [...generationWarnings, ...(wantExtract ? [pendingWarning] : [])] };
       await commitFinalize({
         batchCheckpoint: nextCheckpoint,
+        expectedContent: existing,
         prisma,
         job,
         chapter,

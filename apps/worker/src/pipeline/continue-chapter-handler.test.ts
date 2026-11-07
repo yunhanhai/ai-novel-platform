@@ -25,7 +25,7 @@ function makePrisma(content: string | null = existingContent) {
       ? null
       : { id: "ch-1", projectId: "proj-1", organizationId: "org-1", content, title: "第一章" };
   const tx = {
-    $queryRaw: vi.fn().mockResolvedValue(chapterRow?[chapterRow]:[]),
+    $queryRaw: vi.fn().mockImplementation(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "RUNNING", attemptCount: 1, output: null }] : chapterRow ? [chapterRow] : []),
     projectMemory: {updateMany:vi.fn().mockResolvedValue({count:0})},
     chapter: {
       findFirst: vi.fn().mockResolvedValue(chapterRow),
@@ -42,6 +42,7 @@ function makePrisma(content: string | null = existingContent) {
   const prisma = {
     chapter: { findFirst: vi.fn().mockResolvedValue(chapterRow) },
     contentVersion: { findFirst: vi.fn().mockResolvedValue(null) },
+    generationJob: { findFirst: vi.fn().mockResolvedValue({ status: "RUNNING", attemptCount: 1 }) },
     $transaction: vi.fn(async (cb: (t: unknown) => Promise<unknown>) => cb(tx))
   };
   return { prisma: prisma as never, tx };
@@ -69,16 +70,10 @@ describe("createContinueChapterHandler", () => {
     expect(updated.data.content).toBe(`${existingContent}\n\n她终于开口了。`);
     expect(tx.contentVersion.create).toHaveBeenCalled();
 
-    expect(updateJobStatus).toHaveBeenCalledWith(
-      expect.objectContaining({
-        jobId: "job-1",
-        status: "SUCCEEDED",
-        output: expect.objectContaining({
-          mode: "CONTINUE_CHAPTER",
-          addedChars: 7
-        })
-      })
-    );
+    expect(tx.generationJob.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      status: "SUCCEEDED", output: expect.objectContaining({ mode: "CONTINUE_CHAPTER", addedChars: 7, targetLength: 600 })
+    }) }));
+    expect(updateJobStatus).not.toHaveBeenCalled();
   });
 
   it("starts from scratch when the chapter has no content yet", async () => {
@@ -168,4 +163,45 @@ it("records actual continuation model latency instead of zero", async () => {
     await createContinueChapterHandler({ prisma, updateJobStatus: vi.fn(), model: { generate: vi.fn().mockResolvedValue({ text: "续文", inputTokens: 5, outputTokens: 2 }) } })(makeJob());
     expect(tx.usageEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ latencyMs: 820 }) }));
   } finally { clock.mockRestore(); }
+});
+
+
+it("keeps manual edits made while the continuation model is running", async () => {
+  const { prisma, tx } = makePrisma();
+  const model = { generate: vi.fn().mockImplementation(async () => {
+    tx.$queryRaw.mockImplementation(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "RUNNING", attemptCount: 1, output: null }] : [{ id: "ch-1", projectId: "proj-1", content: "人工已修改的新稿" }]);
+    return { text: "旧稿续写", inputTokens: 2, outputTokens: 2 };
+  }) };
+  await expect(createContinueChapterHandler({ prisma, updateJobStatus: vi.fn(), model })(makeJob())).rejects.toThrow("正文已变化");
+  expect(tx.chapter.update).not.toHaveBeenCalled();
+  expect(tx.contentVersion.create).not.toHaveBeenCalled();
+});
+
+it("repairs a saved continuation result without resolving a model or rewriting prose", async () => {
+  const { prisma, tx } = makePrisma("人工随后编辑的正文");
+  const saved = { id: "saved-version", versionNo: 2, content: "先前保存的续写正文" };
+  (prisma as unknown as { contentVersion: { findFirst: ReturnType<typeof vi.fn> } }).contentVersion.findFirst.mockResolvedValue(saved);
+  tx.contentVersion.findFirst.mockResolvedValue(saved);
+  const resolveModel = vi.fn().mockRejectedValue(new Error("model configuration unavailable"));
+  await createContinueChapterHandler({ prisma, updateJobStatus: vi.fn(), resolveModel })(makeJob());
+  expect(resolveModel).not.toHaveBeenCalled();
+  expect(tx.chapter.update).not.toHaveBeenCalled();
+  expect(tx.contentVersion.create).not.toHaveBeenCalled();
+  expect(tx.generationJob.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "SUCCEEDED", output: expect.objectContaining({ versionId: "saved-version", mode: "CONTINUE_CHAPTER" }) }) }));
+});
+
+it("treats a committed version as success even when the transaction response is lost", async () => {
+  const { prisma, tx } = makePrisma();
+  const db = prisma as unknown as { $transaction: ReturnType<typeof vi.fn>; contentVersion: { findFirst: ReturnType<typeof vi.fn> } };
+  const saved = { id: "saved-version", versionNo: 2, content: `${existingContent}续写` };
+  const normalTransaction = db.$transaction.getMockImplementation() as (cb: (transaction: unknown) => Promise<unknown>) => Promise<unknown>;
+  db.$transaction.mockImplementationOnce(async cb => {
+    await normalTransaction(cb);
+    db.contentVersion.findFirst.mockResolvedValue(saved);
+    tx.contentVersion.findFirst.mockResolvedValue(saved);
+    tx.$queryRaw.mockImplementation(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "SUCCEEDED", attemptCount: 1, output: { chapterId: "ch-1", versionId: "saved-version" } }] : [{ id: "ch-1", projectId: "proj-1", content: saved.content }]);
+    throw new Error("commit acknowledgment lost");
+  });
+  await expect(createContinueChapterHandler({ prisma, updateJobStatus: vi.fn(), model: { generate: vi.fn().mockResolvedValue({ text: "续写", inputTokens: 1, outputTokens: 1 }) } })(makeJob())).resolves.toBeUndefined();
+  expect(tx.contentVersion.create).toHaveBeenCalledOnce();
 });

@@ -2067,3 +2067,13 @@ git diff --check   通过
 - 验证1107单测+1skip（32/67/50/318/640）、typecheck5/5、build、完整e2e7pass+1skip（fake，1.3m）；原始DB RED/GREEN及9项额外全回滚夹具，最终5worker文件64项回归；独立5文件76项通过无阻断。
 - 报告`reports/2026-11-07-batch-retry.md`说明枚举SQL/可空契约/集成断言修正及限制：不保证供应商请求exactly-once、无多worker压力，单章续写确认路径未扩展；外部模型0，真实正文/13记忆/配置不变，无迁移部署。
 - codex/batch-retry完成后快进master同步双远程，commit/tree回执外存，原实验保留；后续继续核对单次续写确认与正文并发边界。
+
+---
+
+## 2026-11-07 — 单章续写保存确认与原文冲突
+
+- 实际DB RED复现正文成功后补写结果失败使任务FAILED，手动重试重复追加；在途人工编辑被旧结果覆盖。续写meta/正文/version/job/usage同事务，恢复以同job AI版本为凭证，不调模型不回写后人工正文。
+- 单/批量续写expectedContent锁后核对，冲突CHAPTER_SOURCE_CHANGED直接失败无自动retry；单次scope job/attempt与同job版本防重复，取消在途保存保留CANCELLED。提交确认丢失先核对已存receipt，过期交付poll不误改成功结果。
+- 验证1112单测+1skip（32/67/50/323/640）、typecheck5/5、build、完整e2e7pass+1skip（fake，1.4m）；10项真实DB全回滚包含后写取消/ack/重复/新attempt/人工改文与batch后轮冲突、写失败原子回滚；独立70定向无阻断。
+- Next dev生成types损坏已外存备份，停止服务后类型/构建重跑；最终浏览器版本diff曾返回HTML404，保留trace日志并完整重跑。报告`reports/2026-11-07-continuation-save.md`区分业务验证与环境失败。
+- 外部模型0，真实章/13记忆/配置不变，无迁移部署；不保证供应商请求exactly-once，凭证核验持续不可用沿用原错误。codex/continuation-save完成后快进master同步双远程，commit/tree回执外存，原实验保留。

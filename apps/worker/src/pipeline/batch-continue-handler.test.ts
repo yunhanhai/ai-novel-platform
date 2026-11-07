@@ -22,8 +22,10 @@ function makeJob(overrides: Partial<GenerationJob> = {}): GenerationJob {
 
 function makePrisma(contentAtCall: () => string) {
   let call = 0;
+  let lastReadContent = contentAtCall();
   const findFirstImpl = () => {
     call += 1;
+    lastReadContent = contentAtCall();
     // 第一次是存在性预检（chapter0），之后每章前重读；commitFinalize 的事务里也会调用
     return Promise.resolve(
       call === 1
@@ -34,9 +36,9 @@ function makePrisma(contentAtCall: () => string) {
   let checkpoint: unknown = null;
   let versions = 0;
   const tx = {
-    $queryRaw: vi.fn(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "RUNNING", output: checkpoint, attemptCount: 1 }] : [{id:"ch-1",projectId:"proj-1",content:contentAtCall()}]),
+    $queryRaw: vi.fn(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "RUNNING", output: checkpoint, attemptCount: 1 }] : [{id:"ch-1",projectId:"proj-1",content:lastReadContent}]),
     projectMemory: {updateMany:vi.fn().mockResolvedValue({count:0})},
-    chapter: { findFirst: vi.fn().mockImplementation(findFirstImpl), update: vi.fn().mockResolvedValue({}) },
+    chapter: { findFirst: vi.fn().mockImplementation(async () => ({ id: "ch-1", projectId: "proj-1", organizationId: "org-1" })), update: vi.fn().mockResolvedValue({}) },
     contentVersion: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockImplementation(async () => ({ id: `v-${++versions}`, versionNo: versions })) },
     generationStep: { create: vi.fn().mockResolvedValue({}) },
     generationJob: { update: vi.fn().mockImplementation(async (args: { data: { output?: unknown } }) => { if (args.data.output) checkpoint = args.data.output; return {}; }) },
