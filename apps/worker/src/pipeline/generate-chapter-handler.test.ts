@@ -638,3 +638,14 @@ it("finalizes useful prose and its warning after optional extraction fails", asy
   expect(tx.contentVersion.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ content: "不应因抽取失败而消失的正文。" }) }));
   expect(tx.generationJob.update.mock.calls[0]?.[0].data.output.generationWarnings).toEqual([expect.objectContaining({ stepKey: "extract_memory", code: "MODEL_ERROR" })]);
 });
+it("persists successful pipeline memories in the same finalize transaction as the chapter",async()=>{
+ const {prisma,tx}=createPrismaStub();
+ const store={findMany:vi.fn().mockResolvedValue([]),create:vi.fn().mockResolvedValue({}),updateMany:vi.fn().mockResolvedValue({count:0})};
+ const dbTx={...tx,projectMemory:store,$queryRaw:vi.fn().mockResolvedValue([{id:"chapter-1",content:"有效新章。"}])};
+ prisma.$transaction.mockImplementation(async cb=>cb(dbTx));
+ const model={generate:vi.fn().mockResolvedValueOnce({text:'{"chapterGoal":"写作","sceneBeats":[],"charactersInScene":[]}',inputTokens:2,outputTokens:2}).mockResolvedValueOnce({text:"有效新章。",inputTokens:2,outputTokens:2}).mockResolvedValueOnce({text:'{"characterChanges":[],"worldFacts":[{"fact":"钥匙来源待查"}],"newHooks":[],"summary":"发现钥匙","chapterSummary":"钥匙来源待查。"}',inputTokens:2,outputTokens:2})};
+ await createGenerateChapterHandler({prisma:prisma as never,updateJobStatus:vi.fn(),model})({...baseJob,input:{qualityMode:"fast"}});
+ expect(store.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({memoryType:"chapter_summary",sourceChapterId:"chapter-1",sourceJobId:"job-1",status:"accepted"})}));
+ expect(store.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({memoryType:"world_fact",status:"proposed"})}));
+ expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+});

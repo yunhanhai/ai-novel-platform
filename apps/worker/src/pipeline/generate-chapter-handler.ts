@@ -1,4 +1,6 @@
-﻿import { parseQualityConstraints, checkQualityConstraints, type QualitySummary } from "@ai-novel/shared/generation/quality-constraints";
+﻿import { persistExtractedMemories } from "./extracted-memory-store";
+import type { ExtractOutput } from "./extraction-output";
+import { parseQualityConstraints, checkQualityConstraints, type QualitySummary } from "@ai-novel/shared/generation/quality-constraints";
 import type { PrismaClient, Prisma } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { buildContextPacket } from "@ai-novel/shared/context-composer/build-context-packet";
@@ -107,6 +109,7 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
         contextSummary: pipelineResult.contextSummary,
         performanceSummary: pipelineResult.performanceSummary,
         generationWarnings: pipelineResult.warnings,
+        ...(pipelineResult.extracted ? { extracted: pipelineResult.extracted } : {}),
         usage: { ...pipelineResult.usage, modelName, billingSource }
       });
 
@@ -144,6 +147,7 @@ interface PipelineRunParams {
 }
 
 interface PipelineRunResult {
+  extracted?: ExtractOutput;
   warnings: GenerationWarning[];
   content: string;
   contextSummary: ContextSummary;
@@ -274,6 +278,7 @@ async function runPipelineForContentWithContext(params: PipelineRunParams): Prom
     },
     usage,
     warnings: pipeline.warnings,
+    ...(pipeline.memoryExtractionSucceeded ? { extracted: pipeline.extracted } : {}),
     performanceSummary: pipeline.performanceSummary
   };
 }
@@ -476,6 +481,7 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 interface CommitParams {
+  extracted?: ExtractOutput;
   prisma: PrismaClient;
   job: GenerationJob;
   chapter: ChapterRef;
@@ -507,7 +513,7 @@ interface FinalOutput {
 }
 
 export async function commitFinalize(params: CommitParams): Promise<FinalOutput> {
-  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, generationWarnings, usage } = params;
+  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, generationWarnings, usage, extracted } = params;
 
   return prisma.$transaction(async (tx: Tx) => {
     await assertChapterStillValid(tx, chapter, job);
@@ -538,6 +544,8 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       },
       select: { id: true, versionNo: true }
     });
+
+    if (extracted) await persistExtractedMemories({ tx, job, chapter: { id: chapter.id, content: finalContent }, extracted });
 
     const rules = job.jobType === "GENERATE_CHAPTER" ? parseQualityConstraints((job.input as { qualityConstraints?: unknown } | null)?.qualityConstraints) : undefined;
     const output = {

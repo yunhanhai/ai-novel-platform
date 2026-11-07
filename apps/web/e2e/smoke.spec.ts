@@ -180,7 +180,9 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(extractBtn).toBeEnabled({ timeout: 15_000 });
   await extractBtn.click();
   await expect(jobTypeCell).toHaveText("抽取记忆", { timeout: 10_000 });
-  await expect(jobStatusTag).toHaveText("已完成", { timeout: 30_000 });
+  // fake模型返回散文，必须诚实报无效JSON，不能伪装抽取成功。
+  await expect(jobStatusTag).toHaveText("失败", { timeout: 30_000 });
+  await expect(page.getByText("模型未返回完整的记忆 JSON，原有记忆未修改", { exact: true })).toBeVisible();
 
   // 11. 触发质量诊断（DIAGNOSE_CHAPTER，均衡模式）→ 异步诊断闭环
   const diagnoseBtn = page.getByRole("button", { name: "运行诊断" });

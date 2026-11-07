@@ -318,3 +318,11 @@ it("preserves immediate failure semantics for optional-step authentication error
   await expect(runChapterPipeline(deps)).rejects.toBe(denied);
   expect(deps.persistVersion).not.toHaveBeenCalled();
 });
+it("keeps original context and the boundary against invented background in revision", async()=>{
+ const deps=mockDeps({buildContext:()=>({prompt:"原设定：主角从未收到任何死亡预告。",activationReport:{activated:[],totalSourcesChecked:0,triggeredBy:""},styleGuide:{banned:["命运"]}})});
+ await runChapterPipeline(deps);
+ const prompt=(deps.model.generate as ReturnType<typeof vi.fn>).mock.calls[3]?.[0];
+ expect(prompt).toContain("原设定：主角从未收到任何死亡预告。");
+ expect(prompt).toContain("不得新增");
+ expect(prompt).toContain("命运");
+});

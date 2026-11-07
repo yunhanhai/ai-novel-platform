@@ -1,4 +1,5 @@
-﻿import { classifyModelError } from "./model-error-classifier";
+﻿import { parseExtraction, type ExtractOutput } from "./extraction-output";
+import { classifyModelError } from "./model-error-classifier";
 import { parseQualityConstraints, formatQualityConstraints, checkQualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
 import type { ActivationReport } from "../context/keyword-activation";
 import type { StyleGuide, MethodologyGuide } from "../context/build-context-packet";
@@ -56,13 +57,6 @@ interface ReviewOutput {
   passed: boolean;
 }
 
-interface ExtractOutput {
-  characterChanges: { characterId?: string; characterName: string; change: string }[];
-  worldFacts: { fact: string; worldItemId?: string }[];
-  newHooks: { hook: string; threadId?: string }[];
-  summary: string;
-  chapterSummary: string;
-}
 
 interface BuiltContext extends Pick<PerformanceSummary, "contextBudget" | "contextFingerprint"> {
   prompt: string;
@@ -97,6 +91,7 @@ export interface GenerationWarning {
 
 interface PipelineResult {
   warnings: GenerationWarning[];
+  memoryExtractionSucceeded: boolean;
   steps: StepRecord[];
   extracted: ExtractOutput;
   activationReport: ActivationReport;
@@ -293,6 +288,9 @@ ${qualityHint}
     await skipStep("revise", "not_applicable");
   } else {
     const revisePrompt = `请根据审校意见修改本章正文，只返回修改后的正文，不要任何解释。
+原始上下文与约束：
+${context.prompt}${reviewExtraText}
+修订不得新增原文和上下文未提供的人物背景、经历或信息来源。审校建议不是已发生事实；缺少依据时改为待查或人物推测，不能为了补逻辑而编造证据。
 审校意见：
 ${JSON.stringify(review.issues, null, 2)}
 
@@ -377,6 +375,7 @@ ${qualityHint}
     steps,
     warnings,
     extracted,
+    memoryExtractionSucceeded: steps.some(step => step.stepKey === "extract_memory" && step.status === "SUCCEEDED"),
     activationReport: context.activationReport,
     performanceSummary: tracker.summary({ contextBudget: context.contextBudget, contextFingerprint: context.contextFingerprint })
   };
@@ -409,15 +408,4 @@ function parseReview(text: string): ReviewOutput | null {
   }
   if (!raw.passed && issues.length === 0) issues.push({ type: "consistency", detail: "审校明确未通过但未列出具体问题，请按原上下文重新核查事实依据并修订。", severity: "warning" });
   return { passed: raw.passed, issues };
-}
-function parseExtraction(text: string): ExtractOutput | null {
-  const value = safeJson<unknown>(text, null);
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const raw = value as Record<string, unknown>;
-  if (typeof raw.summary !== "string" || typeof raw.chapterSummary !== "string") return null;
-  for (const [key, fields] of [["characterChanges", ["characterName", "change"]], ["worldFacts", ["fact"]], ["newHooks", ["hook"]]] as const) {
-    const rows = raw[key];
-    if (!Array.isArray(rows) || rows.some(row => !row || typeof row !== "object" || Array.isArray(row) || fields.some(field => typeof row[field] !== "string"))) return null;
-  }
-  return raw as unknown as ExtractOutput;
 }

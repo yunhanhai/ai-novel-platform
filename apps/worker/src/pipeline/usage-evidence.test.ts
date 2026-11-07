@@ -8,7 +8,8 @@ const baseJob: GenerationJob = { id: "job", organizationId: "org", projectId: "p
 
 function setup() {
   const tx = {
-    generationStep: { create: vi.fn().mockResolvedValue({ id: "step" }) },
+    $queryRaw: vi.fn().mockResolvedValue([{id:"chapter",content:"正文",title:"标题",chapterNo:1}]),
+    generationStep: { create: vi.fn().mockResolvedValue({ id: "step" }), update: vi.fn().mockResolvedValue({}) },
     generationJob: { update: vi.fn().mockResolvedValue({}) },
     projectMemory: { create: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) }
   };

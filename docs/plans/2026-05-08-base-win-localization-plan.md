@@ -1099,3 +1099,12 @@ git diff --check
 - [x] Observe real plan/draft/review/revise success,800chars,AI version,context fingerprint and token receipts; explicitly record remaining unsupported-background issue and skipped memory extraction.
 - [x] Verify1045 tests+1skip,typecheck5/5,build,e2e3pass+1skip; update report/progress/onboarding, integrate branch and synchronize both masters with external hash receipts.
 - [ ] Remaining: repeated channel reliability, author-approved causal consistency, real memory extraction and independent provider judgement.
+## Task 58: 2026-11-07 Revision Context and Memory Persistence
+
+- [x] Reproduce missing revision context, standalone invalid-JSON false success and generated extraction result loss; fix with shared parsing/persistence and RED/GREEN evidence.
+- [x] Restore original context/style constraints to revision; forbid unsupported invented background without claiming semantic proof.
+- [x] Gate JSON output through existing profile settings; reject invalid/empty summaries, protect original model errors and measure standalone steps.
+- [x] Persist chapter/version/memories atomically; lock scoped source chapters to reject stale extraction; deduplicate active and within-response memory entries.
+- [x] Run one real Step extraction,verify13 scoped memories,unchanged800char chapter and accepted summary in next-chapter context; no extra real generation calls.
+- [x] Verify1058 tests+1skip,typecheck5/5,build,e2e3pass+1skip,4rollback DB cases and status-write rollback; update report/manual/progress, integrate and synchronize both masters with external receipts.
+- [ ] Remaining: author-approved prose/summary semantics,long-chapter coverage and repeated independent-provider quality/reliability evidence.
