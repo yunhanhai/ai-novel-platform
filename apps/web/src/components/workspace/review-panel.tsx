@@ -60,7 +60,7 @@ export function ReviewPanel({
   onApplyReplacement,
   runNotice
 }: ReviewPanelProps) {
-  const [snapshot, setSnapshot] = useState<{ payload: ReviewPayload; source: ReviewSource; jobId: string } | null>(null);
+  const [snapshot, setSnapshot] = useState<{ payload: ReviewPayload; source: ReviewSource; sourceSha256: string; jobId: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const sourceRef = useRef({ chapterId, content: chapterContent });
   sourceRef.current = { chapterId, content: chapterContent };
@@ -86,7 +86,7 @@ export function ReviewPanel({
           if (!active || sourceRef.current.chapterId !== source.chapterId || sourceRef.current.content !== source.content) return;
           const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
           if (hash !== output.sourceSha256!.toLowerCase()) { setNotice("正文已变化，请重新审校。"); return; }
-          setSnapshot({ payload: output.review!, source, jobId: job.id }); setNotice(null);
+          setSnapshot({ payload: output.review!, source, sourceSha256: hash, jobId: job.id }); setNotice(null);
         }).catch(() => { if (active) setNotice("无法核对审校来源，请重新审校。"); });
       }
     }
@@ -94,8 +94,8 @@ export function ReviewPanel({
   }, [isReviewJob, job?.id, job?.status, job?.output, job?.errorMessage, chapterId, chapterContent]);
 
   const handleApply = useCallback(
-    (item: ReviewSuggestion) => {
-      if (!snapshot || applying.current || !item.verified || !item.replacement) return;
+    (item: ReviewSuggestion, suggestionIndex: number) => {
+      if (!snapshot || snapshot.payload.suggestions[suggestionIndex] !== item || applying.current || !item.verified || !item.replacement) return;
       const source = snapshot.source;
       const index = source.content.indexOf(item.quote);
       if (sourceRef.current.chapterId !== source.chapterId || sourceRef.current.content !== source.content || !item.quote || index < 0 || source.content.indexOf(item.quote, index + 1) !== -1) {
@@ -106,12 +106,12 @@ export function ReviewPanel({
       applying.current = false;
       if (ok) {
         setSnapshot(null); setNotice("已应用到编辑器；其余建议请基于新稿重新审校。");
-        // 采纳行为回写 job，作为评审质量的行为信号（评测：应用数/建议总数=采纳率）
+        // Editor adoption is a behavioral signal, separate from a saved-prose receipt.
         if (snapshot.jobId) {
           void fetch(`/api/generation-jobs/${snapshot.jobId}/feedback`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ quote: item.quote })
+            body: JSON.stringify({ chapterId: source.chapterId, sourceSha256: snapshot.sourceSha256, suggestionIndex, quote: item.quote, replacement: item.replacement })
           }).catch(() => undefined);
         }
       } else {
@@ -194,7 +194,7 @@ export function ReviewPanel({
                       <button
                         type="button"
                         className="btn-ghost btn-small"
-                        onClick={() => handleApply(item)}
+                        onClick={() => handleApply(item, index)}
                         disabled={!canApply || chapterContent.length === 0}
                         title={
                           !item.verified

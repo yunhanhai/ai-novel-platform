@@ -88,7 +88,7 @@ export default function WorkspacePage() {
   selectionRef.current = selection;
 
   useEffect(() => {
-    if (job?.status === "SUCCEEDED" && !REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
+    if (job?.status === "SUCCEEDED" && job.jobType !== "REVIEW" && !REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
       void reloadChapters();
       void reloadContent();
       bumpStats();

@@ -2217,3 +2217,13 @@ git diff --check   通过
 - worker RED30失败后35定向与79邻近通过，实际DB17全回滚+双连接2持锁竞争通过；真实正文/时间未变，多连接合成项目保留。独立65定向+实际组件6项通过，429有限续跑补结论无阻断。
 - 最终1241单测+1skip（42/74/50/392/683）、typecheck5/5、build、完整e2e88pass+1skip（fake，6.1m，新增9项）。报告保留test.each收集错误和index同名编译失败，修正后重验，不改时限；fake审校散文明确FAILED。
 - 报告`reports/2026-11-08-review-source-guards.md`明确语义验收/采纳反馈非保存凭证/ABA/usage尽力等边界。外部模型0，真实作品/记忆/配置/schema不变，无迁移部署；codex/review-source-guards快进master同步双远程并外存commit/tree回执，旧实验保留。
+
+---
+
+## 2026-11-08 — 审校采纳反馈精确与并发保护
+
+- 原route实际DB RED两个200仅留一条applied，同引用第二种改法误标第一。页面捕获章/hash/index/quote/replacement，认证后事务锁REVIEW/SUCCEEDED任务核目标与报告，精确更新所选项，首次时间/用户保留，重复零写入；其他output/状态/正文/记忆不变。
+- 浏览器反馈凭据RED后GREEN；真实整合11pass1fail暴露REVIEW成功多余reload与立即采纳竞争，补RED读取断言后排除REVIEW刷新，12定向通过并正常保存。反馈仍表示编辑动作，非持久保存凭证。
+- 服务原RED11失败后46定向通过；独立实际DB27项含双连接不同/相同建议、先持锁提交、写后故障回滚，全事务夹具回滚，多连接合成数据保留；真实章/来源记忆未变。独立UI实际9项+静态接线1项及46定向无阻断。
+- 完整单测1282pass+1skip（42/74/50/392/724），完整e2e91pass+1skip（fake，6.6m，新增3项及既有凭据断言），build、typecheck5/5及凭据排除通过，同步回执外存。外部模型0，真实作品/记忆/配置/schema不变，无迁移部署。
+- 报告`reports/2026-11-08-review-feedback-atomic.md`明确首次共享动作、反馈尽力/无持久队列与旧quote-only400契约；codex/review-feedback-atomic验证后快进master同步双远程并外存commit/tree回执，旧实验保留。

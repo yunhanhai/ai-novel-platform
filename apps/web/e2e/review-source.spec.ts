@@ -32,8 +32,10 @@ async function setup(page: Page, text = original) {
       output: completed ? { chapterId: outputChapter, ...(missingSource ? {} : { sourceSha256: badHash ? "0".repeat(64) : hash }), sourceChars: Array.from(text).length,
         review: { summary: "合成合法审校建议", passed: false, suggestions: [{ issueType: "style_drift", severity: "warning", quote, problem: "动作可更具体", suggestion: "保留动作因果", replacement, verified: true }], verifiedCount: 1, unverifiedCount: 0, degraded: false } } : null } } });
   });
-  let feedback = 0; await page.route(`**/api/generation-jobs/${id}/feedback`, async route => { feedback++; await route.fulfill({ json: { success: true } }); });
+  let feedback = 0, feedbackBody: Record<string, unknown> | null = null;
+  await page.route(`**/api/generation-jobs/${id}/feedback`, async route => { feedback++; feedbackBody = route.request().postDataJSON(); await route.fulfill({ json: { success: true } }); });
   return { chapterId: a.id as string, otherId: b.id as string, submits: () => submits, feedback: () => feedback,
+    feedbackBody: () => feedbackBody, sourceHash: () => hash,
     complete: () => { completed = true; }, wrongChapter: () => { outputChapter = b.id; }, wrongHash: () => { badHash = true; }, missingSource: () => { missingSource = true; } };
 }
 async function run(page: Page) { await page.getByRole("button", { name: "开始审校", exact: true }).click(); }
@@ -64,6 +66,7 @@ test("唯一引用向编辑器采纳且保存，重挂标签不恢复旧报告",
   await page.getByRole("button", { name: "应用替换", exact: true }).click();
   const expected = original.replace(quote, replacement); await expect(page.locator(".editor-textarea")).toHaveValue(expected);
   await expect.poll(() => stored(page, f.chapterId)).toBe(expected); await expect.poll(() => f.feedback()).toBe(1);
+  expect(f.feedbackBody()).toEqual({ chapterId: f.chapterId, sourceSha256: f.sourceHash(), suggestionIndex: 0, quote, replacement });
   await page.getByRole("tab", { name: "AI", exact: true }).click(); await page.getByRole("tab", { name: "审校", exact: true }).click();
   await expect(page.locator(".review-summary")).toHaveCount(0); await expect(page.locator(".editor-textarea")).toHaveValue(expected);
 });

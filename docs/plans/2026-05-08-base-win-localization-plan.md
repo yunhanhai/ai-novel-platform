@@ -1308,3 +1308,12 @@ git diff --check
 - [x] Verify1241tests+1skip,typecheck5/5,build,e2e88pass+1skip,actualDB17rollback+2connection-order cases;independent65tests/6actual-component checks clear.
 - [x] Update reports/progress/manual,integrate master and synchronize both remotes with external commit/tree receipts;zero model calls,no real prose/config/schema/deployment changes.
 - [ ] Remaining:real model semantic calibration,durable adoption/save feedback,hash ABA and broader feedback concurrency governance require separate evidence.
+
+### 2026-11-08 — Exact and concurrent review adoption feedback
+
+- [x] Reproduce original-route PostgreSQL lost adoption after two200responses and wrong duplicate-quote suggestion marking.
+- [x] Require exact chapter/source/index/quote/replacement proof,lock completed scoped review job,preserve output and first actor/time;repeat feedback executes no update.
+- [x] Prevent redundant REVIEW success prose refresh racing immediate editor adoption;12browser/HTTP targeted cases clear with source regression coverage.
+- [x] IndependentDB27checks including distinct-connection races and atomic rollback,46helper/API tests,9actual-component checks plus1static wiring check clear.
+- [x] Verify1282tests+1skip,e2e91pass+1skip,typecheck5/5,build and credential exclusion;update report,integrate master and synchronize both remotes with external receipts.
+- [ ] Remaining:durable feedback delivery,save-confirmed adoption,per-actor analytics and semantic evaluation require separate scope.
