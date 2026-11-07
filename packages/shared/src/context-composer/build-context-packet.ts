@@ -36,6 +36,7 @@ interface PlotThreadInfo {
 }
 
 interface MemoryInfo {
+  id: string;
   memoryType: string;
   content: string;
   scopeType: string;
@@ -328,7 +329,7 @@ function plotThreadAsset(thread: PlotThreadInfo): ContextAsset {
 function memoryAsset(memory: MemoryInfo, index: number): ContextAsset {
   const content = `【最近摘要】${memory.content}`;
   return {
-    id: `mem-${index}`,
+    id: `memory:${memory.id}`,
     sourceType: "memory",
     name: `${memory.memoryType}:${index + 1}`,
     content,

@@ -123,6 +123,7 @@ export function ContextComposer({ chapterId, disabled, onChange }: Props) {
           </div>
 
           <AssetGroup title="已纳入" assets={preview.included} mode="exclude" selectedIds={excludedAssetIds} onToggle={toggleExcluded} />
+          <AssetGroup title="已排除" assets={preview.excluded} mode="restore" selectedIds={excludedAssetIds} onToggle={toggleExcluded} />
           <AssetGroup title="可强制加入" assets={preview.available} mode="force" selectedIds={forcedAssetIds} onToggle={toggleForced} />
           <AssetGroup title="被预算裁剪" assets={preview.trimmed} mode="readonly" selectedIds={[]} onToggle={() => undefined} />
 
@@ -145,7 +146,7 @@ function AssetGroup({
 }: {
   title: string;
   assets: ContextAsset[];
-  mode: "exclude" | "force" | "readonly";
+  mode: "exclude" | "force" | "restore" | "readonly";
   selectedIds: string[];
   onToggle: (id: string) => void;
 }) {
@@ -162,7 +163,7 @@ function AssetGroup({
             </div>
             {mode !== "readonly" && !asset.required && (
               <button type="button" className="btn-ghost btn-small" onClick={() => onToggle(asset.id)}>
-                {selectedIds.includes(asset.id) ? "撤销" : mode === "exclude" ? "排除" : "加入"}
+                {mode === "restore" ? "恢复" : selectedIds.includes(asset.id) ? "撤销" : mode === "exclude" ? "排除" : "加入"}
               </button>
             )}
           </li>

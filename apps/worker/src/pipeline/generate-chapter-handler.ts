@@ -353,6 +353,7 @@ async function buildWorkerContextPacket(params: {
       status: thread.status
     })),
     recentMemories: memories.map((memory) => ({
+      id: memory.id,
       memoryType: memory.memoryType,
       content: memory.content,
       scopeType: memory.scopeType,
@@ -455,7 +456,7 @@ interface WorkerAssetDelegates {
 interface WorkerCharacter { updatedAt?: Date | string; id: string; name: string; roleType: string; personality: string | null; speechPattern: string | null; motivation: string | null; appearance: string | null; arc: string | null; constraints: string | null; }
 interface WorkerWorldItem { updatedAt?: Date | string; id: string; name: string; itemType: string; summary: string | null; detail: string | null; constraints: string | null; activationKeywords: unknown; }
 interface WorkerPlotThread { updatedAt?: Date | string; id: string; threadType: string; title: string; description: string | null; status: string; }
-interface WorkerMemory { updatedAt?: Date | string; memoryType: string; content: string; scopeType: string; sourceChapterId: string | null; }
+interface WorkerMemory { id: string; updatedAt?: Date | string; memoryType: string; content: string; scopeType: string; sourceChapterId: string | null; }
 interface WorkerStyleProfile { updatedAt?: Date | string; styleBrief: string | null; bannedWords: unknown; preferredWords: unknown; sentenceLengthProfile: unknown; }
 
 function compactLines(values: string[]): string {

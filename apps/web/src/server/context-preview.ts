@@ -126,6 +126,7 @@ export async function buildChapterContextPreview({
       status: thread.status
     })),
     recentMemories: memories.map((memory) => ({
+      id: memory.id,
       memoryType: memory.memoryType,
       content: memory.content,
       scopeType: memory.scopeType,

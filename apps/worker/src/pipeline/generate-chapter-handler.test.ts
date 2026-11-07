@@ -667,3 +667,21 @@ it("queries only earlier source chapters when composing a generation prompt",asy
  await createGenerateChapterHandler({prisma:{...prisma,projectMemory:{findMany}}as never,updateJobStatus:vi.fn(),model})({...baseJob,input:{qualityMode:"fast",performanceBudget:{maxModelCalls:2}}});
  expect(findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({OR:[{sourceChapterId:null},{sourceChapter:{is:{organizationId:"org-1",projectId:"proj-1",deletedAt:null,chapterNo:{lt:3}}}}]})}));
 });
+
+it("keeps the requested database memory excluded from actual worker plan and draft prompts", async () => {
+  const { prisma } = createPrismaStub();
+  prisma.chapter.findFirst.mockResolvedValue({ id: "chapter-1", projectId: "proj-1", organizationId: "org-1", chapterNo: 3, title: "调查" });
+  const findMany = vi.fn().mockResolvedValue([
+    { id: "memory-new", memoryType: "world_fact", content: "应保留的新线索", scopeType: "project", sourceChapterId: null },
+    { id: "memory-old", memoryType: "world_fact", content: "用户明确排除的旧线索", scopeType: "project", sourceChapterId: null }
+  ]);
+  const model = { generate: vi.fn<(...args: unknown[]) => Promise<{ text: string; inputTokens: number; outputTokens: number }>>().mockResolvedValue({ text: "有效的新正文", inputTokens: 1, outputTokens: 1 }) };
+  await createGenerateChapterHandler({ prisma: { ...prisma, projectMemory: { findMany } } as never, updateJobStatus: vi.fn(), model })({
+    ...baseJob, input: { qualityMode: "fast", performanceBudget: { maxModelCalls: 2 }, contextOptions: { excludedAssetIds: ["memory:memory-old"] } }
+  });
+  expect(model.generate).toHaveBeenCalledTimes(2);
+  for (const call of model.generate.mock.calls) {
+    expect(call[0]).not.toContain("用户明确排除的旧线索");
+    expect(call[0]).toContain("应保留的新线索");
+  }
+});

@@ -38,6 +38,7 @@ const baseInput: PacketInput = {
   ],
   recentMemories: [
     {
+      id: "memory-c4",
       memoryType: "chapter_summary",
       content: "第四章：陈锋在遗迹中发现星门坐标",
       scopeType: "chapter",
@@ -156,6 +157,7 @@ describe("build-context-packet", () => {
       recentMemories: [
         ...baseInput.recentMemories,
         {
+          id: "memory-c3",
           memoryType: "chapter_summary",
           content: "long memory ".repeat(80),
           scopeType: "chapter",
@@ -200,4 +202,33 @@ it("budgets mixed CJK and Latin required sections in tokens rather than raw char
     worldItems: [], plotThreads: [], recentMemories: [], tokenBudget: 500
   });
   expect(result.assets.included.map(item => item.id)).toContain("hero");
+});
+
+
+describe("stable memory choices", () => {
+  const a = { id: "memory-a", memoryType: "chapter_summary", content: "已排除的旧线索A", scopeType: "chapter", sourceChapterId: "c2" };
+  const b = { id: "memory-b", memoryType: "chapter_summary", content: "保留的线索B", scopeType: "chapter", sourceChapterId: "c3" };
+  function packet(recentMemories: typeof a[], excludedAssetIds = ["memory:memory-a"]) {
+    return buildContextPacket({ ...baseInput, recentMemories, contextOptions: { budgetPreset: "standard", excludedAssetIds, forcedAssetIds: [] } });
+  }
+  it("keeps a memory excluded when another memory is inserted ahead of it", () => {
+    const before = packet([a, b]);
+    const after = packet([{ ...b, id: "memory-new", content: "新插入线索" }, a, b]);
+    for (const result of [before, after]) {
+      expect(result.prompt).not.toContain(a.content);
+      expect(result.prompt).toContain(b.content);
+      expect(result.assets.excluded.map(item => item.id)).toEqual(["memory:memory-a"]);
+    }
+  });
+  it("does not transfer an exclusion to another memory after deletion or reorder", () => {
+    expect(packet([b, a]).prompt).not.toContain(a.content);
+    const result = packet([b]);
+    expect(result.prompt).toContain(b.content);
+    expect(result.assets.excluded).toEqual([]);
+  });
+  it("separates identical content with different identities and ignores obsolete positional ids", () => {
+    const result = packet([a, { ...a, id: "memory-other", sourceChapterId: "c1" }]);
+    expect(result.assets.included.filter(item => item.sourceType === "memory").map(item => item.id)).toEqual(["memory:memory-other"]);
+    expect(packet([a], ["mem-0"]).prompt).toContain(a.content);
+  });
 });

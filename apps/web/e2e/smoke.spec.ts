@@ -99,6 +99,39 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(editor).not.toBeEmpty({ timeout: 10_000 });
 
   await expect(page.getByText("正文约束检查通过", { exact: true })).toBeVisible();
+  // 人工排除应指向稳定记忆；刷新、新增条目后可恢复原选择。
+  const selectionFixture = await page.evaluate(async () => {
+    const projectId = location.pathname.split("/")[2]!;
+    const chapters = await (await fetch(`/api/projects/${projectId}/chapters?page=1&pageSize=10`)).json();
+    const chapterId = chapters.data.items[0].id;
+    const marker = `选择目标-${Date.now()}`;
+    const created = await (await fetch("/api/project-memories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, memoryType: "world_fact", scopeType: "project", content: marker }) })).json();
+    const accepted = await fetch(`/api/project-memories/${created.data.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "accepted" }) });
+    if (!accepted.ok) throw new Error("selection fixture acceptance failed");
+    const preview = await (await fetch(`/api/chapters/${chapterId}/context-preview`)).json();
+    const asset = preview.data.included.find((item: { content: string }) => item.content.includes(marker));
+    return { projectId, chapterId, marker, assetName: asset.name };
+  });
+  const composer = page.getByRole("region", { name: "上下文编排器" });
+  await composer.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(composer.locator(".context-prompt-preview pre")).toContainText(selectionFixture.marker);
+  await composer.locator(".context-asset-group li").filter({ hasText: selectionFixture.assetName }).getByRole("button", { name: "排除", exact: true }).click();
+  await expect(composer.locator(".context-prompt-preview pre")).not.toContainText(selectionFixture.marker);
+  await expect(composer.getByRole("heading", { name: "已排除", exact: true })).toBeVisible();
+  const insertedMarker = await page.evaluate(async fixture => {
+    const marker = `新增保留-${Date.now()}`;
+    const created = await (await fetch("/api/project-memories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId: fixture.projectId, memoryType: "world_fact", scopeType: "project", content: marker }) })).json();
+    const accepted = await fetch(`/api/project-memories/${created.data.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "accepted" }) });
+    if (!accepted.ok) throw new Error("inserted fixture acceptance failed");
+    return marker;
+  }, selectionFixture);
+  await composer.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(composer.locator(".context-prompt-preview pre")).toContainText(insertedMarker);
+  await expect(composer.locator(".context-prompt-preview pre")).not.toContainText(selectionFixture.marker);
+  await composer.getByRole("button", { name: "恢复", exact: true }).click();
+  await expect(composer.getByRole("heading", { name: "已排除", exact: true })).toHaveCount(0);
+  await expect(composer.locator(".context-prompt-preview pre")).toContainText(selectionFixture.marker);
+
   // 来源记忆在正文未变化时保留，实际编辑后失效。
   const freshnessFixture = await page.evaluate(async () => {
     const projectId = location.pathname.split("/")[2]!;

@@ -1126,3 +1126,12 @@ git diff --check
 - [x] Verify1078 tests+1skip,typecheck5/5,build,e2e3pass+1skip,5rollback-only DB scenarios including real reorder/worker prompt and long-source tail; independent57 tests clear.
 - [x] Update report/progress/manual, integrate task branch into master and synchronize both remotes with external hash receipts; external model calls0, no migration/deployment or private prose changes.
 - [ ] Remaining: author-reviewed real summary semantics, supplier long-chapter coverage, legacy summary audit and next-chapter quality evidence.
+
+## Task 61: 2026-11-07 Stable Context Memory Choices
+
+- [x] Reproduce index-based memory identity drift and missing UI restore affordance before fixes.
+- [x] Pass persisted memory IDs through web/worker to shared packet; keep exclusions attached across insertion/reorder/removal and separate identical-content records.
+- [x] Show excluded assets and restore action using existing per-job options; do not infer obsolete positional-ID targets.
+- [x] Verify1082 tests+1skip,typecheck5/5,build,e2e3pass+1skip and4rollback-only real DB scenarios including actual worker plan/draft; external model calls0.
+- [x] Update report/progress/manual, self-review diff, integrate branch and synchronize both master refs with external receipts; no schema/provider/prose change or deployment.
+- [ ] Remaining: legacy queued positional options require reselection; creation-time memory retrieval, indirect keyword effects and real content semantics remain separate verification work.
