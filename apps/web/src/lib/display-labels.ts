@@ -65,6 +65,8 @@ const PIPELINE_STEP_LABELS: Record<string, string> = {
   extract_memory: "抽取记忆",
   scan_deslop: "扫描 AI 味",
   deslop_analyze: "去 AI 味分析",
+  rewrite_selection: "选文改写",
+  polish_selection: "选文润色",
   analyze_style: "分析风格",
   diagnose_chapter: "质量诊断"
 };

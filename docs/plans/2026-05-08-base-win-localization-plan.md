@@ -1209,3 +1209,12 @@ git diff --check
 - [x] Verify1139 tests+1skip,typecheck5/5,build,e2e16pass+1skip including9new controlled browser scenarios with actual DB save evidence;independent final hook checks and7request tests clear.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no provider/private prose/schema/deployment changes.
 - [ ] Remaining:visibility keepalive,multi-tab/server version locks,worker rewrite attempt/usage and real semantic quality require separate evidence.
+
+## Task 70: 2026-11-07 Rewrite and Polish Worker Guards
+
+- [x] Reproduce actual DB old-attempt/late-success/stale-source candidate overwrite and model call for a job cancelled before execution.
+- [x] Precheck scoped task state/attempt,lock source then job and atomically finalize candidate/step;discard late results,stop source conflicts without retry.
+- [x] Record measured returned-response usage and Chinese steps,fail empty output honestly,preserve durable terminal receipts on acknowledgment loss and original error classification.
+- [x] Verify1154 tests+1skip,typecheck5/5,build,e2e16pass+1skip and14rollback DB cases;independent35 tests clear,final39 targeted passed.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
+- [ ] Remaining:provider exactly-once/abort,multiworker load,cancel API late writes,best-effort usage completeness and real semantic quality require separate evidence.

@@ -63,7 +63,7 @@ export function createPoller(deps: PollerDeps): Poller {
     const job = await claimNext();
     if (!job) return "no_job";
 
-    const updateForAttempt: UpdateStatusFn = params => updateJobStatus({ ...params, expectedAttemptCount: job.attemptCount ?? 1, ...(job.jobType === "DESLOP" ? { expectedStatus: "RUNNING" as const } : {}) });
+    const updateForAttempt: UpdateStatusFn = params => updateJobStatus({ ...params, expectedAttemptCount: job.attemptCount ?? 1, ...(["DESLOP", "REWRITE", "POLISH"].includes(job.jobType) ? { expectedStatus: "RUNNING" as const } : {}) });
     const handler = handlers.get(job.jobType);
     if (!handler) {
       await updateForAttempt({

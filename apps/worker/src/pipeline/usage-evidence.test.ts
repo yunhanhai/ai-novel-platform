@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createDeslopHandler } from "./deslop-handler";
 import { createDiagnoseChapterHandler } from "./diagnose-chapter-handler";
 import { createExtractMemoryHandler } from "./extract-memory-handler";
+import { createRewritePolishHandler } from "./rewrite-polish-handler";
 import type { GenerationJob } from "../poll";
 
 const baseJob: GenerationJob = { id: "job", organizationId: "org", projectId: "project", userId: "user", jobType: "DESLOP", status: "RUNNING", input: {}, targetEntityType: "CHAPTER", targetEntityId: "chapter" };
@@ -29,11 +30,13 @@ describe("standalone model usage evidence", () => {
   it.each([
     ["DESLOP", createDeslopHandler],
     ["DIAGNOSE_CHAPTER", createDiagnoseChapterHandler],
-    ["EXTRACT_MEMORY", createExtractMemoryHandler]
+    ["EXTRACT_MEMORY", createExtractMemoryHandler],
+    ["REWRITE", createRewritePolishHandler],
+    ["POLISH", createRewritePolishHandler]
   ] as const)("records one metered call for %s without changing the job result", async (jobType, createHandler) => {
     const { prisma, model, updateJobStatus } = setup();
     const handler = createHandler({ prisma: prisma as never, resolveModel: async () => model, updateJobStatus });
-    await handler({ ...baseJob, jobType });
+    await handler({ ...baseJob, jobType, input: { selectedText: "正文" } });
     expect(prisma.usageEvent.create).toHaveBeenCalledExactlyOnceWith({ data: expect.objectContaining({
       organizationId: "org", projectId: "project", userId: "user", generationJobId: "job",
       modelName: "model-real", billingSource: "USER_KEY", inputTokens: 81, outputTokens: 27, latencyMs: expect.any(Number)

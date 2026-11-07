@@ -192,6 +192,8 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(jobTypeCell).toHaveText("润色", { timeout: 10_000 });
   await expect(jobStatusTag).toHaveText("已完成", { timeout: 30_000 });
   await expect(page.locator(".rewrite-result-card")).toContainText("润色结果", { timeout: 10_000 });
+  await expect(page.locator(".pipeline-timeline")).toContainText("选文润色");
+  await expect(page.locator(".pipeline-timeline .pipeline-step-succeeded")).toContainText("已完成");
   await page.getByRole("button", { name: "应用到编辑器" }).click();
   await expect(page.locator(".selection-toolbar")).toHaveCount(0);
   // fake-model 的输出含「林墨推开门」，应用后应出现在正文中

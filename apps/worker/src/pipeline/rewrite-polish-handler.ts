@@ -1,40 +1,19 @@
-import type { PrismaClient } from "@ai-novel/db";
+import type { PrismaClient, Prisma } from "@ai-novel/db";
+import { lockMemorySourceChapter } from "@ai-novel/db/chapter-memory";
+import { createHash } from "node:crypto";
 import { createFakeModel } from "./fake-model";
-import type { GenerationJob } from "../poll";
+import { ChapterSourceChanged } from "./chapter-save";
+import { recordModelUsage } from "./usage-recorder";
+import type { GenerationJob, UpdateStatusFn } from "../poll";
 
 type FakeModel = ReturnType<typeof createFakeModel>;
-
-type UpdateStatusFn = (params: {
-  jobId: string;
-  status: "SUCCEEDED" | "FAILED";
-  output?: Record<string, unknown>;
-  errorCode?: string;
-  errorMessage?: string;
-}) => Promise<unknown>;
-
-interface RewritePolishInput {
-  chapterId?: unknown;
-  selectedText?: unknown;
-  instruction?: unknown;
-}
-
+interface RewritePolishInput { chapterId?: unknown; selectedText?: unknown; instruction?: unknown }
 interface HandlerDeps {
   prisma: PrismaClient;
   updateJobStatus: UpdateStatusFn;
   model?: FakeModel;
   resolveModel?: (job: GenerationJob) => Promise<FakeModel | null>;
 }
-
-const ERROR_CODES = {
-  CHAPTER_NOT_FOUND: "CHAPTER_NOT_FOUND",
-  SELECTION_MISSING: "SELECTION_MISSING",
-  SELECTION_STALE: "SELECTION_STALE",
-  NO_MODEL_PROFILE: "NO_MODEL_PROFILE",
-  HANDLER_ERROR: "HANDLER_ERROR"
-} as const;
-
-type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
-
 function buildPrompt(jobType: string, selectedText: string, instruction?: string): string {
   const task =
     jobType === "POLISH"
@@ -60,81 +39,76 @@ function buildPrompt(jobType: string, selectedText: string, instruction?: string
 
 export function createRewritePolishHandler(deps: HandlerDeps) {
   const { prisma, updateJobStatus } = deps;
-  const builtinModel = deps.model ?? createFakeModel();
-  const resolveModel = deps.resolveModel;
-  const fail = (jobId: string, code: ErrorCode, message: string) =>
-    updateJobStatus({ jobId, status: "FAILED", errorCode: code, errorMessage: message });
-
   return async function handle(job: GenerationJob): Promise<void> {
+    if (job.jobType !== "REWRITE" && job.jobType !== "POLISH") return;
+    const current = await prisma.generationJob.findFirst({
+      where: { id: job.id, organizationId: job.organizationId, projectId: job.projectId, jobType: job.jobType },
+      select: { status: true, attemptCount: true }
+    });
+    if (!current || current.status !== "RUNNING" || current.attemptCount !== (job.attemptCount ?? 1)) return;
+    const fail = (code: string, message: string) => updateJobStatus({ jobId: job.id, status: "FAILED", errorCode: code, errorMessage: message, expectedStatus: "RUNNING", expectedAttemptCount: job.attemptCount ?? 1 });
     const input = (job.input ?? {}) as RewritePolishInput;
-
-    const selectedText =
-      typeof input.selectedText === "string" && input.selectedText.trim().length > 0
-        ? input.selectedText
-        : null;
-    if (!selectedText) {
-      await fail(job.id, ERROR_CODES.SELECTION_MISSING, "缺少待处理的选中文本 selectedText");
-      return;
-    }
-
-    const chapterId =
-      typeof input.chapterId === "string" && input.chapterId.length > 0
-        ? input.chapterId
-        : job.targetEntityType === "CHAPTER" && typeof job.targetEntityId === "string"
-          ? job.targetEntityId
-          : null;
-    if (!chapterId) {
-      await fail(job.id, ERROR_CODES.CHAPTER_NOT_FOUND, "无法从任务目标解析 chapterId");
-      return;
-    }
-
-    const instruction = typeof input.instruction === "string" ? input.instruction.trim() : "";
-
-    let model = builtinModel;
-    if (resolveModel) {
-      const resolved = await resolveModel(job);
-      if (resolved) {
-        model = resolved;
-      } else if (!deps.model) {
-        await fail(job.id, ERROR_CODES.NO_MODEL_PROFILE, "无法解析 ModelProfile 且未配置兜底模型");
-        return;
-      }
-    }
-
+    const selectedText = typeof input.selectedText === "string" && input.selectedText.trim() ? input.selectedText : null;
+    if (!selectedText) { await fail("SELECTION_MISSING", "缺少待处理的选中文本 selectedText"); return; }
+    const chapterId = job.targetEntityType === "CHAPTER" && job.targetEntityId
+      ? job.targetEntityId : typeof input.chapterId === "string" && input.chapterId ? input.chapterId : null;
+    if (!chapterId) { await fail("CHAPTER_NOT_FOUND", "无法从任务目标解析 chapterId"); return; }
     const chapter = await prisma.chapter.findFirst({
-      where: { id: chapterId, organizationId: job.organizationId, projectId: job.projectId, deletedAt: null },
-      select: { id: true, content: true }
+      where: { id: chapterId, organizationId: job.organizationId, projectId: job.projectId, deletedAt: null }, select: { content: true }
     });
-    if (!chapter || !chapter.content) {
-      await fail(job.id, ERROR_CODES.CHAPTER_NOT_FOUND, `章节 ${chapterId} 不存在或内容为空`);
-      return;
+    if (!chapter?.content) { await fail("CHAPTER_NOT_FOUND", "章节不存在或内容为空"); return; }
+    const sourceContent = chapter.content;
+    if (!sourceContent.includes(selectedText)) { await fail("SELECTION_STALE", "选中文本已不在当前章节内容中，请刷新后重新选择"); return; }
+    let model = deps.model ?? createFakeModel();
+    if (deps.resolveModel) {
+      const resolved = await deps.resolveModel(job);
+      if (resolved) model = resolved;
+      else if (!deps.model) { await fail("NO_MODEL_PROFILE", "无法解析 ModelProfile 且未配置兜底模型"); return; }
     }
-    if (!chapter.content.includes(selectedText)) {
-      await fail(
-        job.id,
-        ERROR_CODES.SELECTION_STALE,
-        "选中文本已不在当前章节内容中，请刷新后重新选择"
-      );
-      return;
+    const instruction = typeof input.instruction === "string" ? input.instruction.trim() : "";
+    const stepKey = job.jobType === "POLISH" ? "polish_selection" : "rewrite_selection";
+    const step = await prisma.generationStep.create({ data: { organizationId: job.organizationId, jobId: job.id, stepKey, status: "RUNNING", startedAt: new Date() }, select: { id: true } });
+    const started = Date.now();
+    try {
+      const result = await model.generate(buildPrompt(job.jobType, selectedText, instruction || undefined));
+      const latencyMs = Date.now() - started;
+      await recordModelUsage({ prisma, job, model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, latencyMs });
+      const newText = result.text.trim();
+      await prisma.$transaction(async tx => {
+        let source: { content: string | null };
+        try { source = await lockMemorySourceChapter({ tx, organizationId: job.organizationId, projectId: job.projectId, chapterId }); }
+        catch (error) {
+          if (error instanceof Error && error.message === "章节不存在或不属于当前项目") throw new ChapterSourceChanged();
+          throw error;
+        }
+        const databaseType = job.jobType === "POLISH" ? "polish" : "rewrite";
+        const rows = await tx.$queryRaw<Array<{ status: string; attemptCount: number }>>`
+          SELECT upper(status::text) AS status, attempt_count AS "attemptCount" FROM generation_jobs
+          WHERE id = ${job.id}::uuid AND organization_id = ${job.organizationId}::uuid
+            AND project_id = ${job.projectId}::uuid AND job_type = ${databaseType}::generation_job_type FOR UPDATE
+        `;
+        if (!rows[0] || rows[0].status !== "RUNNING" || rows[0].attemptCount !== (job.attemptCount ?? 1)) {
+          await tx.generationStep.update({ where: { id: step.id }, data: { status: "SKIPPED", finishedAt: new Date(), latencyMs, inputTokens: result.inputTokens, outputTokens: result.outputTokens, outputPreview: "任务已取消、结束或执行已更新，未采用本次候选" } });
+          return;
+        }
+        if (source.content !== sourceContent) throw new ChapterSourceChanged();
+        const finishedAt = new Date();
+        await tx.generationStep.update({ where: { id: step.id }, data: { status: newText ? "SUCCEEDED" : "FAILED", finishedAt, latencyMs, inputTokens: result.inputTokens, outputTokens: result.outputTokens, ...(newText ? {} : { errorMessage: "模型未返回任何文本" }) } });
+        await tx.generationJob.update({ where: { id: job.id }, data: newText ? {
+          status: "SUCCEEDED", progress: "100", finishedAt, errorCode: null, errorMessage: null,
+          output: { mode: job.jobType, selectedText, newText, chapterId, sourceSha256: createHash("sha256").update(sourceContent).digest("hex") } as Prisma.InputJsonValue
+        } : { status: "FAILED", finishedAt, errorCode: "EMPTY_OUTPUT", errorMessage: "模型未返回任何文本" } });
+      });
+    } catch (error) {
+      // A final step is an atomic receipt for this response, including empty output.
+      try {
+        const receipt = await prisma.generationStep.findFirst({ where: { id: step.id, jobId: job.id, organizationId: job.organizationId, status: { in: ["SUCCEEDED", "FAILED", "SKIPPED"] } }, select: { status: true } });
+        if (receipt) return;
+      } catch { /* Keep original provider/storage classification when verification is unavailable. */ }
+      try {
+        await prisma.generationStep.updateMany({ where: { id: step.id, jobId: job.id, organizationId: job.organizationId, status: "RUNNING" }, data: { status: "FAILED", finishedAt: new Date(), latencyMs: Date.now() - started, errorMessage: error instanceof ChapterSourceChanged ? "来源正文已变化，本次候选未采用" : "改写或润色未完成，未取得可采纳候选" } });
+      } catch { /* Cleanup cannot replace the original error. */ }
+      throw error;
     }
-
-    const prompt = buildPrompt(job.jobType, selectedText, instruction || undefined);
-    const result = await model.generate(prompt);
-
-    const newText = result.text.trim();
-    if (!newText) {
-      await fail(job.id, "HANDLER_ERROR", "模型未返回任何文本");
-      return;
-    }
-
-    await updateJobStatus({
-      jobId: job.id,
-      status: "SUCCEEDED",
-      output: {
-        mode: job.jobType,
-        selectedText,
-        newText
-      }
-    });
   };
 }

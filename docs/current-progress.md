@@ -2107,3 +2107,13 @@ git diff --check   通过
 - 最终1139单测+1skip（33/67/50/349/640）、typecheck5/5、build、完整e2e16pass+1skip（fake，1.9m，新增9项来源/保存竞态）。独立最终无阻断，hook受控串行/失败继续/过期跳过及7项请求构造通过。
 - 报告`reports/2026-11-07-rewrite-snapshot.md`保留程序化选择夹具修正、首个第9项GET ECONNRESET与同页fetch重跑证据；明确visibility keepalive/跨标签/服务端版本锁、worker改写终态与真实语义未扩展。
 - 外部模型0，无配置/schema/迁移/部署，既有真实正文/记忆未修改；新账号合成测试数据保留。codex/rewrite-snapshot验证后快进master同步双远程并外存commit/tree回执，原实验保持。
+
+---
+
+## 2026-11-07 — 改写润色 worker 候选完整性
+
+- 真实DB RED复现旧attempt覆盖新轮次、迟到覆盖成功候选、正文已变仍成功与启动前取消仍调模型，四项无steps/usage。预检范围类型/RUNNING/attempt，最终章→job锁并核对全文，step/output原子保存；旧/取消/已完成SKIPPED，来源冲突不retry。
+- 保留候选人工采纳，增加chapterId/sourceSha256与中文step；返回响应记录实际tokens/耗时/usage含空白/丢弃。空白原子FAILED；成功/失败/跳过step凭证保护确认丢失，清理仅RUNNING，poll错误终态条件防迟到覆盖。
+- 验证1154单测+1skip（33/67/50/364/640）、typecheck5/5、build、完整e2e16pass+1skip（fake，2.0m），实际DB14项全回滚含空白ack/写失败原子回滚/401与503；独立3文件35项无阻断，后续定向39项通过。
+- 报告`reports/2026-11-07-rewrite-worker-guards.md`记录脚本括号修正及边界：预检不终止在途模型、usage best-effort、HTTP exactly-once/多worker/取消API迟到写/跨标签版本锁未扩展，无真实语义验收。
+- 外部模型0，真实正文/记忆/配置不变，无迁移部署；codex/rewrite-worker-guards验证后快进master同步双远程并外存commit/tree回执，原实验保留。
