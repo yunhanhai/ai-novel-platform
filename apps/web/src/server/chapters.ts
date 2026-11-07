@@ -49,7 +49,7 @@ interface ApplyDeslopEditParams {
   organizationId: string;
   chapterId: string;
   nextContent: string;
-  baseContentHash?: string;
+  baseContentHash: string;
   updatedById: string;
   matchedText?: string;
   category?: string;
@@ -264,13 +264,22 @@ export async function applyDeslopEdit({
   category,
   prisma
 }: ApplyDeslopEditParams) {
+  if (typeof baseContentHash !== "string" || !/^[0-9a-f]{64}$/i.test(baseContentHash)) {
+    throw new Error("应用修改需要有效的 baseContentHash");
+  }
   // DESLOP 应用会在一个事务里连写两条版本记录；并发撞版本号时
   // 整个事务回滚，用户看到「应用失败」。包一层重试让它自愈。
   return withVersionRetry(() =>
     prisma.$transaction(async (tx) => {
       const chapter = await lockMemorySourceChapter({ tx, organizationId, chapterId });
 
-    if (baseContentHash && sha256Hex(chapter.content ?? "") !== baseContentHash) {
+    // A response may be lost after commit. Reconfirm an already-applied body
+    // without changing timestamps, snapshots or memories extracted afterwards.
+    if ((chapter.content ?? "") === nextContent) {
+      const unchanged = await tx.chapter.findFirstOrThrow({ where: { id: chapterId, organizationId, deletedAt: null } });
+      return { chapter: unchanged, version: null };
+    }
+    if (sha256Hex(chapter.content ?? "") !== baseContentHash.toLowerCase()) {
       throw new Error(CONTENT_STALE_ERROR);
     }
 

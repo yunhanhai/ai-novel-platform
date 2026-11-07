@@ -70,6 +70,19 @@ describe("POST /api/chapters/[chapterId]/apply-deslop", () => {
     expect(ade()).not.toHaveBeenCalled();
   });
 
+  it.each(["{", "null", "[]", "1", '"text"'])("returns 400 for malformed or non-object JSON %s", async (body) => {
+    const res = await POST(new Request("http://localhost/api/chapters/ch-1/apply-deslop", { method: "POST", body }), routeCtx("ch-1"));
+    expect(res.status).toBe(400);
+    expect(ade()).not.toHaveBeenCalled();
+  });
+
+  it("returns an already-applied acknowledgment with no new version", async () => {
+    ade().mockResolvedValue({ chapter: { id: "ch-1", content: "目标正文" }, version: null });
+    const res = await POST(req({ nextContent: "目标正文", baseContentHash: "A".repeat(64) }), routeCtx("ch-1"));
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.version).toBeNull();
+  });
+
   it("returns 409 when the base content hash is stale", async () => {
     ade().mockRejectedValue(new Error("CHAPTER_CONTENT_STALE"));
 

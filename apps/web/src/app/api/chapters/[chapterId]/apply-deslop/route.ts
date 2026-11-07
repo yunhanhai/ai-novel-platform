@@ -19,7 +19,11 @@ const HASH_RE = /^[0-9a-f]{64}$/i;
 
 export async function POST(request: Request, context: RouteContext) {
   const { chapterId } = await context.params;
-  const body = (await request.json()) as ApplyDeslopBody;
+  const parsed: unknown = await request.json().catch(() => null);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return NextResponse.json({ success: false, error: "请求需要 JSON 对象" }, { status: 400 });
+  }
+  const body = parsed as ApplyDeslopBody;
 
   if (typeof body.nextContent !== "string") {
     return NextResponse.json(

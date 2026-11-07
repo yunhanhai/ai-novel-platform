@@ -1290,3 +1290,12 @@ git diff --check
 - [x] Independent14actual DB checks including distinct-connection races,5controlled actual-component checks and19service/API tests clear; browser9targeted scenarios pass.
 - [x] Verify1201tests+1skip,typecheck5/5,build,e2e69pass+1skip including10new restore/HTTP cases;update final report,integrate master and synchronize both remotes with external receipts.
 - [ ] Remaining:hash ABA/durable operation receipts,version retention/list pagination and true semantic quality require separate scoped evidence.
+
+### 2026-11-08 — Rule scan application source protection
+
+- [x] Reproduce old scan/pending replacement surviving prose changes and missing save preparation.
+- [x] Bind whole source/chapter/project,validate exact issue position,flush before submit and recheck after awaits;isolate late responses via keyed component and lifecycle guards.
+- [x] Require valid base hashes and case compatibility,same-target no-op without timestamp/version/memory writes;JSON400 and transactional snapshot/memory behavior retained.
+- [x] Real DB10cases and service/API36tests clear;independent cancel-during-save P2 fixed,6actual-component checks clear;browser8targeted cases pass.
+- [x] Verify1213tests+1skip,e2e79pass+1skip,typecheck5/5,build and1final targeted browser case;update documentation,integrate master and synchronize both remotes with external receipts.
+- [ ] Remaining:hash ABA/durable receipts,version retention and real model semantic quality require separate evidence.

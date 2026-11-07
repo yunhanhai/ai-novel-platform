@@ -146,9 +146,11 @@ export function WorkspaceSideTabs({
         )}
         {active === "deslop" && (
           <DeslopPanel
+            key={`${projectId}:${chapterId}`}
             projectId={projectId}
             currentText={currentChapterText}
             chapterId={chapterId}
+            prepareApply={onPrepareVersionRestore}
             onApplied={onChapterContentRefreshed}
           />
         )}

@@ -12,7 +12,7 @@ import {
 function mockPrisma(overrides: Record<string, unknown> = {}) {
   const txClient = {
     projectMemory: {updateMany: vi.fn().mockResolvedValue({count:0})},
-    chapter: { findFirst: vi.fn(), update: vi.fn() },
+    chapter: { findFirst: vi.fn(), findFirstOrThrow: vi.fn(), update: vi.fn() },
     contentVersion: { findFirst: vi.fn(), create: vi.fn() }
   };
   const prisma = {
@@ -316,7 +316,7 @@ describe("chapters", () => {
         })
       }));
       expect(result.chapter).toBe(updated);
-      expect(result.version.versionNo).toBe(4);
+      expect(result.version?.versionNo).toBe(4);
     });
 
     it("rejects stale deslop edits when the chapter content hash changed", async () => {
@@ -334,6 +334,43 @@ describe("chapters", () => {
 
       expect(prisma._tx.chapter.update).not.toHaveBeenCalled();
       expect(prisma._tx.contentVersion.create).not.toHaveBeenCalled();
+      expect(prisma._tx.projectMemory.updateMany).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, "", "bad", "g".repeat(64)])("rejects an invalid DESLOP base hash %s before entering a transaction", async (baseContentHash) => {
+      const prisma = mockPrisma();
+      prisma._tx.chapter.findFirst.mockResolvedValue({ ...chapter, content: "原稿" });
+      await expect(applyDeslopEdit({
+        organizationId: "org1", chapterId: "c1", nextContent: "修改稿", baseContentHash,
+        updatedById: "u1", prisma
+      } as Parameters<typeof applyDeslopEdit>[0])).rejects.toThrow(/baseContentHash/);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("accepts a valid uppercase DESLOP source hash", async () => {
+      const prisma = mockPrisma();
+      prisma._tx.chapter.findFirst.mockResolvedValue({ ...chapter, content: "原稿" });
+      prisma._tx.chapter.update.mockResolvedValue({ ...chapter, content: "修改稿" });
+      prisma._tx.contentVersion.findFirst.mockResolvedValue(null);
+      prisma._tx.contentVersion.create.mockResolvedValue({ id: "after", versionNo: 2 });
+      await expect(applyDeslopEdit({
+        organizationId: "org1", chapterId: "c1", nextContent: "修改稿", baseContentHash: sha256Hex("原稿").toUpperCase(),
+        updatedById: "u1", prisma
+      })).resolves.toMatchObject({ chapter: { content: "修改稿" } });
+    });
+
+    it("acknowledges an already applied target with the old base without any write", async () => {
+      const prisma = mockPrisma();
+      const current = { ...chapter, content: "修改稿", updatedAt: new Date("2026-01-01") };
+      prisma._tx.chapter.findFirst.mockResolvedValue(current);
+      prisma._tx.chapter.findFirstOrThrow.mockResolvedValue(current);
+      await expect(applyDeslopEdit({
+        organizationId: "org1", chapterId: "c1", nextContent: "修改稿", baseContentHash: sha256Hex("原稿"),
+        updatedById: "u1", prisma
+      })).resolves.toEqual({ chapter: current, version: null });
+      expect(prisma._tx.chapter.update).not.toHaveBeenCalled();
+      expect(prisma._tx.contentVersion.create).not.toHaveBeenCalled();
+      expect(prisma._tx.projectMemory.updateMany).not.toHaveBeenCalled();
     });
 
     it("truncates the DESLOP version title to fit the database limit", async () => {

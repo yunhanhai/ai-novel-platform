@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AiDraftDialog, type FieldSpec } from "./ai-draft-dialog";
 
 interface ApiEnvelope<T> {
@@ -24,6 +24,9 @@ interface DeslopStats {
   estimatedTokens: number;
   avgSentenceLength: number;
 }
+
+interface ScanSource { projectId: string; chapterId: string | null; text: string }
+interface ScanSnapshot extends ScanReport { source: ScanSource }
 
 interface ScanReport {
   issues: DeslopIssue[];
@@ -88,11 +91,12 @@ interface Props {
   projectId: string | null;
   currentText: string;
   chapterId?: string | null;
+  prepareApply: () => Promise<boolean>;
   onApplied?: () => void;
 }
 
-export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Props) {
-  const [report, setReport] = useState<ScanReport | null>(null);
+export function DeslopPanel({ projectId, currentText, chapterId, prepareApply, onApplied }: Props) {
+  const [report, setReport] = useState<ScanSnapshot | null>(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,12 +114,34 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
   const [pendingApply, setPendingApply] = useState<{ key: string; issue: DeslopIssue; replacement: string } | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
 
+  const sourceRef = useRef({ projectId, chapterId: chapterId ?? null, text: currentText });
+  sourceRef.current = { projectId, chapterId: chapterId ?? null, text: currentText };
+  const lifecycle = useRef(0);
+  const alive = useRef(false);
+  const scanSequence = useRef(0);
+  const rulesSequence = useRef(0);
+  const scanBusy = useRef(false);
+  const applyBusy = useRef(false);
+  const currentScope = (epoch: number, source: { projectId: string | null; chapterId: string | null }) =>
+    alive.current && lifecycle.current === epoch && sourceRef.current.projectId === source.projectId && sourceRef.current.chapterId === source.chapterId;
+  const sameText = (source: ScanSource) => sourceRef.current.text === source.text && sourceRef.current.projectId === source.projectId && sourceRef.current.chapterId === source.chapterId;
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; lifecycle.current++; scanSequence.current++; rulesSequence.current++; };
+  }, []);
+  useEffect(() => {
+    if (report && !sameText(report.source)) {
+      setReport(null); setPendingApply(null); setApplyError("正文已变化，请重新扫描后再应用。");
+    }
+  }, [currentText, chapterId, projectId, report]);
+
   const reloadRules = useCallback(async () => {
     if (!projectId) return;
+    const epoch = lifecycle.current, sequence = ++rulesSequence.current;
     try {
       const res = await fetch(`/api/deslop-rules?projectId=${encodeURIComponent(projectId)}`);
       const json = (await res.json()) as ApiEnvelope<DeslopRule[]>;
-      if (json.success) {
+      if (alive.current && lifecycle.current === epoch && sourceRef.current.projectId === projectId && rulesSequence.current === sequence && json.success) {
         setRules(json.data ?? []);
         setRulesLoaded(true);
       }
@@ -125,33 +151,31 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
   }, [projectId]);
 
   async function handleScan() {
-    if (!projectId || !currentText.trim()) {
-      setError("当前章节正文为空，无法扫描");
-      return;
-    }
-    setScanning(true);
-    setError(null);
-    setApplyError(null);
-    setPendingApply(null);
-    if (!rulesLoaded) await reloadRules();
+    if (!projectId || !currentText.trim()) { setError("当前章节正文为空，无法扫描"); return; }
+    if (scanBusy.current || applyBusy.current) return;
+    const source: ScanSource = { projectId, chapterId: chapterId ?? null, text: currentText };
+    const epoch = lifecycle.current, sequence = ++scanSequence.current;
+    scanBusy.current = true;
+    setScanning(true); setError(null); setApplyError(null); setPendingApply(null); setReport(null);
     try {
+      if (!rulesLoaded) await reloadRules();
+      if (!currentScope(epoch, source)) return;
+      if (!sameText(source)) throw new Error("正文已变化，请重新扫描。");
       const res = await fetch("/api/deslop-rules/scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, text: currentText })
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: source.projectId, text: source.text })
       });
       const json = (await res.json()) as ApiEnvelope<ScanReport>;
-      if (!res.ok || !json.success || !json.data) {
-        throw new Error(json.error ?? `扫描失败 (${res.status})`);
-      }
-      setReport(json.data);
+      if (!currentScope(epoch, source) || scanSequence.current !== sequence) return;
+      if (!sameText(source)) throw new Error("正文已变化，请重新扫描。");
+      if (!res.ok || !json.success || !json.data) throw new Error(json.error ?? `扫描失败 (${res.status})`);
+      setReport({ ...json.data, source });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "扫描失败");
+      if (currentScope(epoch, source) && scanSequence.current === sequence) setError(err instanceof Error ? err.message : "扫描失败");
     } finally {
-      setScanning(false);
+      if (currentScope(epoch, source) && scanSequence.current === sequence) { scanBusy.current = false; setScanning(false); }
     }
   }
-
   async function handleAddRule(event: React.FormEvent) {
     event.preventDefault();
     if (!projectId || !pattern.trim()) return;
@@ -183,40 +207,49 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
   }
 
   async function handleApply(key: string, issue: DeslopIssue) {
-    setPendingApply({ key, issue, replacement: "" });
-    setApplyError(null);
+    if (!report || !sameText(report.source) || applyBusy.current) { setApplyError("正文已变化，请重新扫描后再应用。"); return; }
+    const { start, end } = issue.position;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > report.source.text.length || report.source.text.slice(start, end) !== issue.matched) {
+      setApplyError("扫描位置与原文不一致，请重新扫描。"); return;
+    }
+    setPendingApply({ key, issue, replacement: "" }); setApplyError(null);
   }
 
   async function handleConfirmApply(key: string) {
-    if (!pendingApply) return;
-    if (!chapterId || !currentText) return;
-    setApplyingKey(key);
-    setApplyError(null);
+    const pending = pendingApply, scanned = report;
+    if (!pending || pending.key !== key || !scanned || !scanned.source.chapterId || applyBusy.current) return;
+    const source = scanned.source, epoch = lifecycle.current;
+    applyBusy.current = true; setApplyingKey(key); setApplyError(null);
     try {
-      const newText = replaceIssueText(currentText, pendingApply.issue, pendingApply.replacement);
-      const baseContentHash = await sha256Hex(currentText);
-      const res = await fetch(`/api/chapters/${chapterId}/apply-deslop`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nextContent: newText,
-          baseContentHash,
-          matchedText: pendingApply.issue.matched,
-          category: pendingApply.issue.category
-        })
+      if (!sameText(source)) throw new Error("正文已变化，请重新扫描后再应用。");
+      const { start, end } = pending.issue.position;
+      if (source.text.slice(start, end) !== pending.issue.matched) throw new Error("扫描位置与原文不一致，请重新扫描。");
+      if (!await prepareApply()) throw new Error("正文尚未保存或已变化，请先保存并处理冲突后再应用。");
+      if (!currentScope(epoch, source)) return;
+      if (!sameText(source)) throw new Error("正文已变化，未提交应用。请重新扫描。");
+      const newText = replaceIssueText(source.text, pending.issue, pending.replacement);
+      const baseContentHash = await sha256Hex(source.text);
+      if (!currentScope(epoch, source)) return;
+      if (!sameText(source)) throw new Error("正文已变化，未提交应用。请重新扫描。");
+      const res = await fetch(`/api/chapters/${source.chapterId}/apply-deslop`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nextContent: newText, baseContentHash, matchedText: pending.issue.matched, category: pending.issue.category })
       });
-      const json = (await res.json()) as ApiEnvelope<unknown>;
-      if (!res.ok || !json.success) throw new Error(json.error ?? "更新失败");
-      setPendingApply(null);
-      setReport(null);
+      const json = (await res.json()) as ApiEnvelope<{ chapter: { id: string; content: string } }>;
+      if (!currentScope(epoch, source)) return;
+      if (!res.ok || !json.success) {
+        if (res.status === 409) { setPendingApply(null); setReport(null); }
+        throw new Error(json.error ?? "更新失败");
+      }
+      if (!json.data || json.data.chapter?.id !== source.chapterId || json.data.chapter.content !== newText) throw new Error("应用结果未确认，请重试并核对正文。");
+      setPendingApply(null); setReport(null);
       onApplied?.();
     } catch (err: unknown) {
-      setApplyError(err instanceof Error ? err.message : "应用失败");
+      if (currentScope(epoch, source)) setApplyError(err instanceof Error ? err.message : "应用失败");
     } finally {
-      setApplyingKey(null);
+      if (currentScope(epoch, source)) { applyBusy.current = false; setApplyingKey(null); }
     }
   }
-
   async function handleToggleRule(rule: DeslopRule) {
     await fetch(`/api/deslop-rules/${rule.id}`, {
       method: "PATCH",
@@ -239,7 +272,7 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
             type="button"
             className="btn-primary"
             onClick={() => void handleScan()}
-            disabled={scanning || !currentText.trim()}
+            disabled={scanning || applyingKey !== null || !currentText.trim()}
           >
             {scanning ? "扫描中..." : "扫描当前章节"}
           </button>
@@ -299,13 +332,14 @@ export function DeslopPanel({ projectId, currentText, chapterId, onApplied }: Pr
                               <label>
                                 <span>替换为</span>
                                 <input
+                                  disabled={applyingKey !== null}
                                   value={pendingApply.replacement}
-                                  onChange={(e) => setPendingApply({ ...pendingApply, replacement: e.target.value })}
+                                  onChange={(e) => { if (!applyBusy.current) setPendingApply({ ...pendingApply, replacement: e.target.value }); }}
                                   placeholder="留空表示删除"
                                 />
                               </label>
                               <div className="resource-card-actions">
-                                <button type="button" className="btn-ghost btn-small" onClick={() => setPendingApply(null)}>
+                                <button type="button" className="btn-ghost btn-small" disabled={applyingKey !== null} onClick={() => { if (!applyBusy.current) setPendingApply(null); }}>
                                   取消
                                 </button>
                                 <button
