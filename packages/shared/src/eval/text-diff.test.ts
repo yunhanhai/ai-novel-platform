@@ -77,3 +77,18 @@ describe("summarizeDiff", () => {
     });
   });
 });
+
+it('counts a single change inside a20000-character chapter accurately',()=>{
+ const before='甲'.repeat(10000)+'原'+'乙'.repeat(9999),after='甲'.repeat(10000)+'新'+'乙'.repeat(9999);
+ expect(summarizeDiff(diffText(before,after))).toEqual({addedChars:1,removedChars:1,changed:true});
+});
+it.each([[' 甲\n乙\t',' 甲\r\n乙  '],['prefix😀a\n','prefix😃b\n'],['word old suffix','word new suffix'],['\n\n','\n\n\n']])('preserves exact source text including whitespace and Unicode %j',(before,after)=>{
+ const segments=diffText(before,after);expect(segments.filter(s=>s.kind!=='insert').map(s=>s.text).join('')).toBe(before);expect(segments.filter(s=>s.kind!=='delete').map(s=>s.text).join('')).toBe(after);
+});
+it('retains common context even when only the changed middle exceeds the limit',()=>{
+ const prefix='相同开头\n',suffix='\n相同结尾';const segments=diffText(prefix+'甲'.repeat(4500)+suffix,prefix+'乙'.repeat(4500)+suffix);
+ expect(segments[0]).toEqual({kind:'equal',text:prefix});expect(segments.at(-1)).toEqual({kind:'equal',text:suffix});expect(summarizeDiff(segments)).toMatchObject({addedChars:4500,removedChars:4500});
+});
+it('handles long pure insertions and deletions without counting unchanged prose',()=>{
+ const source='共同正文。'.repeat(4000);expect(summarizeDiff(diffText(source,source+'尾'))).toMatchObject({addedChars:1,removedChars:0});expect(summarizeDiff(diffText('首'+source,source))).toMatchObject({addedChars:0,removedChars:1});
+});

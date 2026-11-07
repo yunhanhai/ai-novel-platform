@@ -403,3 +403,10 @@ it("rejects stale manual saves before versions or memory invalidation", async ()
   await expect(updateChapterContent({ organizationId: "org1", chapterId: "c1", content: "旧页面覆盖稿", wordCount: 6, updatedById: "u1", baseContentHash: createHash("sha256").update("共同旧稿").digest("hex"), prisma: { $transaction: async(cb: any)=>cb(tx) } as never } as Parameters<typeof updateChapterContent>[0])).rejects.toThrow("CHAPTER_CONTENT_STALE");
   expect(tx.chapter.update).not.toHaveBeenCalled(); expect(tx.contentVersion.create).not.toHaveBeenCalled(); expect(tx.projectMemory.updateMany).not.toHaveBeenCalled();
 });
+
+it("does not create a manual snapshot for a one-character edit in a long chapter",async()=>{
+ const before='甲'.repeat(10000)+'原'+'乙'.repeat(9999),after=before.replace('原','新');
+ const tx={$queryRaw:vi.fn().mockResolvedValue([{id:'c1',projectId:'p1',content:before}]),chapter:{update:vi.fn().mockResolvedValue({...chapter,content:after})},contentVersion:{findFirst:vi.fn().mockResolvedValue({versionNo:1,content:before,createdAt:new Date(Date.now()-11*60000)}),count:vi.fn().mockResolvedValue(1),create:vi.fn()},projectMemory:{updateMany:vi.fn().mockResolvedValue({count:0})}};
+ const saved=await updateChapterContent({organizationId:'org1',chapterId:'c1',content:after,wordCount:after.length,updatedById:'u1',baseContentHash:createHash('sha256').update(before).digest('hex'),prisma:{$transaction:async(cb:any)=>cb(tx)} as never});
+ expect(saved.snapshotCreated).toBe(false);expect(tx.contentVersion.create).not.toHaveBeenCalled();expect(tx.chapter.update).toHaveBeenCalledOnce();expect(tx.projectMemory.updateMany).toHaveBeenCalledOnce();
+});

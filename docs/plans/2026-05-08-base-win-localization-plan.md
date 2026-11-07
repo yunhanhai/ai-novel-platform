@@ -1272,3 +1272,12 @@ git diff --check
 - [x] Verify1185 tests+1skip,typecheck5/5,build,e2e58pass+1skip including5new lifecycle cases;storage13 and independent20 targeted checks clear.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
 - [ ] Remaining:legacy/full-site storage management,long-prose input benchmarks,offline durability and real semantic quality need separate evidence.
+
+## Task 77: 2026-11-08 Long Chapter Measurement and Localized Diff
+
+- [x] Measure actual20k/100k browser input/storage costs without weakening immediate local recovery;reproduce long single-character edit miscount and false manual snapshot in real DB.
+- [x] Trim exact common source boundaries safely,run lossless LCS only on changed middle and retain bounded conservative fallback;preserve lexical tokenizer and snapshot policy.
+- [x] Verify1193 tests+1skip,typecheck5/5,build,e2e59pass+1skip and6rollback DB cases;CPU before/after,root1000 and independent30036 reconstruction checks plus45targeted tests clear.
+- [x] Document synchronous-event versus paint/CPU limits and sparse-change fallback;no new external model calls/private prose/provider/schema/deployment changes.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts.
+- [ ] Remaining:production input-to-paint/IME/device/large-project benchmarks,dispersed edit exactness and real semantic quality need separate evidence.

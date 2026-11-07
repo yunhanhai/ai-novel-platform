@@ -1,6 +1,6 @@
 // 轻量文本差异：中文按字符、英文按词切分，用最长公共子序列回溯出差异段。
 // 用途有两处：版本对比的 UI 展示，以及评测管线的修改幅度统计。
-// 不追求业界级 diff 算法（Myers 等）；为控制内存，超过阈值时退化为整段替换。
+// 先剥离完全相同的前后文；变化区域超过阈值时只粗化该区域。
 
 export type DiffKind = "equal" | "insert" | "delete";
 
@@ -31,8 +31,34 @@ function coarseDiff(before: string, after: string): DiffSegment[] {
 export function diffText(before: string, after: string): DiffSegment[] {
   if (before === after) return [{ kind: "equal", text: before }];
 
-  const a = tokenize(before);
-  const b = tokenize(after);
+  let start = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) start++;
+  // Do not separate the two UTF16 units of a Unicode code point.
+  if (start > 0 && isHighSurrogate(before.charCodeAt(start - 1))) start--;
+  let endBefore = before.length, endAfter = after.length;
+  while (endBefore > start && endAfter > start && before[endBefore - 1] === after[endAfter - 1]) { endBefore--; endAfter--; }
+  if (endBefore < before.length && isLowSurrogate(before.charCodeAt(endBefore))) { endBefore++; endAfter++; }
+  const prefix = before.slice(0, start), suffix = before.slice(endBefore);
+  const middle = diffChangedText(before.slice(start, endBefore), after.slice(start, endAfter));
+  const segments: DiffSegment[] = [];
+  for (const segment of [...(prefix ? [{ kind: "equal" as const, text: prefix }] : []), ...middle, ...(suffix ? [{ kind: "equal" as const, text: suffix }] : [])]) {
+    if (!segment.text) continue;
+    if (segments.at(-1)?.kind === segment.kind) segments[segments.length - 1]!.text += segment.text;
+    else segments.push({ ...segment });
+  }
+  return segments;
+}
+
+const isHighSurrogate = (unit: number) => unit >= 0xd800 && unit <= 0xdbff;
+const isLowSurrogate = (unit: number) => unit >= 0xdc00 && unit <= 0xdfff;
+
+function diffChangedText(before: string, after: string): DiffSegment[] {
+  if (!before || !after) return coarseDiff(before, after);
+
+  // Unlike the public lexical tokenizer, diff units must retain whitespace so
+  // the segments reconstruct both original strings exactly.
+  const a = before.match(/[A-Za-z0-9]+|\s+|[^\s]/gu) ?? [];
+  const b = after.match(/[A-Za-z0-9]+|\s+|[^\s]/gu) ?? [];
   if (a.length > MAX_UNITS || b.length > MAX_UNITS) return coarseDiff(before, after);
 
   // LCS 动态规划表：dp[i][j] = a[i..] 与 b[j..] 的公共子序列长度

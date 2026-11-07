@@ -2177,3 +2177,13 @@ git diff --check   通过
 - 最终1185单测+1skip（42/67/50/364/662）、typecheck5/5、build、完整e2e58pass+1skip（fake，4.9m，新增5项），存储13项/独立原hook20定向无阻断。
 - 报告`reports/2026-11-08-draft-storage-lifecycle.md`明确估算非剩余配额、临时双份空间、无TTL/无全站v1清理/无长稿性能基准及明文本机边界；测试只用合成稿。
 - 外部模型0，真实正文/记忆/配置不变，无迁移部署；codex/draft-storage-lifecycle验证后快进master同步双远程并外存commit/tree回执，原实验保持。
+
+---
+
+## 2026-11-08 — 长章实测与局部差异计算
+
+- 浏览器20k/100k各60次输入dev同步处理P95约6.4/7.8ms、storage set0.2/0.4ms，没有证据削弱即时备份。真实DB RED20k单字改动误算增删各20000并创建MANUAL；根因整篇4000单元粗化/小篇全LCS。
+- diff先剥离精确公共前后缀、Unicode边界保护，只对变化中段lossless分词/LCS，超过4000只粗化中段；空白保留，public tokenize兼容。版本阈值/节流/上限与来源记忆维护不变。
+- 同输入CPU3999小修中位54.59→0.069ms，20k1.70→0.025ms且各1字准确计数，限定局部CPU非页面整体收益；独立30036重建/Unicode与45定向无阻断，root1000重建通过。
+- 最终1193单测+1skip（42/74/50/364/663）、typecheck5/5、build、完整e2e59pass+1skip（fake，4.6m），真实DB6项全回滚含大小改/节流/上限/换行；长稿即时刷新恢复完整全文，客户端不改。
+- 报告`reports/2026-11-08-long-editor-diff.md`记录实际测量和UTF16/4000变化区粗化/非input-to-paint边界。外部模型0，真实正文/记忆/配置不变，无迁移部署；codex/long-editor-performance验证后快进master同步双远程并外存commit/tree回执，原实验保留。
