@@ -2034,3 +2034,13 @@ git diff --check   通过
 - 验证1088单测+1skip（26/67/50/305/640）、typecheck5/5、build、完整e2e3pass+1skip（fake，59.5s）；5项真实DB全回滚覆盖preview/worker/恢复/冲突；独立只读55项通过，无阻断。浏览器首轮测试遗漏异步恢复状态等待，已补可观察断言后完整重跑。
 - 报告`reports/2026-11-07-context-exclusion.md`记录排除语义与限制。外部模型调用0，真实正文/13记忆及配置未动，不迁移或部署。20条检索、预算裁剪对激活的影响和请求竞态未扩展。
 - codex/context-exclusion完成后快进master同步双远程，commit/tree回执外存；后续继续按可复现上下文一致性问题推进，真实语义仍需作者核对。
+
+---
+
+## 2026-11-07 — 上下文预览竞态与章节隔离
+
+- 浏览器RED实证旧预算成功覆盖新预算、甲章迟到响应覆盖乙章、旧错误/finally提前清除新请求loading。effect scoped AbortController与全部状态守卫修复；手动refreshKey复用同一生命周期，新请求不展示旧预览。
+- 外层预算保留、内层按chapterId键隔离临时排除/强制/preview；AiPanel绑定选项来源章，提交前核对，防切章借用旧选择。
+- 验证1088单测+1skip（26/67/50/305/640）、typecheck5/5、build；完整e2e7pass+1skip（fake，1.3m），新增4项真实响应乱序/取消/卸载/恢复及生成请求选项检查；独立13定向通过，无阻断，采纳取消信号证据建议。
+- 报告`reports/2026-11-07-context-preview-race.md`记录客户端取消边界、Next dev取消日志、无预览快照。外部模型调用0，既有真实章/13记忆/配置不变，无迁移/部署。
+- codex/context-preview-race完成后快进master同步双远程，最终commit/tree回执外存，原实验保持；下一步继续核对实际上下文检索与作者语义反馈。

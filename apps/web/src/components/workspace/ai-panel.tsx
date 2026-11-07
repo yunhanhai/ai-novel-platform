@@ -1,6 +1,6 @@
 import type { JobSummary } from "./use-workspace-data";
 import { PipelineTimeline } from "./pipeline-timeline";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ContextComposer } from "./context-composer";
 import type { ContextOptions } from "@ai-novel/shared/context-composer/types";
 import type { QualityMode } from "@ai-novel/shared/generation/performance";
@@ -32,7 +32,11 @@ const QUALITY_MODES: QualityMode[] = ["fast", "balanced", "deep"];
 
 export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId, onStopJob, stopping }: AiPanelProps) {
   const isRunning = job ? ["QUEUED", "RUNNING"].includes(job.status) : false;
-  const [contextOptions, setContextOptions] = useState<ContextOptions | undefined>(undefined);
+  const [contextSelection, setContextSelection] = useState<{ chapterId: string | null; options: ContextOptions | undefined } | null>(null);
+  const contextOptions = contextSelection?.chapterId === chapterId ? contextSelection.options : undefined;
+  const setContextOptions = useCallback((options: ContextOptions | undefined, sourceChapterId: string | null) => {
+    setContextSelection({ chapterId: sourceChapterId, options });
+  }, []);
   const [qualityMode, setQualityMode] = useState<QualityMode>("balanced");
   const [minChars, setMinChars] = useState("");
   const [maxChars, setMaxChars] = useState("");

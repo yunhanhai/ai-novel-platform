@@ -1144,3 +1144,12 @@ git diff --check
 - [x] Verify1088 tests+1skip,typecheck5/5,build,e2e3pass+1skip and independent55 targeted tests; document initial e2e synchronization assertion correction.
 - [x] Update report/progress/manual, integrate task branch and synchronize both master refs with external receipts; preserve private content/config and original experiment.
 - [ ] Remaining: creation-time20-memory selection, preview request ordering and real semantic quality require separate evidence.
+
+## Task 63: 2026-11-07 Context Preview Request Ordering
+
+- [x] Reproduce stale success/chapter responses and stale error/finally overriding newer preview state in the actual browser before fixing.
+- [x] Cancel superseded/unmounted requests and guard success/error/loading; manual refresh uses the same effect lifecycle and clears old preview.
+- [x] Isolate per-chapter exclusions/forced choices while preserving panel budget; check selection source chapter when generating.
+- [x] Verify1088 tests+1skip,typecheck5/5,build,e2e7pass+1skip including4 controlled-response browser cases, abort signals and intercepted generation input; independent13 targeted checks clear.
+- [x] Update report/progress/manual, integrate task branch and synchronize both master refs with external receipts; zero external model calls, no migration/deployment or private-content changes.
+- [ ] Remaining: creation-time20-memory retrieval, preview/execution snapshots and real semantic quality remain separate work.

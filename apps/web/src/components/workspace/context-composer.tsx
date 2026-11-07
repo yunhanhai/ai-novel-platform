@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ContextAsset, ContextBudgetPreset, ContextOptions } from "@ai-novel/shared/context-composer/types";
 
 interface ApiEnvelope<T> {
@@ -25,7 +25,7 @@ interface ContextPreview {
 interface Props {
   chapterId: string | null;
   disabled?: boolean;
-  onChange: (options: ContextOptions | undefined) => void;
+  onChange: (options: ContextOptions | undefined, chapterId: string | null) => void;
 }
 
 const BUDGETS: Array<{ value: ContextBudgetPreset; label: string }> = [
@@ -34,49 +34,57 @@ const BUDGETS: Array<{ value: ContextBudgetPreset; label: string }> = [
   { value: "rich", label: "丰富" }
 ];
 
-export function ContextComposer({ chapterId, disabled, onChange }: Props) {
+export function ContextComposer(props: Props) {
   const [budgetPreset, setBudgetPreset] = useState<ContextBudgetPreset>("standard");
+  return <ChapterContextComposer key={props.chapterId ?? "no-chapter"} {...props} budgetPreset={budgetPreset} onBudgetChange={setBudgetPreset} />;
+}
+
+function ChapterContextComposer({ chapterId, disabled, onChange, budgetPreset, onBudgetChange }: Props & {
+  budgetPreset: ContextBudgetPreset;
+  onBudgetChange: (preset: ContextBudgetPreset) => void;
+}) {
   const [excludedAssetIds, setExcludedAssetIds] = useState<string[]>([]);
   const [forcedAssetIds, setForcedAssetIds] = useState<string[]>([]);
   const [preview, setPreview] = useState<ContextPreview | null>(null);
-  const [isLoading, setLoading] = useState(false);
+  const [isLoading, setLoading] = useState(Boolean(chapterId));
+  const [refreshKey, setRefreshKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const options = useMemo<ContextOptions>(() => ({ budgetPreset, excludedAssetIds, forcedAssetIds }), [budgetPreset, excludedAssetIds, forcedAssetIds]);
 
   useEffect(() => {
-    onChange(chapterId ? options : undefined);
+    onChange(chapterId ? options : undefined, chapterId);
   }, [chapterId, onChange, options]);
 
-  const loadPreview = useCallback(async () => {
-    if (!chapterId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/chapters/${chapterId}/context-preview`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contextOptions: options })
-      });
-      const json = (await res.json()) as ApiEnvelope<ContextPreview>;
-      if (!res.ok || !json.success || !json.data) throw new Error(json.error ?? `请求失败 (${res.status})`);
-      setPreview(json.data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "上下文预览失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [chapterId, options]);
-
   useEffect(() => {
-    setExcludedAssetIds([]);
-    setForcedAssetIds([]);
+    const controller = new AbortController();
     setPreview(null);
-  }, [chapterId]);
-
-  useEffect(() => {
-    if (chapterId) void loadPreview();
-  }, [chapterId, loadPreview]);
+    setError(null);
+    if (!chapterId) {
+      setLoading(false);
+      return () => controller.abort();
+    }
+    setLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/chapters/${chapterId}/context-preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contextOptions: options }),
+          signal: controller.signal
+        });
+        const json = (await res.json()) as ApiEnvelope<ContextPreview>;
+        if (controller.signal.aborted) return;
+        if (!res.ok || !json.success || !json.data) throw new Error(json.error ?? `请求失败 (${res.status})`);
+        setPreview(json.data);
+      } catch (err: unknown) {
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "上下文预览失败");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [chapterId, options, refreshKey]);
 
   function toggleExcluded(assetId: string) {
     setExcludedAssetIds((current) => current.includes(assetId) ? current.filter((id) => id !== assetId) : [...current, assetId]);
@@ -90,7 +98,7 @@ export function ContextComposer({ chapterId, disabled, onChange }: Props) {
     <section className="context-composer" aria-label="上下文编排器">
       <div className="context-composer-header">
         <h4>上下文</h4>
-        <button type="button" className="btn-ghost btn-small" onClick={() => void loadPreview()} disabled={!chapterId || disabled || isLoading}>
+        <button type="button" className="btn-ghost btn-small" onClick={() => setRefreshKey(current => current + 1)} disabled={!chapterId || disabled || isLoading}>
           {isLoading ? "刷新中..." : "刷新"}
         </button>
       </div>
@@ -101,7 +109,7 @@ export function ContextComposer({ chapterId, disabled, onChange }: Props) {
             key={budget.value}
             type="button"
             className={budgetPreset === budget.value ? "active" : ""}
-            onClick={() => setBudgetPreset(budget.value)}
+            onClick={() => onBudgetChange(budget.value)}
             disabled={disabled}
           >
             {budget.label}
@@ -110,7 +118,7 @@ export function ContextComposer({ chapterId, disabled, onChange }: Props) {
       </div>
 
       {error && <p className="form-error">{error}</p>}
-      {!preview && !error && <p className="muted">选择章节后会显示本次生成将读取的素材。</p>}
+      {!preview && !error && <p className="muted">{isLoading ? "正在读取本次上下文..." : "选择章节后会显示本次生成将读取的素材。"}</p>}
 
       {preview && (
         <>
