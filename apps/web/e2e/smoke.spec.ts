@@ -164,7 +164,7 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   expect(selfMemoryPreview.containsSelfMemory).toBe(false);
   await expect.poll(async () => page.evaluate(async fixture => {
     const body = await (await fetch(`/api/chapters/${fixture.chapterId}`)).json();
-    await fetch(`/api/chapters/${fixture.chapterId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: body.data.content }) });
+    await fetch(`/api/chapters/${fixture.chapterId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: body.data.content, baseContentHash: body.data.contentHash }) });
     const memories = await (await fetch(`/api/project-memories?projectId=${fixture.projectId}`)).json();
     return memories.data.find((m: { id: string }) => m.id === fixture.id)?.status;
   }, freshnessFixture)).toBe("accepted");

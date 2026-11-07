@@ -11,7 +11,7 @@ test(`创建未确认复用凭证且恢复完整候选：${failure}`, async ({ p
   const projectId = await page.evaluate(async stamp => {
     const project = (await (await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "创建确认合成项目", slug: `create-${stamp}` }) })).json()).data;
     const chapter = (await (await fetch(`/api/projects/${project.id}/chapters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "确认章" }) })).json()).data;
-    await fetch(`/api/chapters/${chapter.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: "她坐在窗边。" }) });
+    await fetch(`/api/chapters/${chapter.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: "她坐在窗边。", baseContentHash: (await (await fetch(`/api/chapters/${chapter.id}`)).json()).data.contentHash }) });
     return project.id as string;
   }, stamp);
   await page.goto(`/projects/${projectId}/workspace`); const editor = page.locator(".editor-textarea"); await expect(editor).toHaveValue("她坐在窗边。");

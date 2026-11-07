@@ -25,7 +25,7 @@ async function setup(page: Page) {
     const a = await create(`/api/projects/${project.id}/chapters`, { title: "改写来源章节甲" });
     const b = await create(`/api/projects/${project.id}/chapters`, { title: "改写来源章节乙" });
     for (const chapter of [a, b]) {
-      const response = await fetch(`/api/chapters/${chapter.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: original }) });
+      const response = await fetch(`/api/chapters/${chapter.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: original, baseContentHash: (await (await fetch(`/api/chapters/${chapter.id}`)).json()).data.contentHash }) });
       if (!response.ok) throw new Error("rewrite fixture text failed");
     }
     return { projectId: project.id as string, a: a.id as string, b: b.id as string };

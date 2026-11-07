@@ -25,6 +25,7 @@ interface CreateChapterParams {
 }
 
 interface UpdateContentParams {
+  baseContentHash?: string;
   organizationId: string;
   chapterId: string;
   content: string;
@@ -163,6 +164,7 @@ export async function updateChapterContent({
   content,
   wordCount,
   updatedById,
+  baseContentHash,
   prisma
 }: UpdateContentParams) {
   return withVersionRetry(() =>
@@ -170,6 +172,13 @@ export async function updateChapterContent({
       const chapter = await lockMemorySourceChapter({ tx, organizationId, chapterId });
 
       const oldContent = chapter.content ?? "";
+      if (baseContentHash && sha256Hex(oldContent) !== baseContentHash.toLowerCase() && content !== oldContent) {
+        throw new Error(CONTENT_STALE_ERROR);
+      }
+      if (baseContentHash && content === oldContent) {
+        const unchanged = await tx.chapter.findFirstOrThrow({ where: { id: chapterId, organizationId, deletedAt: null } });
+        return { chapter: unchanged, snapshotCreated: false };
+      }
       let snapshotCreated = false;
 
       if (oldContent.trim().length > 0 && content !== oldContent) {

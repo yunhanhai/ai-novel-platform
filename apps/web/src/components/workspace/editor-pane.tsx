@@ -92,7 +92,7 @@ export function EditorPane({
       {externalUpdateNotice && (
         <div className="external-update-notice" role="alert">
           <span>
-            远端正文已更新（可能是 AI 任务或其他标签页），你本地有未保存的修改。
+            远端正文已更新，本地修改尚未保存。请选择采用远端正文，或用本地稿覆盖远端正文。
           </span>
           <div className="external-update-actions">
             <button type="button" className="btn-ghost btn-small" onClick={onAcceptExternalUpdate}>

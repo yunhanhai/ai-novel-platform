@@ -1245,3 +1245,12 @@ git diff --check
 - [x] Verify1169 tests+1skip,typecheck5/5,build,e2e35pass+1skip,10rollback DB groups and2real concurrent scenarios;independent58 checks clear.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
 - [ ] Remaining:cross-refresh request/history persistence,receipt retention,provider exactly-once and real semantic quality need separate evidence.
+
+## Task 74: 2026-11-08 Editor Source-Checked Saves
+
+- [x] Reproduce stale-page overwrite in actual DB/helper tests;require baseContentHash for public body PATCH and return saved body/hash receipts.
+- [x] Reject stale differing content before version/memory writes;allow same-text receipt retries without duplicate side effects,retain snapshot policy.
+- [x] Preserve local dirty/conflicts,explicit remote/local choices,immediate guarded keepalive and late acknowledgment fencing;stop AI/switch/create transitions when latest text is unconfirmed.
+- [x] Verify1172 tests+1skip,typecheck5/5,build,e2e44pass+1skip including9new real browser cases,5rollback DB groups andreal multi-connection competition;independent24checks clear.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
+- [ ] Remaining:hard-close/offline draft durability,ABA/metadata atomicity,automatic merge and real semantic quality need separate evidence.

@@ -398,3 +398,8 @@ it("propagates memory-invalidation failures so the chapter write transaction can
  const tx={$queryRaw:vi.fn().mockResolvedValue([{id:"c1",projectId:"p1",content:"旧正文"}]),chapter:{update:vi.fn().mockResolvedValue({})},projectMemory:{updateMany:vi.fn().mockRejectedValue(failure)},contentVersion:{findFirst:vi.fn().mockResolvedValue({createdAt:new Date()}),count:vi.fn()}};
  await expect(updateChapterContent({organizationId:"org1",chapterId:"c1",content:"新正文",wordCount:3,updatedById:"u1",prisma:{$transaction:async(cb:any)=>cb(tx)} as never})).rejects.toBe(failure);
 });
+it("rejects stale manual saves before versions or memory invalidation", async () => {
+  const tx = { $queryRaw: vi.fn().mockResolvedValue([{ id: "c1", projectId: "p1", content: "另一页面的新稿" }]), chapter: { update: vi.fn() }, contentVersion: { findFirst: vi.fn().mockResolvedValue(null), count: vi.fn().mockResolvedValue(0), create: vi.fn() }, projectMemory: { updateMany: vi.fn() } };
+  await expect(updateChapterContent({ organizationId: "org1", chapterId: "c1", content: "旧页面覆盖稿", wordCount: 6, updatedById: "u1", baseContentHash: createHash("sha256").update("共同旧稿").digest("hex"), prisma: { $transaction: async(cb: any)=>cb(tx) } as never } as Parameters<typeof updateChapterContent>[0])).rejects.toThrow("CHAPTER_CONTENT_STALE");
+  expect(tx.chapter.update).not.toHaveBeenCalled(); expect(tx.contentVersion.create).not.toHaveBeenCalled(); expect(tx.projectMemory.updateMany).not.toHaveBeenCalled();
+});

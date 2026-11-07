@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { sanitizeServerMessage } from "../../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
@@ -11,10 +12,13 @@ interface RouteContext {
 
 interface PatchBody {
   content?: string;
+  baseContentHash?: string;
   title?: string;
   status?: "PLANNED" | "DRAFT" | "REVIEWING" | "FINAL";
   volumeId?: string | null;
 }
+
+const sha256Hex = (content: string) => createHash("sha256").update(content).digest("hex");
 
 export async function GET(_request: Request, context: RouteContext) {
   const { chapterId } = await context.params;
@@ -36,6 +40,7 @@ export async function GET(_request: Request, context: RouteContext) {
         status: chapter.status,
         wordCount: chapter.wordCount,
         content: chapter.content,
+        contentHash: sha256Hex(chapter.content ?? ""),
         updatedAt: chapter.updatedAt.toISOString()
       }
     });
@@ -47,6 +52,9 @@ export async function GET(_request: Request, context: RouteContext) {
 export async function PATCH(request: Request, context: RouteContext) {
   const { chapterId } = await context.params;
   const body = (await request.json()) as PatchBody;
+  if (body.content !== undefined && (typeof body.content !== "string" || typeof body.baseContentHash !== "string" || !/^[0-9a-f]{64}$/i.test(body.baseContentHash))) {
+    return NextResponse.json({ success: false, error: "保存正文需要有效的 baseContentHash" }, { status: 400 });
+  }
 
   try {
     const organizationId = await getOrganizationId();
@@ -60,16 +68,19 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ success: false, error: "章节不存在" }, { status: 404 });
     }
 
+    let savedContent: string | undefined;
     if (body.content !== undefined) {
       const wordCount = computeWordCount(body.content);
-      await updateChapterContent({
+      const saved = await updateChapterContent({
         organizationId,
         chapterId,
         content: body.content,
         wordCount,
         updatedById,
+        baseContentHash: body.baseContentHash,
         prisma
       });
+      savedContent = saved.chapter.content ?? "";
     }
     if (body.title !== undefined || body.status !== undefined || body.volumeId !== undefined) {
       await prisma.chapter.update({
@@ -84,7 +95,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const fresh = await prisma.chapter.findUnique({ where: { id: chapterId } });
-    return NextResponse.json({ success: true, data: fresh });
+    return NextResponse.json({ success: true, data: fresh ? { ...fresh, ...(savedContent !== undefined ? { content: savedContent } : {}), contentHash: sha256Hex(savedContent ?? fresh.content ?? "") } : null });
   } catch (error: unknown) {
     return errorResponse(error);
   }
@@ -120,6 +131,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (error instanceof Error && error.message === "CHAPTER_CONTENT_STALE") return NextResponse.json({ success: false, error: "正文已被其他页面或任务更新，请核对后再保存" }, { status: 409 });
   if (isUnauthorizedError(error)) {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }

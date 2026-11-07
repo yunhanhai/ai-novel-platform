@@ -2147,3 +2147,13 @@ git diff --check   通过
 - 最终1169单测+1skip（42/67/50/364/646）、typecheck5/5、build、完整e2e35pass+1skip（fake，3.4m，新增5项），真实DB10组全回滚+2并发；真实HTTP重放/终态/范围/冲突；独立最终58项无阻断。
 - 报告`reports/2026-11-08-job-create-receipts.md`记录错误文案/选区长度夹具修正与TS多余abort修复；说明内存单凭证/刷新与变参失效、无key兼容不去重、无HTTP exactly-once及未做真实语义验收。
 - 外部模型0，真实正文/记忆/配置不变，无schema/迁移/部署；codex/job-create-receipts验证后快进master同步双远程并外存commit/tree回执，原实验保留。
+
+---
+
+## 2026-11-08 — 编辑器正文保存冲突
+
+- 真实DB/helper RED证实旧页面可覆盖新稿。GET/PATCH返回contentHash，公共正文PATCH要求base；锁章校验，过期异稿409且不写version/memory，同稿旧base幂等；回执绑定当次正文/hash，metadata-only兼容。
+- hook确认基线/序列读、冲突冻结/dirty保留，明确保留或放弃必须读成功；keepalive立即带base发送不预清dirty，旧确认不能解除已发生冲突。任务/切章/new章检查flush，创建后再存最新输入才切换。
+- 最终1172单测+1skip（42/67/50/364/649）、typecheck5/5、build、完整e2e44pass+1skip（fake，3.5m，新增9项），DB5组全回滚及真实双连接异稿1胜/同稿幂等；独立多轮实际hook/浏览器RED修复后最终24定向无阻断。
+- 报告`reports/2026-11-08-editor-save-conflicts.md`记录Next HTML404/pg与Prisma包缺失frozen force修复、alert定位器/等待保存改文提示修正；不改锁版本/时限。明确keepalive尽力不保证硬关闭必存、公共PATCH需base、ABA/混合metadata与自动合并未扩展。
+- 外部模型0，真实正文/记忆/配置不变，无schema/迁移/部署；codex/editor-save-conflicts验证后快进master同步双远程并外存commit/tree回执，原实验保留。

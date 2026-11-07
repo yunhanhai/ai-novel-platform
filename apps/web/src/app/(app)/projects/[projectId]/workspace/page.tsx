@@ -129,7 +129,7 @@ export default function WorkspacePage() {
   async function handleSelectChapter(id: string) {
     if (id === activeChapterId) return;
     rewriteRequestRef.current = null;
-    await flush();
+    if (!await flush()) return;
     setSelection(null);
     setRewriteResult(null);
     setRewriteNotice(null);
@@ -138,31 +138,31 @@ export default function WorkspacePage() {
 
   async function handleGenerate(qualityMode: QualityMode, contextOptions?: ContextOptions, qualityConstraints?: QualityConstraints) {
     if (!activeChapterId) return;
-    await flush();
+    if (!await flush()) return;
     await startJob(activeChapterId, "GENERATE_CHAPTER", { qualityMode, contextOptions, qualityConstraints });
   }
 
   async function handleDiagnose(qualityMode: QualityMode) {
     if (!activeChapterId) return;
-    await flush();
+    if (!await flush()) return;
     await startJob(activeChapterId, "DIAGNOSE_CHAPTER", { qualityMode });
   }
 
   async function handleDeslop() {
     if (!activeChapterId) return;
-    await flush();
+    if (!await flush()) return;
     await startJob(activeChapterId, "DESLOP");
   }
 
   async function handleContinue() {
     if (!activeChapterId) return;
-    await flush();
+    if (!await flush()) return;
     await startJob(activeChapterId, "CONTINUE_CHAPTER");
   }
 
   async function handleBatchContinue(chapterCount: number, extractMemory: boolean) {
     if (!activeChapterId) return;
-    await flush();
+    if (!await flush()) return;
     await startJob(activeChapterId, "BATCH_CONTINUE", { chapterCount, extractMemory });
   }
 
@@ -183,13 +183,13 @@ export default function WorkspacePage() {
 
   async function handleReview() {
     if (!activeChapterId) return;
-    await flush();
+    if (!await flush()) return;
     await startJob(activeChapterId, "REVIEW");
   }
 
   async function handleGenerateOutline(chapterCount: number) {
     if (!projectId) return;
-    await flush();
+    if (!await flush()) return;
     await startJob(null, "GENERATE_OUTLINE", { projectId, chapterCount });
   }
 
@@ -209,7 +209,7 @@ export default function WorkspacePage() {
 
   async function handleExtractMemory() {
     if (!activeChapterId) return;
-    await flush();
+    if (!await flush()) return;
     await startJob(activeChapterId, "EXTRACT_MEMORY");
   }
 
@@ -226,6 +226,11 @@ export default function WorkspacePage() {
       try {
         const saved = await flush();
         if (rewriteRequestRef.current !== request) return;
+        if (currentEditorRef.current.chapterId !== request.chapterId || currentEditorRef.current.content !== request.sourceContent) {
+          rewriteRequestRef.current = null;
+          if (currentEditorRef.current.chapterId === request.chapterId) setRewriteNotice("原文已发生变化，未提交任务。请重新选择文字后再试。");
+          return;
+        }
         if (!saved) { rewriteRequestRef.current = null; setRewriteNotice("正文保存失败，未提交改写任务；请保存后重试。"); return; }
         const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(request.sourceContent));
         request.sourceSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
@@ -344,7 +349,10 @@ export default function WorkspacePage() {
         activeChapterId={activeChapterId}
         onSelect={(id) => void handleSelectChapter(id)}
         onCreate={async (input) => {
+          const sourceChapterId = activeChapterId;
+          if (!await flush()) return;
           const created = await createChapter(input);
+          if (currentEditorRef.current.chapterId !== sourceChapterId || !await flush()) return;
           if (created) {
             rewriteRequestRef.current = null;
             setSelection(null); setRewriteResult(null); setRewriteNotice(null);

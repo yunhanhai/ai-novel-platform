@@ -166,73 +166,83 @@ export function useChapterContent(
   const contentRef = useRef("");
   const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
-  const fetchContent = useCallback(async (id: string) => {
+  const confirmedRef = useRef<{ id: string; contentHash: string } | null>(null);
+  const conflictRef = useRef(false);
+  const fetchSequenceRef = useRef(0);
+  const persistedByChapterRef = useRef(new Map<string, string>());
+
+  const fetchContent = useCallback(async (id: string, mode: "normal" | "accept" | "keep" = "normal"): Promise<boolean> => {
+    const sequence = ++fetchSequenceRef.current;
     setLoadingContent(true);
     try {
       const res = await fetch(`/api/chapters/${id}`);
-      const json = (await res.json()) as ApiEnvelope<{ content: string }>;
-      if (json.success && json.data && activeIdRef.current === id) {
-        const remote = json.data.content ?? "";
-        // 本地有未保存改动时不能直接覆盖——AI 任务回写触发的刷新
-        // 会把用户正在输入的内容吞掉。保留本地内容并提示冲突。
-        if (dirtyRef.current && remote !== contentRef.current) {
-          setExternalUpdateNotice(true);
-        } else {
-          setContentState(remote);
-          contentRef.current = remote;
-          dirtyRef.current = false;
-          setSaveStatus("idle");
-          setExternalUpdateNotice(false);
-        }
+      const json = await res.json() as ApiEnvelope<{ content: string; contentHash: string }>;
+      if (!res.ok || !json.success || !json.data || !/^[0-9a-f]{64}$/i.test(json.data.contentHash) || activeIdRef.current !== id || fetchSequenceRef.current !== sequence) return false;
+      const remote = json.data.content ?? "";
+      if (mode === "normal" && dirtyRef.current && remote !== contentRef.current) {
+        conflictRef.current = true;
+        setExternalUpdateNotice(true);
+        setSaveStatus("error");
+        return false;
       }
-    } catch {
-      // Ignore one-off load failures; the editor can retry on reload.
-    } finally {
-      if (activeIdRef.current === id) setLoadingContent(false);
-    }
+      confirmedRef.current = { id, contentHash: json.data.contentHash };
+      persistedByChapterRef.current.set(id, remote);
+      conflictRef.current = false;
+      setExternalUpdateNotice(false);
+      if (mode !== "keep") {
+        setContentState(remote); contentRef.current = remote;
+        dirtyRef.current = false; setSaveStatus("idle");
+      }
+      return true;
+    } catch { return false; }
+    finally { if (activeIdRef.current === id && fetchSequenceRef.current === sequence) setLoadingContent(false); }
   }, []);
 
   useEffect(() => {
     activeIdRef.current = chapterId;
-    if (!chapterId) {
-      setContentState("");
-      return;
-    }
+    dirtyRef.current = false; conflictRef.current = false; confirmedRef.current = null;
+    setExternalUpdateNotice(false); setContentState(""); contentRef.current = ""; setSaveStatus("idle");
+    if (!chapterId) { fetchSequenceRef.current++; setLoadingContent(false); return; }
     void fetchContent(chapterId);
+    return () => { fetchSequenceRef.current++; if (timerRef.current) clearTimeout(timerRef.current); };
   }, [chapterId, fetchContent]);
-
-  const persist = useCallback(
-    (text: string, idAtCall: string) => {
-      const saving = saveQueueRef.current.then(async () => {
-        // An older request must finish before the next one can reach the server.
-        // A queued draft superseded in this editor no longer needs to be written.
-        if (activeIdRef.current === idAtCall && contentRef.current !== text) return false;
-        if (activeIdRef.current === idAtCall) setSaveStatus("saving");
-        try {
-          const res = await fetch(`/api/chapters/${idAtCall}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content: text })
-          });
-          const json = (await res.json()) as ApiEnvelope<unknown>;
-          if (!res.ok || !json.success) throw new Error(json.error ?? `保存失败 (${res.status})`);
-          if (activeIdRef.current === idAtCall && contentRef.current === text) {
-            dirtyRef.current = false;
-            setSaveStatus("saved");
-            onSaved?.();
-          }
-          return true;
-        } catch {
-          if (activeIdRef.current === idAtCall) setSaveStatus("error");
-          return false;
+  const persist = useCallback((text: string, idAtCall: string, keepalive = false) => {
+    const send = async () => {
+      if (activeIdRef.current !== idAtCall || contentRef.current !== text || conflictRef.current) return false;
+      const baseline = confirmedRef.current;
+      if (!baseline || baseline.id !== idAtCall) { setSaveStatus("error"); return false; }
+      setSaveStatus("saving");
+      try {
+        const res = await fetch(`/api/chapters/${idAtCall}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: text, baseContentHash: baseline.contentHash }), keepalive
+        });
+        const json = await res.json() as ApiEnvelope<{ content: string; contentHash: string }>;
+        if (activeIdRef.current !== idAtCall) return false;
+        if (res.status === 409) {
+          // An earlier request may arrive after the same local draft was confirmed.
+          if (!dirtyRef.current && persistedByChapterRef.current.get(idAtCall) === contentRef.current) return true;
+          conflictRef.current = true; setExternalUpdateNotice(true); setSaveStatus("error"); return false;
         }
-      });
-      saveQueueRef.current = saving.catch(() => undefined);
-      return saving;
-    },
-    [onSaved]
-  );
-
+        if (!res.ok || !json.success || !json.data || json.data.content !== text || !/^[0-9a-f]{64}$/i.test(json.data.contentHash)) throw new Error("保存未确认");
+        // A later read may already have found a conflicting remote draft.
+        // This older acknowledgment cannot establish a fresh base or clear dirty.
+        if (conflictRef.current) return false;
+        confirmedRef.current = { id: idAtCall, contentHash: json.data.contentHash };
+        persistedByChapterRef.current.set(idAtCall, text);
+        fetchSequenceRef.current++;
+        setLoadingContent(false);
+        if (contentRef.current === text) { dirtyRef.current = false; setSaveStatus("saved"); onSaved?.(); }
+        return true;
+      } catch { if (activeIdRef.current === idAtCall) setSaveStatus("error"); return false; }
+    };
+    const prior = saveQueueRef.current;
+    // A page can disappear before an older request settles. Send keepalive now;
+    // the server's source guard resolves ordering without overwriting a newer draft.
+    const saving = keepalive ? send() : prior.then(send);
+    saveQueueRef.current = (keepalive ? Promise.allSettled([prior, saving]) : saving).catch(() => undefined);
+    return saving;
+  }, [onSaved]);
   const setContent = useCallback(
     (value: string) => {
       setContentState(value);
@@ -243,7 +253,7 @@ export function useChapterContent(
       if (timerRef.current) clearTimeout(timerRef.current);
       const idAtCall = chapterId;
       timerRef.current = setTimeout(() => {
-        if (dirtyRef.current && activeIdRef.current === idAtCall) {
+        if (dirtyRef.current && !conflictRef.current && activeIdRef.current === idAtCall) {
           void persist(value, idAtCall);
         }
       }, debounceMs);
@@ -252,10 +262,14 @@ export function useChapterContent(
   );
 
   const flush = useCallback(async () => {
+    if (conflictRef.current) return false;
     if (!chapterId || !dirtyRef.current) return true;
+    const text = contentRef.current;
     if (timerRef.current) clearTimeout(timerRef.current);
-    return persist(content, chapterId);
-  }, [chapterId, content, persist]);
+    if (conflictRef.current) return false;
+    const saved = await persist(text, chapterId);
+    return saved && activeIdRef.current === chapterId && contentRef.current === text && !dirtyRef.current;
+  }, [chapterId, persist]);
 
   // 离开保护：防抖窗口内直接关闭标签页会丢字。
   // 1) 页面隐藏（切后台/关标签）时用 keepalive 补一次保存——浏览器会在页面销毁后继续发送；
@@ -269,16 +283,8 @@ export function useChapterContent(
       const text = contentRef.current;
       const id = activeIdRef.current;
       if (!id) return;
-      // keepalive 让请求在页面卸载后仍能完成，避免丢失最后一段输入
-      void fetch(`/api/chapters/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text }),
-        keepalive: true
-      }).catch(() => undefined);
-      dirtyRef.current = false;
+      if (!conflictRef.current) void persist(text, id, true);
     }
-
     function handleBeforeUnload(event: BeforeUnloadEvent) {
       if (!dirtyRef.current) return;
       event.preventDefault();
@@ -291,24 +297,28 @@ export function useChapterContent(
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [chapterId]);
+  }, [chapterId, persist]);
 
   const reload = useCallback(async () => {
     if (chapterId) await fetchContent(chapterId);
   }, [chapterId, fetchContent]);
 
-  // 放弃本地改动、接受远端最新内容（AI 回写 / 其他标签页）
+  // Only a successful current read can discard local prose or establish a new base.
   const acceptExternalUpdate = useCallback(async () => {
     if (!chapterId) return;
-    dirtyRef.current = false;
-    setExternalUpdateNotice(false);
-    await fetchContent(chapterId);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    await saveQueueRef.current;
+    if (activeIdRef.current === chapterId) await fetchContent(chapterId, "accept");
   }, [chapterId, fetchContent]);
 
-  const dismissExternalUpdate = useCallback(() => {
-    setExternalUpdateNotice(false);
-  }, []);
-
+  const dismissExternalUpdate = useCallback(async () => {
+    if (!chapterId) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    await saveQueueRef.current;
+    if (activeIdRef.current !== chapterId) return;
+    const text = contentRef.current;
+    if (await fetchContent(chapterId, "keep")) await persist(text, chapterId);
+  }, [chapterId, fetchContent, persist]);
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
