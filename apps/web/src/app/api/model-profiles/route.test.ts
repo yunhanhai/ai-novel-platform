@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@ai-novel/db", () => ({ prisma: {} }));
 vi.mock("../../../server/context", () => ({getOrganizationId: async () => "org-1", isUnauthorizedError: () => false }));
-vi.mock("../../../server/model-profiles", () => ({
+vi.mock("../../../server/model-profiles", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../../server/model-profiles")>(),
   createProfile: vi.fn(),
   findProfilesByOrganization: vi.fn()
 }));
@@ -10,6 +11,7 @@ vi.mock("../../../server/model-profiles", () => ({
 import { GET, POST } from "./route";
 import {
   createProfile,
+  ModelProfileScopeError,
   findProfilesByOrganization
 } from "../../../server/model-profiles";
 
@@ -94,4 +96,10 @@ describe("POST /api/model-profiles", () => {
       maxOutputTokens: 1024
     });
   });
+});
+
+it("returns 404 for foreign provider/project profile associations", async () => {
+  cp().mockRejectedValueOnce(new ModelProfileScopeError("模型供应商不存在或已停用"));
+  const res = await POST(req({ providerId: "foreign", name: "x", modelName: "x", taskType: "default" }));
+  expect(res.status).toBe(404);
 });

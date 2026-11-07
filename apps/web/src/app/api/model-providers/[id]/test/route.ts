@@ -22,7 +22,7 @@ export async function POST(_request: Request, context: RouteContext) {
   } catch (error: unknown) {
   if (isUnauthorizedError(error)) {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
-  }    const message = error instanceof Error ? error.message : "服务异常";
-    return NextResponse.json({ success: true, data: { ok: false, error: message } });
+  }
+    return NextResponse.json({ success: true, data: { ok: false, error: "模型连接测试暂时不可用，请稍后重试" } });
   }
 }

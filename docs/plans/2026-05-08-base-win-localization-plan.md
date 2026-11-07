@@ -1049,3 +1049,13 @@ git diff --check
 - [x] Verify 954 tests + 1 skipped, typecheck 5/5, production build, schema and migration status, complete e2e 3 passed + 1 skipped, 8 rollback-only real DB checks; inspect desktop/mobile screenshots.
 - [x] Resolve independently reviewed P2 findings; document counts, metering limits, environment repair and old-feature disposition in reports/2026-11-07-performance-integration.md.
 - [x] Finish integration on master and synchronize both remotes, retaining external commit/tree receipts; preserve original experimental worktree.
+
+## Task 53: 2026-11-07 Real Model Readiness
+
+- [x] Preserve fake mode and credentials per user selection; diagnose actual runtime/DB configuration without printing secrets.
+- [x] Fix provider ping auth-mode handling, strict shared encryption-key parsing, tenant/status lookup and safe failures.
+- [x] Scope explicit/fallback model resolution and profile creation; whitelist profile/provider edits to prevent ownership and credential reassignment.
+- [x] Add read-only model:preflight with effective project inheritance, real Next environment semantics, credential consistency and local decryption checks; document exit codes and limits.
+- [x] Verify 988 tests + 1 skipped, typecheck 5/5, production build, e2e 3 passed + 1 skipped, 9 rollback-only DB checks and 3 loopback SDK requests; no external model calls.
+- [x] Update onboarding sequence, progress and reports/2026-11-07-model-readiness.md; integrate and synchronize reviewed changes after build/scan verification.
+- [ ] Real provider connection, output quality and scoring remain pending user-supplied local model configuration.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encrypt, decrypt, generateEncryptionKey } from "./encryption";
+import { encrypt, decrypt, generateEncryptionKey, parseEncryptionKey } from "./encryption";
 
 const testKey = generateEncryptionKey();
 
@@ -31,5 +31,14 @@ describe("encryption", () => {
 
   it("throws when decrypting corrupted data", async () => {
     await expect(decrypt("not-valid-base64!!!", testKey)).rejects.toThrow();
+  });
+});
+
+describe("strict encryption key configuration", () => {
+  it("parses only a complete 32-byte hexadecimal key", () => {
+    expect(parseEncryptionKey("AB".repeat(32))).toEqual(Buffer.from("AB".repeat(32), "hex"));
+  });
+  it.each([undefined, "", "a".repeat(63), "a".repeat(65), "z".repeat(64), "a".repeat(64) + "suffix", "a".repeat(62) + "zz"])("rejects malformed key without truncation: %s", value => {
+    expect(parseEncryptionKey(value)).toBeNull();
   });
 });

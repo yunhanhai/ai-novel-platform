@@ -20,25 +20,27 @@ $env:PGPASSWORD='postgres'
 
 ---
 
-## 第 1 步：生成加密密钥
+## 第 1 步：选择凭据模式并同步两个进程的配置
 
-ENCRYPTION_KEY 用于加密供应商 API key（64 位十六进制）。**一旦开始使用就不要更换**，否则已加密的 key 无法解密。
+网页与后台任务服务读取不同文件：web 使用 `apps/web/.env.local`，worker 使用根 `.env`。两处 `USE_FAKE_MODEL`、数据库连接与实际使用的凭据必须一致，修改后重启 web + worker。
+
+- 通过设置页录入 API key：保存为 USER_KEY，需要两文件配置同一个 ENCRYPTION_KEY。
+- 使用已有 PLATFORM_KEY 供应商：两文件配置对应 OPENAI_API_KEY 或 ANTHROPIC_API_KEY；不需要加密主密钥。供应商 baseURL 与模型名仍从模型设置读取。
+
+ENCRYPTION_KEY 用于加密供应商 API key（完整 64 位十六进制）。**已有密文时恢复原密钥，不要替换**。以下生成命令只适用于首次配置 USER_KEY：
 
 ```powershell
-# 任选其一生成
--join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
-# 或（有 openssl 时）
-openssl rand -hex 32
+node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
-把结果写入项目根 `.env`：
+把首次生成或已有原密钥写入根 `.env` 和 `apps/web/.env.local`：
 
 ```ini
 USE_FAKE_MODEL="false"
 ENCRYPTION_KEY="<64位十六进制>"
 ```
 
-**验证**：重启 `pnpm dev:web` 后打开「设置 → 模型设置」，页面**不再显示**"演示模式"横幅，且录入 API key 的输入框已启用（未配置 key 时前端会禁用它）。
+**验证**：重启 web + worker 后打开「设置 → 模型设置」，真实模式下不再显示“演示模式”。USER_KEY 录入需要有效加密密钥才能启用输入框；已有 PLATFORM_KEY 不需要该输入框。
 
 ---
 
@@ -47,11 +49,25 @@ ENCRYPTION_KEY="<64位十六进制>"
 1. 「设置 → 模型设置 → 供应商」→ 新建供应商：
    - 类型选 OpenAI 兼容（DeepSeek/Kimi/通义等均兼容此协议）
    - baseURL 填供应商文档给的地址（注意是否带 `/v1`）
-   - authMode 选 USER_KEY，粘贴你的 API key
-2. 点**测试连接**：真实模式下会对该 Profile 的模型发一次 1-token 请求
-   - 成功：返回「连接成功」
-   - 失败：错误信息已按类别翻译成中文——对照下方[错误对照表](#错误对照表)排查
-3. 「模型档案」→ 新建档案：选刚建的供应商，填模型名（如 `deepseek-chat`），taskType 保持 default
+   - 粘贴你的 API key；设置页创建的供应商自动使用 USER_KEY，无需另选 authMode
+2. 「模型档案」→ 新建档案：选刚建的供应商，填供应商支持的模型名，taskType 保持 default；必须先有档案才能真实测试连接。
+3. 执行只读预检：
+
+   ```powershell
+   pnpm model:preflight
+   # 仅检查目标组织，避免其他测试账号的缺配置影响判断
+   pnpm model:preflight --organization-id=<组织UUID>
+   # 项目预检会包含该项目和它继承的组织默认档案
+   pnpm model:preflight --project-id=<项目UUID>
+   # 针对一个档案查看详细配置结论
+   pnpm model:preflight --profile-id=<档案UUID> --json
+   ```
+
+   退出码：0=本地配置具备候选；2=仍缺配置/处于演示模式；1=参数、文件或数据库检查失败。预检只读文件/数据库，必要时本地验证密文解密，不联网、不写库、不输出密钥或密文。Web 配置按 Next.js dev 的实际加载与变量展开规则读取，worker 按 Node --env-file 的规则读取；请优先在两处直接填写同一有效值，避免两种展开语义产生差异。ready 仅说明本地候选配置通过，不证明网络、余额、模型存在或生成质量。未指定档案时只要求至少一个候选可用，其他档案问题仍列在报告中。
+4. 点**测试连接**：真实模式下对当前组织该供应商的最早模型档案发一次最多 1 输出 token 的请求。
+   - mode=real 且 ok=true：真实接口完成请求，仍需单章质量验收。
+   - mode=fake：未发送真实请求，不能当接入成功。
+   - 失败：按下方错误表排查；所有提示隐藏原始供应商异常。
 
 **验证**：测试连接 OK + 档案列表可见。
 
@@ -59,7 +75,7 @@ ENCRYPTION_KEY="<64位十六进制>"
 
 ## 第 3 步：单章冒烟验收
 
-进入任一作品的写作台 → AI 面板 → **生成章节**（balanced 模式）。
+新建一个验收专用作品和空白首章，填写简短梗概、角色与方法论，避免覆盖已有正文。先以 fast 模式生成 1 章，再验证 balanced；初次不执行自动连更。记录 jobId、所用档案、质量模式、耗时、步骤、tokens、版本与上下文指纹。供应商可能单独重试，PerformanceBudget 是应用步骤预算，不等于供应商账单硬上限。
 
 观察点：
 
@@ -148,4 +164,4 @@ pnpm eval:mine
 
 ## 回滚方案
 
-若真实模式出现阻塞问题，改回 `.env` 的 `USE_FAKE_MODEL="true"` 并重启 web + worker 即可回到演示模式。已生成的真实内容与版本不受影响（fake 模式只在**新任务**时生效）。
+若真实模式出现阻塞问题，同时改回根 `.env` 和 `apps/web/.env.local` 的 `USE_FAKE_MODEL="true"` 并重启 web + worker 即可回到演示模式。已生成的真实内容与版本不受影响（fake 模式只在**新任务**时生效）。

@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, it, expect, vi, beforeEach } from "vitest";
 import { resolveModelProfile } from "./model-resolver";
 
 function mockProfile(overrides: Record<string, unknown> = {}) {
@@ -41,7 +41,7 @@ describe("model-resolver", () => {
   // Case 1: job.modelProfileId 显式命中
   test("returns profile directly when job.modelProfileId matches", async () => {
     const profile = mockProfile();
-    prisma.modelProfile.findUnique.mockResolvedValue(profile);
+    prisma.modelProfile.findFirst.mockResolvedValue(profile);
 
     const result = await resolveModelProfile({
       organizationId: "org-1",
@@ -50,12 +50,12 @@ describe("model-resolver", () => {
       taskType: "GENERATE_CHAPTER"
     }, prisma);
 
-    expect(prisma.modelProfile.findUnique).toHaveBeenCalledWith({
-      where: { id: "profile-id-1" },
+    expect(prisma.modelProfile.findFirst).toHaveBeenCalledWith({
+      where: { id: "profile-id-1", organizationId: "org-1", OR: [{ projectId: "proj-1" }, { projectId: null }], provider: { organizationId: "org-1", status: "ACTIVE" } },
       include: { provider: true }
     });
     expect(result?.id).toBe("profile-id-1");
-    expect(prisma.modelProfile.findFirst).not.toHaveBeenCalled();
+    expect(prisma.modelProfile.findFirst).toHaveBeenCalledTimes(1);
   });
 
   // Case 2: project + taskType (第2级)
@@ -71,7 +71,7 @@ describe("model-resolver", () => {
     }, prisma);
 
     expect(prisma.modelProfile.findFirst).toHaveBeenCalledWith({
-      where: { projectId: "proj-1", taskType: "generate_chapter" },
+      where: { projectId: "proj-1", taskType: "generate_chapter", organizationId: "org-1", provider: { organizationId: "org-1", status: "ACTIVE" } },
       include: { provider: true }
     });
     expect(result?.id).toBe("proj-task");
@@ -169,8 +169,7 @@ describe("model-resolver", () => {
 
   // Edge: modelProfileId 不存在也继续走 fallback 链
   test("continues to fallback chain when modelProfileId does not exist", async () => {
-    prisma.modelProfile.findUnique.mockResolvedValue(null);
-    prisma.modelProfile.findFirst.mockResolvedValue(mockProfile({ id: "fallback" }));
+    prisma.modelProfile.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(mockProfile({ id: "fallback" }));
 
     const result = await resolveModelProfile({
       organizationId: "org-1",
@@ -180,7 +179,25 @@ describe("model-resolver", () => {
     }, prisma);
 
     expect(result?.id).toBe("fallback");
-    expect(prisma.modelProfile.findUnique).toHaveBeenCalled();
+    expect(prisma.modelProfile.findUnique).not.toHaveBeenCalled();
     expect(prisma.modelProfile.findFirst).toHaveBeenCalled();
+  });
+});
+
+describe("model selection tenant boundary", () => {
+  it("scopes explicit IDs to organization, current project or organization default, and active provider", async () => {
+    const prisma = mockPrisma();
+    prisma.modelProfile.findFirst.mockResolvedValue(null);
+    await resolveModelProfile({ organizationId: "org-1", projectId: "proj-1", modelProfileId: "foreign-profile", taskType: "GENERATE_CHAPTER" }, prisma);
+    expect(prisma.modelProfile.findUnique).not.toHaveBeenCalled();
+    expect(prisma.modelProfile.findFirst).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: { id: "foreign-profile", organizationId: "org-1", OR: [{ projectId: "proj-1" }, { projectId: null }], provider: { organizationId: "org-1", status: "ACTIVE" } } }));
+  });
+  it("scopes every fallback query to an active provider in the same organization", async () => {
+    const prisma = mockPrisma();
+    prisma.modelProfile.findFirst.mockResolvedValue(null);
+    await resolveModelProfile({ organizationId: "org-1", projectId: "proj-1", taskType: "GENERATE_CHAPTER" }, prisma);
+    for (const [args] of prisma.modelProfile.findFirst.mock.calls) {
+      expect(args.where).toMatchObject({ organizationId: "org-1", provider: { organizationId: "org-1", status: "ACTIVE" } });
+    }
   });
 });

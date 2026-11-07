@@ -38,3 +38,7 @@ export async function decrypt(encoded: string, key: Buffer): Promise<string> {
 
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }
+
+export function parseEncryptionKey(value: string | undefined): Buffer | null {
+  return value && /^[0-9a-fA-F]{64}$/.test(value) ? Buffer.from(value, "hex") : null;
+}

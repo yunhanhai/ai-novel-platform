@@ -9,6 +9,8 @@ import {
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
   return {
+    modelProvider: { findFirst: vi.fn().mockResolvedValue({ id: "mp1" }) },
+    project: { findFirst: vi.fn().mockResolvedValue({ id: "proj-1" }) },
     modelProfile: {
       create: vi.fn(),
       findMany: vi.fn(),
@@ -159,4 +161,22 @@ describe("model-profiles", () => {
       expect(result.id).toBe("mpf1");
     });
   });
+});
+
+it("rejects a foreign or disabled provider before creating a profile", async () => {
+  const prisma = mockPrisma({ modelProvider: { findFirst: vi.fn().mockResolvedValue(null) } });
+  await expect(createProfile({ organizationId: "org1", providerId: "foreign", name: "test", modelName: "test", taskType: "default", prisma })).rejects.toThrow("供应商不存在");
+  expect(prisma.modelProvider.findFirst).toHaveBeenCalledWith({ where: { id: "foreign", organizationId: "org1", status: "ACTIVE" }, select: { id: true } });
+  expect(prisma.modelProfile.create).not.toHaveBeenCalled();
+});
+it("rejects a project from another organization before creating a profile", async () => {
+  const prisma = mockPrisma({ project: { findFirst: vi.fn().mockResolvedValue(null) } });
+  await expect(createProfile({ organizationId: "org1", providerId: "mp1", projectId: "foreign-project", name: "test", modelName: "test", taskType: "default", prisma })).rejects.toThrow("项目不存在");
+  expect(prisma.modelProfile.create).not.toHaveBeenCalled();
+});
+it("whitelists editable profile fields and ignores ownership injection", async () => {
+  const update = vi.fn().mockResolvedValue(profile);
+  const prisma = mockPrisma({ modelProfile: { update } });
+  await updateProfile("org1", "mpf1", { name: "safe", organizationId: "foreign", providerId: "foreign-provider", projectId: "foreign-project", id: "new-id", organization: { connect: { id: "foreign" } } } as never, prisma);
+  expect(update).toHaveBeenCalledWith({ where: { id: "mpf1", organizationId: "org1" }, data: { name: "safe" } });
 });

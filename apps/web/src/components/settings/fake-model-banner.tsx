@@ -60,7 +60,7 @@ export function FakeModelBanner({ initial }: FakeModelBannerProps) {
       {info.useFakeModel ? (
         <div className="settings-banner banner-warn" role="status">
           <strong>当前为演示模式</strong>
-          <span>USE_FAKE_MODEL=true，所有 AI 生成走占位模型。切换为真实模型需修改 .env 并重启后台任务服务。</span>
+          <span>USE_FAKE_MODEL=true，所有 AI 生成走占位模型。切换为真实模型需同步修改根 .env 和 apps/web/.env.local，并重启网页服务与后台任务服务。</span>
         </div>
       ) : (
         <div className="settings-banner banner-info" role="status">
@@ -71,7 +71,7 @@ export function FakeModelBanner({ initial }: FakeModelBannerProps) {
       {!info.encryptionKeyConfigured && (
         <div className="settings-banner banner-error" role="alert">
           <strong>ENCRYPTION_KEY 未配置</strong>
-          <span>请在项目 .env 设置 64 位十六进制密钥后重启 web，否则无法保存 API 密钥。</span>
+          <span>如需录入供应商 API 密钥，请在根 .env 和 apps/web/.env.local 配置同一个 64 位十六进制密钥，并重启两项服务。</span>
         </div>
       )}
     </div>

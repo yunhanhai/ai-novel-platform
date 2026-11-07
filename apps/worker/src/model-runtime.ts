@@ -1,3 +1,4 @@
+import { parseEncryptionKey } from "@ai-novel/shared/crypto/encryption";
 import { createAdapter, resolveModelProfile, type ProviderRecord, type ModelGenerateOptions } from "@ai-novel/model-adapters";
 import type { PrismaClient } from "@ai-novel/db";
 import type { GenerationJob } from "./poll";
@@ -22,9 +23,7 @@ interface CreateJobModelResolverParams {
 }
 
 export function getEncryptionKey(env: NodeJS.ProcessEnv = process.env): Buffer | null {
-  const hex = env.ENCRYPTION_KEY;
-  if (!hex || !/^[0-9a-fA-F]{64}$/.test(hex)) return null;
-  return Buffer.from(hex, "hex");
+  return parseEncryptionKey(env.ENCRYPTION_KEY);
 }
 
 export function createJobModelResolver(params: CreateJobModelResolverParams) {

@@ -34,12 +34,22 @@ interface FindFilter {
   taskType?: string;
 }
 
+export class ModelProfileScopeError extends Error {}
+
 export async function createProfile(params: CreateProfileParams) {
   const {
     organizationId, providerId, name, modelName, taskType, projectId,
     temperature, topP, maxOutputTokens, settings, prisma
   } = params;
 
+  const provider = await prisma.modelProvider.findFirst({
+    where: { id: providerId, organizationId, status: "ACTIVE" }, select: { id: true }
+  });
+  if (!provider) throw new ModelProfileScopeError("模型供应商不存在或已停用");
+  if (projectId) {
+    const project = await prisma.project.findFirst({ where: { id: projectId, organizationId, deletedAt: null }, select: { id: true } });
+    if (!project) throw new ModelProfileScopeError("项目不存在");
+  }
   return prisma.modelProfile.create({
     data: {
       organizationId,
@@ -91,12 +101,15 @@ export async function updateProfile(
   data: UpdateProfileInput,
   prisma: PrismaClient
 ) {
+  const editable: UpdateProfileInput = {};
+  for (const key of ["name", "modelName", "taskType", "temperature", "topP", "maxOutputTokens", "settings"] as const) {
+    if (data[key] !== undefined) Object.assign(editable, { [key]: data[key] });
+  }
   return prisma.modelProfile.update({
     where: { id: profileId, organizationId },
-    data
+    data: editable
   });
 }
-
 export async function softDeleteProfile(
   organizationId: string,
   profileId: string,

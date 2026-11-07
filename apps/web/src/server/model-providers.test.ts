@@ -115,3 +115,20 @@ describe("model-providers", () => {
     });
   });
 });
+
+it("rejects overlong master keys before saving or rotating credentials", async () => {
+  vi.stubEnv("ENCRYPTION_KEY", "a".repeat(64) + "ignored");
+  const prisma = mockPrisma();
+  try {
+    await expect(createProvider({ organizationId: "org1", name: "test", providerType: "OPENAI_COMPATIBLE", apiKey: "placeholder", prisma })).rejects.toThrow("64");
+    await expect(rotateApiKey({ organizationId: "org1", providerId: "p1", apiKey: "placeholder", prisma })).rejects.toThrow("64");
+    expect(prisma.modelProvider.create).not.toHaveBeenCalled();
+    expect(prisma.modelProvider.update).not.toHaveBeenCalled();
+  } finally { vi.unstubAllEnvs(); }
+});
+it("whitelists editable provider fields instead of accepting ownership and credential injection", async () => {
+  const update = vi.fn().mockResolvedValue(provider);
+  const prisma = mockPrisma({ modelProvider: { update } });
+  await updateProvider("org1", "mp1", { name: "safe", organizationId: "foreign", encryptedApiKey: "injected", authMode: "PLATFORM_KEY", status: "DISABLED", id: "other" } as never, prisma);
+  expect(update).toHaveBeenCalledWith({ where: { id: "mp1", organizationId: "org1" }, data: { name: "safe" } });
+});

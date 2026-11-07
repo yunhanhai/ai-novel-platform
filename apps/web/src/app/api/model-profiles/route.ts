@@ -3,6 +3,7 @@ import { sanitizeServerMessage } from "../../../server/api-errors";
 import { prisma } from "@ai-novel/db";
 import {
   createProfile,
+  ModelProfileScopeError,
   findProfilesByOrganization
 } from "../../../server/model-profiles";
 import { getOrganizationId, isUnauthorizedError } from "../../../server/context";
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (error instanceof ModelProfileScopeError) return NextResponse.json({ success: false, error: error.message }, { status: 404 });
   if (isUnauthorizedError(error)) {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }

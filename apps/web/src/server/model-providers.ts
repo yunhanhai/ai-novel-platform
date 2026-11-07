@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@ai-novel/db";
-import { encrypt } from "@ai-novel/shared/crypto/encryption";
+import { encrypt, parseEncryptionKey } from "@ai-novel/shared/crypto/encryption";
 
 interface CreateProviderParams {
   organizationId: string;
@@ -19,12 +19,9 @@ interface UpdateProviderInput {
 }
 
 function getEncryptionKey(override?: Buffer): Buffer {
-  if (override) return override;
-  const hex = process.env.ENCRYPTION_KEY;
-  if (!hex || hex.length < 64) {
-    throw new Error("ENCRYPTION_KEY must be a 64-char hex string (32 bytes)");
-  }
-  return Buffer.from(hex.slice(0, 64), "hex");
+  const key = override ?? parseEncryptionKey(process.env.ENCRYPTION_KEY);
+  if (!key || key.length !== 32) throw new Error("ENCRYPTION_KEY 必须为完整 64 位十六进制字符串");
+  return key;
 }
 
 export async function createProvider(params: CreateProviderParams) {
@@ -55,9 +52,10 @@ export async function findProvidersByOrganization(organizationId: string, prisma
 }
 
 export async function updateProvider(organizationId: string, providerId: string, data: UpdateProviderInput, prisma: PrismaClient) {
+  const editable = { ...(data.name !== undefined ? { name: data.name } : {}), ...(data.baseUrl !== undefined ? { baseUrl: data.baseUrl } : {}), ...(data.isDefault !== undefined ? { isDefault: data.isDefault } : {}) };
   const provider = await prisma.modelProvider.update({
     where: { id: providerId, organizationId },
-    data
+    data: editable
   });
 
   return { ...provider, encryptedApiKey: "***" };

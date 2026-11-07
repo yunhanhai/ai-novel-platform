@@ -66,7 +66,7 @@ describe("POST /api/model-providers/[id]/test", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data.ok).toBe(false);
-    expect(body.data.error).toBe("boom");
+    expect(body.data.error).toBe("模型连接测试暂时不可用，请稍后重试");
   });
 
   it("passes providerId from route params", async () => {
@@ -77,4 +77,10 @@ describe("POST /api/model-providers/[id]/test", () => {
     );
     expect(pp()).toHaveBeenCalledWith(expect.objectContaining({ providerId: "abc-123" }));
   });
+});
+
+it("does not expose internal database exceptions", async () => {
+  pp().mockRejectedValueOnce(new Error("postgresql://hidden-credential@internal-host/db"));
+  const res = await POST(new Request("http://localhost/api/model-providers/mp1/test", { method: "POST" }), ctx("mp1"));
+  expect(await res.text()).not.toContain("hidden-credential");
 });

@@ -6,7 +6,6 @@ export interface ResolverInput {
 }
 
 type PrismaModelProfile = {
-  findUnique: (args: { where: { id: string }; include: { provider: true } }) => Promise<unknown>;
   findFirst: (args: { where: Record<string, unknown>; include: { provider: true } }) => Promise<unknown>;
 };
 
@@ -20,8 +19,13 @@ export async function resolveModelProfile(
 
   // 1. 显式 modelProfileId
   if (input.modelProfileId) {
-    const profile = await prisma.modelProfile.findUnique({
-      where: { id: input.modelProfileId },
+    const profile = await prisma.modelProfile.findFirst({
+      where: {
+        id: input.modelProfileId,
+        organizationId: input.organizationId,
+        OR: [{ projectId: input.projectId }, { projectId: null }],
+        provider: { organizationId: input.organizationId, status: "ACTIVE" }
+      },
       include: includeProvider
     });
     if (profile) return profile as unknown as Record<string, unknown>;
@@ -35,7 +39,7 @@ export async function resolveModelProfile(
     { projectId: null, organizationId: input.organizationId, taskType: "default" }
   ]) {
     const profile = await prisma.modelProfile.findFirst({
-      where: condition,
+      where: { ...condition, organizationId: input.organizationId, provider: { organizationId: input.organizationId, status: "ACTIVE" } },
       include: includeProvider
     });
     if (profile) return profile as unknown as Record<string, unknown>;

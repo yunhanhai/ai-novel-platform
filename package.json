@@ -17,6 +17,7 @@
     "db:migrate": "pnpm --filter @ai-novel/db db:migrate",
     "db:seed": "pnpm --filter @ai-novel/db db:seed",
     "test:e2e": "pnpm --filter @ai-novel/web test:e2e",
+    "model:preflight": "pnpm --filter @ai-novel/worker model:preflight",
     "eval:mine": "pnpm --filter @ai-novel/worker eval:mine"
   }
 }

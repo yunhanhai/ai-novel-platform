@@ -1930,3 +1930,14 @@ git diff --check   通过
 - 原实验工作树 25 个未提交文件原字节未变；完整历史通过最终集成父历史保存，不将旧分支直接部署。报告与范围对照：reports/2026-11-07-performance-integration.md。
 - Next 工作树根目录显式配置；本轮独立工作树 pnpm pg 缺失经冻结锁文件重装恢复，锁文件未变。测试日志与截图保存在 D:/develop/AI/xiaoshuo/base_win-release-backups/2026-11-07-performance-integration/。
 - 集成回 master 后同步两端并核对 Git 对象。无生产部署、无新迁移、无真实模型调用；真实成本/质量尚未验收。
+
+---
+
+## 2026-11-07 — 真实模型接入修复与只读预检
+
+- 用户选择先修复/准备，保持两端 fake=true，无外部模型调用，无凭据写入。新增 pnpm model:preflight；当前结果明确为演示模式且缺平台 API key，尚未真实接入。
+- 修复 PLATFORM_KEY ping 误要求主密钥；统一严格 64-hex；测试连接先验证组织/启用状态并隐藏内部错误；档案显式/回退解析按组织、项目和 ACTIVE provider 范围限定。
+- 修复档案创建关联越界以及档案/供应商 PATCH 的额外字段注入；服务层白名单禁止改变归属、关联和认证。真实 DB 9 项与浏览器跨组织/注入断言通过。
+- 预检包含组织默认档案继承、实际本地解密、web/worker 配置一致性；Web 使用隔离进程的 Next 环境加载与变量展开；不输出密钥/密文/连接串，不联网、不写库。
+- 验证：988 passed + 1 skipped，typecheck 5/5，生产构建通过，e2e 3 passed + 1 skipped（1.1m，fake）；3 次 loopback SDK 请求契约通过（外部0），真实 DB夹具回滚。接入手册同步两文件配置及先建档案再测试顺序。
+- 报告：reports/2026-11-07-model-readiness.md；证据目录 D:/develop/AI/xiaoshuo/base_win-release-backups/2026-11-07-model-readiness/。下一步需用户配置供应商、模型及本地 API key 后做小规模真实验收。

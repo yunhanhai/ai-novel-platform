@@ -6,6 +6,7 @@
     "test": "vitest run --configLoader runner",
     "typecheck": "tsc --noEmit",
     "dev": "tsx --env-file=../../.env src/index.ts",
+    "model:preflight": "tsx src/eval/model-preflight.ts",
     "eval:mine": "tsx --env-file=../../.env src/eval/mine-revision-pairs.ts"
   },
   "dependencies": {
