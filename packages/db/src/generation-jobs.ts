@@ -37,6 +37,7 @@ interface ClaimParams {
 }
 
 interface UpdateStatusParams {
+  expectedAttemptCount?: number;
   jobId: string;
   status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
   output?: InputJson;
@@ -130,18 +131,23 @@ interface RequeueParams {
 }
 
 export async function requeueJobForRetry({ jobId, attemptCount, nextRunAt, errorMessage, prisma }: RequeueParams) {
-  return prisma.generationJob.update({
-    where: { id: jobId },
-    data: {
-      status: "QUEUED",
-      attemptCount,
-      nextRunAt,
-      lockKey: null,
-      leaseExpiresAt: null,
-      errorCode: "HANDLER_RETRY",
-      errorMessage
-    }
-  });
+  try {
+    return await prisma.generationJob.update({
+      where: { id: jobId, status: "RUNNING", attemptCount },
+      data: {
+        status: "QUEUED",
+        attemptCount,
+        nextRunAt,
+        lockKey: null,
+        leaseExpiresAt: null,
+        errorCode: "HANDLER_RETRY",
+        errorMessage
+      }
+    });
+  } catch (error) {
+    if (!isMissingConditionalRow(error)) throw error;
+    return prisma.generationJob.findUniqueOrThrow({ where: { id: jobId } });
+  }
 }
 
 export async function releaseJobLease(jobId: string, lockKey: string, prisma: PrismaClient) {
@@ -151,21 +157,30 @@ export async function releaseJobLease(jobId: string, lockKey: string, prisma: Pr
   });
 }
 
-export async function updateJobStatus({ jobId, status, output, errorCode, errorMessage, prisma }: UpdateStatusParams) {
+export async function updateJobStatus({ jobId, status, output, errorCode, errorMessage, expectedAttemptCount, prisma }: UpdateStatusParams) {
   const now = new Date();
   const isSucceeded = status === "SUCCEEDED";
 
-  return prisma.generationJob.update({
-    where: { id: jobId },
-    data: {
-      status,
-      ...(isSucceeded ? { progress: "100", finishedAt: now, output: output ?? {} } : {}),
-      ...(status === "FAILED" ? { finishedAt: now } : {}),
-      ...(!isSucceeded && output ? { output } : {}),
-      ...(errorCode !== undefined ? { errorCode } : {}),
-      ...(errorMessage !== undefined ? { errorMessage } : {})
-    }
-  });
+  try {
+    return await prisma.generationJob.update({
+      where: { id: jobId, ...(status !== "CANCELLED" ? { status: { not: "CANCELLED" as const } } : {}), ...(expectedAttemptCount !== undefined ? { attemptCount: expectedAttemptCount } : {}) },
+      data: {
+        status,
+        ...(isSucceeded ? { progress: "100", finishedAt: now, output: output ?? {} } : {}),
+        ...(status === "FAILED" ? { finishedAt: now } : {}),
+        ...(!isSucceeded && output ? { output } : {}),
+        ...(errorCode !== undefined ? { errorCode } : {}),
+        ...(errorMessage !== undefined ? { errorMessage } : {})
+      }
+    });
+  } catch (error) {
+    if (!isMissingConditionalRow(error)) throw error;
+    return prisma.generationJob.findUniqueOrThrow({ where: { id: jobId } });
+  }
+}
+
+function isMissingConditionalRow(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2025";
 }
 
 export async function createStep({ organizationId, jobId, stepKey, modelProfileId, prisma }: CreateStepParams) {

@@ -1162,3 +1162,13 @@ git diff --check
 - [x] Document candidate-versus-token limits,Prisma distinct scanning and multi-query snapshot limitations; no external model calls,provider/prose/schema changes or deployment.
 - [x] Update report/progress/manual,integrate branch and synchronize both master refs with external receipts.
 - [ ] Remaining:large-project retrieval cost,nonreserved legacy duplication,read snapshots and real semantic quality require separate evidence.
+
+## Task 65: 2026-11-07 Batch Continuation Retry Checkpoints
+
+- [x] Reproduce actual handler/poller/DB2-round job becoming SUCCEEDED after round1 and saving3versions after a round2 transient failure.
+- [x] Commit scoped round checkpoints with body/version/usage atomically; remain RUNNING until all rounds finish,resume remaining rounds and finalize without model resolution when already saved.
+- [x] Fence same-round/old-attempt writes,preserve cancellation through in-flight result and poll retry; refuse legacy saved versions without valid checkpoint.
+- [x] Persist pending memory warnings before extraction,guard outcome writes,retain honest interruptions and measure batch model latency.
+- [x] Verify1107 tests+1skip,typecheck5/5,build,e2e7pass+1skip,DB retry RED/GREEN plus9rollback-only cases;independent5files76 tests clear.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private-prose/provider/schema/deployment changes.
+- [ ] Remaining:multiworker/lease HTTP duplication,in-flight editor conflicts and single continuation acknowledgment recovery require separate work.

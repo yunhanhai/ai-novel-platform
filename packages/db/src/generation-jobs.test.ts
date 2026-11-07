@@ -154,7 +154,7 @@ describe("generation-jobs", () => {
 
       expect(result).toEqual(expect.objectContaining({ status: "QUEUED" }));
       expect(update).toHaveBeenCalledWith({
-        where: { id: "j1" },
+        where: { id: "j1", status: "RUNNING", attemptCount: 1 },
         data: {
           status: "QUEUED",
           attemptCount: 1,
@@ -283,4 +283,29 @@ describe("manual recovery concurrency", () => {
     expect(db.generationJob.updateMany.mock.calls[1]?.[0].data).toMatchObject({ status: "QUEUED", nextRunAt: now });
     expect(db.generationJob.updateMany.mock.calls[1]?.[0].data).not.toHaveProperty("attemptCount");
   });
+});
+
+it("does not requeue a cancelled or newer-attempt job", async () => {
+  const cancelled = { ...job, status: "CANCELLED" };
+  const update = vi.fn().mockRejectedValue({ code: "P2025" });
+  const findUniqueOrThrow = vi.fn().mockResolvedValue(cancelled);
+  const prisma = mockPrisma({ generationJob: { update, findUniqueOrThrow } });
+  expect(await requeueJobForRetry({ jobId: "j1", attemptCount: 1, nextRunAt: new Date(), errorMessage: "timeout", prisma })).toBe(cancelled);
+  expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "j1", status: "RUNNING", attemptCount: 1 } }));
+});
+it("does not overwrite cancellation when a worker reports failure", async () => {
+  const cancelled = { ...job, status: "CANCELLED" };
+  const update = vi.fn().mockRejectedValue({ code: "P2025" });
+  const prisma = mockPrisma({ generationJob: { update, findUniqueOrThrow: vi.fn().mockResolvedValue(cancelled) } });
+  expect(await updateJobStatus({ jobId: "j1", status: "FAILED", errorMessage: "timeout", prisma })).toBe(cancelled);
+  expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "j1", status: { not: "CANCELLED" } } }));
+});
+
+it("fences terminal status updates from an older worker attempt", async () => {
+  const current = { ...job, status: "RUNNING", attemptCount: 2 };
+  const update = vi.fn().mockRejectedValue({ code: "P2025" });
+  const prisma = mockPrisma({ generationJob: { update, findUniqueOrThrow: vi.fn().mockResolvedValue(current) } });
+  const result = await updateJobStatus({ jobId: "j1", status: "FAILED", expectedAttemptCount: 1, prisma } as Parameters<typeof updateJobStatus>[0]);
+  expect(result).toBe(current);
+  expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ attemptCount: 1 }) }));
 });

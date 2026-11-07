@@ -31,23 +31,26 @@ function makePrisma(contentAtCall: () => string) {
         : { id: "ch-1", projectId: "proj-1", organizationId: "org-1", title: "第一章", chapterNo: 1, content: contentAtCall() }
     );
   };
+  let checkpoint: unknown = null;
+  let versions = 0;
   const tx = {
-    $queryRaw: vi.fn(async()=>[{id:"ch-1",projectId:"proj-1",content:contentAtCall()}]),
+    $queryRaw: vi.fn(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "RUNNING", output: checkpoint, attemptCount: 1 }] : [{id:"ch-1",projectId:"proj-1",content:contentAtCall()}]),
     projectMemory: {updateMany:vi.fn().mockResolvedValue({count:0})},
     chapter: { findFirst: vi.fn().mockImplementation(findFirstImpl), update: vi.fn().mockResolvedValue({}) },
-    contentVersion: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: "v-1", versionNo: 1 }) },
+    contentVersion: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockImplementation(async () => ({ id: `v-${++versions}`, versionNo: versions })) },
     generationStep: { create: vi.fn().mockResolvedValue({}) },
-    generationJob: { update: vi.fn().mockResolvedValue({}) },
+    generationJob: { update: vi.fn().mockImplementation(async (args: { data: { output?: unknown } }) => { if (args.data.output) checkpoint = args.data.output; return {}; }) },
     usageEvent: { create: vi.fn().mockResolvedValue({}) }
   };
   const prisma = {
     chapter: {
       findFirst: vi.fn().mockImplementation(findFirstImpl)
     },
-    contentVersion: { findFirst: vi.fn().mockResolvedValue(null) },
+    contentVersion: { findFirst: vi.fn().mockResolvedValue(null), count: vi.fn(async () => versions) },
     generationJob: {
       update: vi.fn().mockResolvedValue({}),
-      findUnique: vi.fn().mockResolvedValue({ status: "RUNNING" })
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findUnique: vi.fn().mockImplementation(async () => ({ status: "RUNNING", output: checkpoint }))
     },
     $transaction: vi.fn(async (cb: (t: unknown) => Promise<unknown>) => cb(tx))
   };
@@ -73,7 +76,7 @@ describe("createBatchContinueHandler", () => {
 
   it("continues the requested number of chapters and reports progress", async () => {
     let appended = "";
-    const { prisma } = makePrisma(() => `${initialContent}${appended}`);
+    const { prisma, tx } = makePrisma(() => `${initialContent}${appended}`);
     const model = {
       generate: vi.fn().mockImplementation(() => {
         appended += "【新段落】";
@@ -88,13 +91,10 @@ describe("createBatchContinueHandler", () => {
     // 每章都重读了章节内容（第一次是存在性预检）
     expect(appended).toBe("【新段落】【新段落】【新段落】");
 
-    const success = updateJobStatus.mock.calls.at(-1)![0] as {
-      status: string;
-      output: { completedChapters: number; addedChars: number };
-    };
-    expect(success.status).toBe("SUCCEEDED");
-    expect(success.output.completedChapters).toBe(3);
-    expect(success.output.addedChars).toBeGreaterThan(0);
+    const output = (tx.generationJob.update.mock.calls.at(-1)![0] as { data: { output: unknown } }).data.output as { completedChapters: number; addedChars: number };
+    expect(output.completedChapters).toBe(3);
+    expect(output.addedChars).toBeGreaterThan(0);
+    expect((prisma as unknown as { generationJob: { updateMany: ReturnType<typeof vi.fn> } }).generationJob.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "SUCCEEDED" }) }));
   });
 
   it("keeps completed chapters when a later round returns empty", async () => {
@@ -127,7 +127,7 @@ describe("createBatchContinueHandler", () => {
   it("fails when the chapter is missing", async () => {
     const prisma = {
       chapter: { findFirst: vi.fn().mockResolvedValue(null) },
-      contentVersion: { findFirst: vi.fn().mockResolvedValue(null) },
+      contentVersion: { findFirst: vi.fn().mockResolvedValue(null), count: vi.fn().mockResolvedValue(0) },
       $transaction: vi.fn()
     } as never;
     const model = { generate: vi.fn() };
@@ -154,7 +154,7 @@ describe("createBatchContinueHandler", () => {
 
   it("extracts memories after every chapter by default", async () => {
     let appended = "";
-    const { prisma } = makePrisma(() => `${initialContent}${appended}`);
+    const { prisma, tx } = makePrisma(() => `${initialContent}${appended}`);
     const model = {
       generate: vi.fn().mockImplementation(() => {
         appended += "新段落";
@@ -174,12 +174,12 @@ describe("createBatchContinueHandler", () => {
     expect(firstCallChapter.content).toContain("新段落");
     expect(firstCallChapter.chapterNo).toBe(1);
 
-    const success = updateJobStatus.mock.calls.at(-1)![0] as { output: { memoryExtractedChapters: number } };
-    expect(success.output.memoryExtractedChapters).toBe(2);
+    const output = (tx.generationJob.update.mock.calls.at(-1)![0] as { data: { output: { memoryExtractedChapters: number } } }).data.output;
+    expect(output.memoryExtractedChapters).toBe(2);
   });
 
   it("keeps continuing when memory extraction fails", async () => {
-    const { prisma } = makePrisma(() => initialContent);
+    const { prisma, tx } = makePrisma(() => initialContent);
     const model = { generate: vi.fn().mockResolvedValue({ text: "新段落", inputTokens: 1, outputTokens: 1 }) };
     const extractMemories = vi.fn().mockRejectedValue(new Error("memory model down"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -190,14 +190,10 @@ describe("createBatchContinueHandler", () => {
     await handler(makeJob({ input: { chapterId: "ch-1", chapterCount: 2 } }));
 
     expect(model.generate).toHaveBeenCalledTimes(2);
-    const success = updateJobStatus.mock.calls.at(-1)![0] as {
-      status: string;
-      output: { completedChapters: number; memoryExtractedChapters: number };
-    };
-    expect(success.status).toBe("SUCCEEDED");
-    expect(success.output.completedChapters).toBe(2);
-    expect(success.output.memoryExtractedChapters).toBe(0);
-    expect(success.output).toMatchObject({ generationWarnings: [
+    const output = (tx.generationJob.update.mock.calls.at(-1)![0] as { data: { output: unknown } }).data.output as { completedChapters: number; memoryExtractedChapters: number };
+    expect(output.completedChapters).toBe(2);
+    expect(output.memoryExtractedChapters).toBe(0);
+    expect(output).toMatchObject({ generationWarnings: [
       { stepKey: "extract_memory", code: "MEMORY_EXTRACTION_FAILED", message: expect.stringContaining("第1轮") },
       { stepKey: "extract_memory", code: "MEMORY_EXTRACTION_FAILED", message: expect.stringContaining("第2轮") }
     ] });
@@ -215,20 +211,18 @@ describe("createBatchContinueHandler", () => {
       await handler(makeJob({ input: { chapterId: "ch-1", chapterCount: 2 } }));
       expect(model.generate).toHaveBeenCalledTimes(2);
       expect(tx.contentVersion.create).toHaveBeenCalledTimes(2);
-      expect(updateJobStatus).toHaveBeenLastCalledWith(expect.objectContaining({
-        status: "SUCCEEDED", output: expect.objectContaining({
+      expect((tx.generationJob.update.mock.calls.at(-1)![0] as { data: { output: unknown } }).data.output).toMatchObject({
           completedChapters: 2, memoryExtractedChapters: 0,
           generationWarnings: [1, 2].map(round => ({
             stepKey: "extract_memory", code: "MEMORY_SOURCE_TOO_LONG",
             message: expect.stringContaining(`第${round}轮正文已保存，但超过20000字`)
           }))
-        })
-      }));
+      });
     } finally { warn.mockRestore(); }
   });
 
   it("skips extraction when the caller opts out", async () => {
-    const { prisma } = makePrisma(() => initialContent);
+    const { prisma, tx } = makePrisma(() => initialContent);
     const model = { generate: vi.fn().mockResolvedValue({ text: "新段落", inputTokens: 1, outputTokens: 1 }) };
     const extractMemories = vi.fn().mockResolvedValue({});
 
@@ -241,11 +235,12 @@ describe("createBatchContinueHandler", () => {
   });
 
   it("stops cleanly when the user cancels mid-batch", async () => {
-    const { prisma } = makePrisma(() => initialContent);
+    const { prisma, tx } = makePrisma(() => initialContent);
     const model = { generate: vi.fn().mockResolvedValue({ text: "新段落", inputTokens: 1, outputTokens: 1 }) };
     // 第 2 章开始前发现用户已取消
     (prisma as unknown as { generationJob: { findUnique: ReturnType<typeof vi.fn> } })
       .generationJob.findUnique
+      .mockResolvedValueOnce({ status: "RUNNING", output: null })
       .mockResolvedValueOnce({ status: "RUNNING" })
       .mockResolvedValueOnce({ status: "CANCELLED" });
 
@@ -257,4 +252,54 @@ describe("createBatchContinueHandler", () => {
     // 不能把状态覆盖回 SUCCEEDED——DB 里已是 CANCELLED
     expect(updateJobStatus).not.toHaveBeenCalled();
   });
+});
+
+
+it("persists a running checkpoint with every batch round before the next model call", async () => {
+  const { prisma, tx } = makePrisma(() => initialContent);
+  const model = { generate: vi.fn().mockResolvedValue({ text: "本轮正文", inputTokens: 1, outputTokens: 1 }) };
+  await createBatchContinueHandler({ prisma, updateJobStatus: vi.fn(), model })(makeJob({ input: { chapterId: "ch-1", chapterCount: 2, extractMemory: false } }));
+  const first = tx.generationJob.update.mock.calls[0]?.[0] as { data: { status: string; progress: string; finishedAt: Date | null; output: Record<string, unknown> } };
+  expect(first.data.status).toBe("RUNNING");
+  expect(first.data.progress).toBe("50");
+  expect(first.data.finishedAt).toBeNull();
+  expect(first.data.output).toMatchObject({ mode: "BATCH_CONTINUE", checkpointVersion: 1, completedChapters: 1, requestedChapters: 2 });
+});
+
+
+it("retries only remaining rounds after a model failure", async () => {
+  const { prisma, tx } = makePrisma(() => initialContent);
+  const model = { generate: vi.fn().mockResolvedValueOnce({ text: "首轮", inputTokens: 1, outputTokens: 1 })
+    .mockRejectedValueOnce(Object.assign(new Error("503"), { status: 503 }))
+    .mockResolvedValueOnce({ text: "末轮", inputTokens: 1, outputTokens: 1 }) };
+  const handler = createBatchContinueHandler({ prisma, updateJobStatus: vi.fn(), model });
+  const job = makeJob({ input: { chapterCount: 2, extractMemory: false } });
+  await expect(handler(job)).rejects.toThrow("503");
+  expect(tx.contentVersion.create).toHaveBeenCalledTimes(1);
+  await handler(job);
+  expect(model.generate).toHaveBeenCalledTimes(3);
+  expect(tx.contentVersion.create).toHaveBeenCalledTimes(2);
+});
+it("does not regenerate saved rounds after final status write fails", async () => {
+  const { prisma, tx } = makePrisma(() => initialContent);
+  const finalWrite = (prisma as unknown as { generationJob: { updateMany: ReturnType<typeof vi.fn> } }).generationJob.updateMany;
+  finalWrite.mockRejectedValueOnce(new Error("ack lost"));
+  const model = { generate: vi.fn().mockResolvedValue({ text: "正文", inputTokens: 1, outputTokens: 1 }) };
+  const handler = createBatchContinueHandler({ prisma, updateJobStatus: vi.fn(), model });
+  const job = makeJob({ input: { chapterCount: 2, extractMemory: false } });
+  await expect(handler(job)).rejects.toThrow("ack lost");
+  const noModelRetry = createBatchContinueHandler({ prisma, updateJobStatus: vi.fn(), resolveModel: vi.fn().mockRejectedValue(new Error("profile unavailable")) });
+  await noModelRetry(job);
+  expect(model.generate).toHaveBeenCalledTimes(2);
+  expect(tx.contentVersion.create).toHaveBeenCalledTimes(2);
+  expect(finalWrite).toHaveBeenCalledTimes(2);
+});
+it("refuses legacy saved versions without a checkpoint", async () => {
+  const { prisma, tx } = makePrisma(() => initialContent);
+  (prisma as unknown as { contentVersion: { count: ReturnType<typeof vi.fn> } }).contentVersion.count.mockResolvedValue(1);
+  const update = vi.fn(); const model = { generate: vi.fn() };
+  await createBatchContinueHandler({ prisma, updateJobStatus: update, model: model as never })(makeJob());
+  expect(update).toHaveBeenCalledWith(expect.objectContaining({ status: "FAILED", errorCode: "BATCH_CHECKPOINT_INVALID" }));
+  expect(model.generate).not.toHaveBeenCalled();
+  expect(tx.contentVersion.create).not.toHaveBeenCalled();
 });

@@ -103,6 +103,7 @@ describe("model setup errors from resolver through the real handler and poller",
     expect(result).toBe("error");
     expect(updateJobStatus).toHaveBeenCalledExactlyOnceWith({
       jobId: job.id,
+      expectedAttemptCount: 1,
       status: "FAILED",
       errorCode: "MODEL_CONFIG_ERROR",
       errorMessage: expect.stringContaining(hint)
@@ -119,6 +120,7 @@ describe("model setup errors from resolver through the real handler and poller",
 
     expect(updateJobStatus).toHaveBeenCalledExactlyOnceWith({
       jobId: job.id,
+      expectedAttemptCount: 1,
       status: "FAILED",
       errorCode: "MODEL_CONFIG_ERROR",
       errorMessage: expect.stringContaining("解密")

@@ -23,6 +23,7 @@ export type UpdateStatusFn = (params: {
   output?: Record<string, unknown>;
   errorCode?: string;
   errorMessage?: string;
+  expectedAttemptCount?: number;
 }) => Promise<unknown>;
 export type RequeueForRetryFn = (params: {
   jobId: string;
@@ -60,9 +61,10 @@ export function createPoller(deps: PollerDeps): Poller {
     const job = await claimNext();
     if (!job) return "no_job";
 
+    const updateForAttempt: UpdateStatusFn = params => updateJobStatus({ ...params, expectedAttemptCount: job.attemptCount ?? 1 });
     const handler = handlers.get(job.jobType);
     if (!handler) {
-      await updateJobStatus({
+      await updateForAttempt({
         jobId: job.id,
         status: "FAILED",
         errorCode: "NO_HANDLER",
@@ -87,7 +89,7 @@ export function createPoller(deps: PollerDeps): Poller {
         console.error(
           `[worker] job ${job.id} config error (${classified.kind}): ${classified.raw ?? message}`
         );
-        await updateJobStatus({
+        await updateForAttempt({
           jobId: job.id,
           status: "FAILED",
           errorCode: "MODEL_CONFIG_ERROR",
@@ -106,7 +108,7 @@ export function createPoller(deps: PollerDeps): Poller {
         return "retried";
       }
 
-      await updateJobStatus({
+      await updateForAttempt({
         jobId: job.id,
         status: "FAILED",
         errorCode: "HANDLER_ERROR",

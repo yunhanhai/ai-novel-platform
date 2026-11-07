@@ -1,4 +1,5 @@
 ﻿import { lockMemorySourceChapter, supersedeChapterMemories, findGenerationMemories } from "@ai-novel/db/chapter-memory";
+import { BatchCheckpointConflict, lockBatchJob, readBatchCheckpoint, type BatchCheckpoint } from "./batch-checkpoint";
 import { persistExtractedMemories } from "./extracted-memory-store";
 import type { ExtractOutput } from "./extraction-output";
 import { parseQualityConstraints, checkQualityConstraints, type QualitySummary } from "@ai-novel/shared/generation/quality-constraints";
@@ -483,6 +484,7 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 interface CommitParams {
+  batchCheckpoint?: BatchCheckpoint;
   extracted?: ExtractOutput;
   prisma: PrismaClient;
   job: GenerationJob;
@@ -510,16 +512,25 @@ interface FinalOutput {
   wordCount: number;
   contextSummary?: ContextSummary;
   performanceSummary?: PerformanceSummary;
-  generationWarnings?: GenerationWarning[];
+  generationWarnings?: Array<{ stepKey: string; code: string; message: string }>;
   qualitySummary?: QualitySummary;
 }
 
 export async function commitFinalize(params: CommitParams): Promise<FinalOutput> {
-  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, generationWarnings, usage, extracted } = params;
+  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, generationWarnings, usage, extracted, batchCheckpoint } = params;
 
   return prisma.$transaction(async (tx: Tx) => {
     await assertChapterStillValid(tx, chapter, job);
     const source = await lockMemorySourceChapter({ tx, organizationId: job.organizationId, projectId: job.projectId, chapterId: chapter.id });
+    let batchStatus: string | undefined;
+    if (batchCheckpoint) {
+      const locked = await lockBatchJob(tx, job);
+      const previous = readBatchCheckpoint(locked.output, chapter.id, batchCheckpoint.requestedChapters);
+      if (!["RUNNING", "CANCELLED"].includes(locked.status) || (previous?.completedChapters ?? 0) !== batchCheckpoint.completedChapters - 1 || locked.attemptCount !== (job.attemptCount ?? 1)) {
+        throw new BatchCheckpointConflict("批量进度已变化，已停止重复保存，请刷新任务状态");
+      }
+      batchStatus = locked.status;
+    }
     const nextVersionNo = await pickNextVersionNo(tx, chapter.id);
     const finishedAt = new Date();
 
@@ -560,7 +571,8 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       ...(contextSummary ? { contextSummary } : {}),
       ...(generationWarnings?.length ? { generationWarnings } : {}),
       ...(rules ? { qualitySummary: checkQualityConstraints(finalContent, rules) } : {}),
-      ...(performanceSummary ? { performanceSummary } : {})
+      ...(performanceSummary ? { performanceSummary } : {}),
+      ...(batchCheckpoint ?? {})
     };
 
     await tx.generationStep.create({
@@ -576,7 +588,12 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
 
     await tx.generationJob.update({
       where: { id: job.id },
-      data: { status: "SUCCEEDED", progress: "100", finishedAt, output: output as unknown as Prisma.InputJsonValue }
+      data: batchCheckpoint ? {
+        status: batchStatus === "CANCELLED" ? "CANCELLED" : "RUNNING",
+        progress: String(Math.min(99, Math.round(batchCheckpoint.completedChapters / batchCheckpoint.requestedChapters * 100))),
+        ...(batchStatus !== "CANCELLED" ? { finishedAt: null, errorCode: null, errorMessage: null } : {}),
+        output: output as unknown as Prisma.InputJsonValue
+      } : { status: "SUCCEEDED", progress: "100", finishedAt, output: output as unknown as Prisma.InputJsonValue }
     });
 
     if (usage) {
