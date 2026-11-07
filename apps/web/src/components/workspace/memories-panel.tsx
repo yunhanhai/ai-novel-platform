@@ -75,8 +75,8 @@ export function MemoriesPanel({ projectId }: { projectId: string | null }) {
 
       <div className="memories-help">
         <p className="muted">
-          章节摘要会自动纳入上下文，其他抽取记忆<strong>需要你审核后采纳</strong>。
-          来源正文修改后旧记忆会失效；已驳回或失效的记忆不会进入后续上下文。
+          前置章节的摘要会自动纳入上下文，其他抽取记忆<strong>需要你审核后采纳</strong>。
+          单次抽取完整正文，最多20000字，超限请先拆章。来源正文修改后旧记忆会失效；已驳回或失效的记忆不会进入后续上下文。
         </p>
       </div>
     </div>

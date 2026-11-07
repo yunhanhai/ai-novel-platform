@@ -661,3 +661,9 @@ it("invalidates prior source memories before saving a generated chapter",async()
  await commitFinalize({prisma:prisma as never,job:baseJob,chapter:{id:"chapter-1",projectId:"proj-1",organizationId:"org-1"},finalContent:"新正文",wordCount:3});
  expect(store.updateMany).toHaveBeenCalledWith({where:{organizationId:"org-1",projectId:"proj-1",sourceChapterId:"chapter-1",status:{in:["proposed","accepted"]}},data:{status:"superseded"}});
 });
+it("queries only earlier source chapters when composing a generation prompt",async()=>{
+ const {prisma}=createPrismaStub();prisma.chapter.findFirst.mockResolvedValue({id:"chapter-1",projectId:"proj-1",organizationId:"org-1",chapterNo:3,title:"第三章",outlineSummary:"核查",project:{title:"作品",premise:null,styleBrief:null}});
+ const findMany=vi.fn().mockResolvedValue([]);const model={generate:vi.fn().mockResolvedValue({text:"正文",inputTokens:2,outputTokens:2})};
+ await createGenerateChapterHandler({prisma:{...prisma,projectMemory:{findMany}}as never,updateJobStatus:vi.fn(),model})({...baseJob,input:{qualityMode:"fast",performanceBudget:{maxModelCalls:2}}});
+ expect(findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({OR:[{sourceChapterId:null},{sourceChapter:{is:{organizationId:"org-1",projectId:"proj-1",deletedAt:null,chapterNo:{lt:3}}}}]})}));
+});

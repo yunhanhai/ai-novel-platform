@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createBatchContinueHandler, normalizeChapterCount } from "./batch-continue-handler";
 import type { GenerationJob } from "../poll";
+import { extractMemoriesForChapter } from "./extract-memory-handler";
 
 const initialContent = "他推开门，屋里的灰尘扑面而来。";
 
@@ -196,7 +197,34 @@ describe("createBatchContinueHandler", () => {
     expect(success.status).toBe("SUCCEEDED");
     expect(success.output.completedChapters).toBe(2);
     expect(success.output.memoryExtractedChapters).toBe(0);
+    expect(success.output).toMatchObject({ generationWarnings: [
+      { stepKey: "extract_memory", code: "MEMORY_EXTRACTION_FAILED", message: expect.stringContaining("第1轮") },
+      { stepKey: "extract_memory", code: "MEMORY_EXTRACTION_FAILED", message: expect.stringContaining("第2轮") }
+    ] });
     warn.mockRestore();
+  });
+
+  it("reports oversized batch extraction without extra model calls or memory writes", async () => {
+    const { prisma, tx } = makePrisma(() => "文".repeat(20001));
+    const model = { generate: vi.fn().mockResolvedValue({ text: "续写正文", inputTokens: 1, outputTokens: 1 }) };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const handler = createBatchContinueHandler({
+        prisma, updateJobStatus, model: model as never, extractMemories: extractMemoriesForChapter
+      });
+      await handler(makeJob({ input: { chapterId: "ch-1", chapterCount: 2 } }));
+      expect(model.generate).toHaveBeenCalledTimes(2);
+      expect(tx.contentVersion.create).toHaveBeenCalledTimes(2);
+      expect(updateJobStatus).toHaveBeenLastCalledWith(expect.objectContaining({
+        status: "SUCCEEDED", output: expect.objectContaining({
+          completedChapters: 2, memoryExtractedChapters: 0,
+          generationWarnings: [1, 2].map(round => ({
+            stepKey: "extract_memory", code: "MEMORY_SOURCE_TOO_LONG",
+            message: expect.stringContaining(`第${round}轮正文已保存，但超过20000字`)
+          }))
+        })
+      }));
+    } finally { warn.mockRestore(); }
   });
 
   it("skips extraction when the caller opts out", async () => {

@@ -1117,3 +1117,12 @@ git diff --check
 - [x] Verify1072 tests+1skip,typecheck5/5,build,e2e3pass+1skip,9rollback DB scenarios,real concurrent lock and invalidation failure rollback; independent83 checks clear.
 - [x] Record report/progress/manual and integrate/synchronize both master refs with external receipts; no external model calls,private prose changes,migration or deployment.
 - [ ] Remaining: author-approved prose/summary semantics,legacy stale-memory audit and actual next-chapter quality under a reliable provider.
+## Task 60: 2026-11-07 Memory Order and Full-Source Extraction
+
+- [x] Reproduce same/future chapter memory leakage and silently truncated standalone/batch extraction; verify RED/GREEN before repair.
+- [x] Share strict source chapterNo < current chapterNo filtering in web/worker; use live ordering after reorder and preserve source-less project memory.
+- [x] Feed full source up to20000 Unicode codepoints; reject oversized sources before model calls and memory writes, with explicit split guidance.
+- [x] Preserve batch prose and report per-round extraction failures/limits via existing generationWarnings; do not expose raw provider errors.
+- [x] Verify1078 tests+1skip,typecheck5/5,build,e2e3pass+1skip,5rollback-only DB scenarios including real reorder/worker prompt and long-source tail; independent57 tests clear.
+- [x] Update report/progress/manual, integrate task branch into master and synchronize both remotes with external hash receipts; external model calls0, no migration/deployment or private prose changes.
+- [ ] Remaining: author-reviewed real summary semantics, supplier long-chapter coverage, legacy summary audit and next-chapter quality evidence.

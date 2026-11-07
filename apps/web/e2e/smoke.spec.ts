@@ -109,6 +109,13 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
     await fetch(`/api/project-memories/${created.data.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "accepted" }) });
     return { projectId, chapterId, id: created.data.id, marker };
   });
+  const selfMemoryPreview = await page.evaluate(async fixture => {
+    const response = await fetch(`/api/chapters/${fixture.chapterId}/context-preview`);
+    const body = await response.json();
+    return { status: response.status, containsSelfMemory: JSON.stringify(body.data).includes(fixture.marker) };
+  }, freshnessFixture);
+  expect(selfMemoryPreview.status).toBe(200);
+  expect(selfMemoryPreview.containsSelfMemory).toBe(false);
   await expect.poll(async () => page.evaluate(async fixture => {
     const body = await (await fetch(`/api/chapters/${fixture.chapterId}`)).json();
     await fetch(`/api/chapters/${fixture.chapterId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: body.data.content }) });
@@ -155,12 +162,16 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
 
   // 8.65 自动连更（BATCH_CONTINUE）：一次 job 连续续写 2 章
   const lengthBeforeBatch = (await editor.inputValue()).length;
+  await page.getByLabel("连更章数").selectOption("2");
   await page.getByRole("button", { name: "自动连更" }).click();
   await expect(jobTypeCell).toHaveText("自动连更", { timeout: 10_000 });
   await expect(jobStatusTag).toHaveText("已完成", { timeout: 60_000 });
   await expect
     .poll(async () => (await editor.inputValue()).length, { timeout: 20_000 })
     .toBeGreaterThan(lengthBeforeBatch);
+
+  await expect(page.getByText("正文已保存 · 抽取记忆未完成", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("第1轮正文已保存，但记忆抽取失败；请检查模型设置及来源正文后重新抽取。", { exact: true })).toBeVisible();
 
   // 8.7 章节状态流转：编辑器头部标记「定稿」，侧栏标签同步
   await page.getByLabel("章节状态").selectOption("FINAL");

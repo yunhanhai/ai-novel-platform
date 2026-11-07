@@ -21,6 +21,14 @@ export async function supersedeChapterMemories(params: { tx: Tx; organizationId:
   });
 }
 
-export function activeMemorySourceFilter(organizationId: string, projectId: string) {
-  return { OR: [ { sourceChapterId: null }, { sourceChapter: { is: { organizationId, projectId, deletedAt: null } } } ] };
+export function activeMemorySourceFilter(organizationId: string, projectId: string, beforeChapterNo?: number) {
+  return {
+    OR: [
+      { sourceChapterId: null },
+      { sourceChapter: { is: {
+        organizationId, projectId, deletedAt: null,
+        ...(beforeChapterNo !== undefined ? { chapterNo: { lt: beforeChapterNo } } : {})
+      } } }
+    ]
+  };
 }

@@ -73,7 +73,7 @@ export async function buildChapterContextPreview({
       orderBy: [{ priority: "desc" }, { createdAt: "asc" }]
     }),
     prisma.projectMemory.findMany({
-      where: { organizationId, projectId: chapter.projectId, status: "accepted", ...activeMemorySourceFilter(organizationId, chapter.projectId) },
+      where: { organizationId, projectId: chapter.projectId, status: "accepted", ...activeMemorySourceFilter(organizationId, chapter.projectId, chapter.chapterNo) },
       orderBy: { createdAt: "desc" },
       take: 20
     }),

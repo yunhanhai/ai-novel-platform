@@ -27,6 +27,7 @@ const ERROR_CODES = {
   CHAPTER_NOT_FOUND: "CHAPTER_NOT_FOUND",
   HANDLER_ERROR: "HANDLER_ERROR",
   INVALID_MODEL_OUTPUT: "INVALID_MODEL_OUTPUT",
+  MEMORY_SOURCE_TOO_LONG: "MEMORY_SOURCE_TOO_LONG",
   NO_MODEL_PROFILE: "NO_MODEL_PROFILE"
 } as const;
 
@@ -51,11 +52,24 @@ const EXTRACT_PROMPT_SCHEMA = `{
   "chapterSummary": "详细章节摘要（200字以内）"
 }`;
 
+export const MAX_MEMORY_SOURCE_CHARS = 20000;
+export class MemorySourceTooLongError extends Error {
+  constructor() {
+    super(`本章超过单次记忆抽取上限${MAX_MEMORY_SOURCE_CHARS}字，请拆分章节后重试；原有记忆未修改`);
+  }
+}
+function assertExtractionSourceLimit(content: string): void {
+  let chars = 0;
+  for (const _ of content) {
+    if (++chars > MAX_MEMORY_SOURCE_CHARS) throw new MemorySourceTooLongError();
+  }
+}
 function buildExtractPrompt(content: string): string {
+  assertExtractionSourceLimit(content);
   return `${EXTRACT_PROMPT_PREFIX}
 
 正文：
-${content.slice(0, 8000)}
+${content}
 
 输出格式：
 ${EXTRACT_PROMPT_SCHEMA}`;
@@ -127,6 +141,16 @@ export function createExtractMemoryHandler(deps: HandlerDeps) {
     if (!chapter || !chapter.content?.trim()) {
       await updateJobStatus({ jobId: job.id, status: "FAILED", errorCode: "CHAPTER_NOT_FOUND", errorMessage: "章节不存在或正文为空" });
       return;
+    }
+
+    try {
+      assertExtractionSourceLimit(chapter.content);
+    } catch (error) {
+      if (error instanceof MemorySourceTooLongError) {
+        await fail(job.id, ERROR_CODES.MEMORY_SOURCE_TOO_LONG, error.message);
+        return;
+      }
+      throw error;
     }
 
     const step = await prisma.generationStep.create({

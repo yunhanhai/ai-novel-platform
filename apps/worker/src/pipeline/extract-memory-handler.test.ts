@@ -232,3 +232,19 @@ it("preserves model authentication failure if best-effort step cleanup also fail
  const f=extractionFixture(validExtractText);const denied=Object.assign(new Error("Unauthorized"),{status:401});f.model.generate.mockRejectedValueOnce(denied);f.prisma.generationStep.update.mockRejectedValueOnce(new Error("cleanup database failure"));
  await expect(f.handler(baseJob)).rejects.toBe(denied);
 });
+it("sends the full chapter including its ending beyond the former 8000-character truncation",async()=>{
+ const content="章首"+"甲".repeat(8500)+"最后线索：钥匙已交警方。";
+ const f=extractionFixture(validExtractText,content);await f.handler(baseJob);
+ expect(f.model.generate.mock.calls[0]?.[0]).toContain("最后线索：钥匙已交警方。");
+});
+
+it("rejects an oversized chapter before charging a model call or changing memories",async()=>{
+ const f=extractionFixture(validExtractText,"甲".repeat(20001));await f.handler(baseJob);
+ expect(f.updateJobStatus).toHaveBeenCalledWith(expect.objectContaining({status:"FAILED",errorCode:"MEMORY_SOURCE_TOO_LONG"}));
+ expect(f.model.generate).not.toHaveBeenCalled();expect(f.tx.projectMemory.create).not.toHaveBeenCalled();
+});
+
+it("counts the extraction source limit by Unicode characters rather than UTF16 units",async()=>{
+ const f=extractionFixture(validExtractText,"😀".repeat(19999)+"尾");await f.handler(baseJob);
+ expect(f.model.generate.mock.calls[0]?.[0]).toContain("😀尾");
+});

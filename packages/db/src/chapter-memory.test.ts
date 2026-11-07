@@ -18,3 +18,6 @@ describe("source chapter memory freshness",()=>{
   expect(activeMemorySourceFilter("org","p")).toEqual({OR:[{sourceChapterId:null},{sourceChapter:{is:{organizationId:"org",projectId:"p",deletedAt:null}}}]});
  });
 });
+it("bounds source chapter memories strictly before the current chapter",()=>{
+ expect(activeMemorySourceFilter("org","p",3)).toEqual({OR:[{sourceChapterId:null},{sourceChapter:{is:{organizationId:"org",projectId:"p",deletedAt:null,chapterNo:{lt:3}}}}]});
+});

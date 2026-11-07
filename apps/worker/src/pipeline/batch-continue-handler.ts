@@ -2,6 +2,7 @@ import type { PrismaClient } from "@ai-novel/db";
 import { computeWordCount } from "@ai-novel/shared/generation/word-count";
 import { createFakeModel } from "./fake-model";
 import { commitFinalize } from "./generate-chapter-handler";
+import { MAX_MEMORY_SOURCE_CHARS, MemorySourceTooLongError } from "./extract-memory-handler";
 import { buildContinuePrompt, normalizeTargetLength, stripCodeFence, TAIL_CONTEXT_CHARS } from "./continue-chapter-handler";
 import type { GenerationJob } from "../poll";
 
@@ -116,6 +117,7 @@ export function createBatchContinueHandler(deps: HandlerDeps) {
     let totalAddedChars = 0;
     let completed = 0;
     let memoryExtractedChapters = 0;
+    const generationWarnings: Array<{ stepKey: string; code: string; message: string }> = [];
     // 默认开启：连更的价值之一就是自动维护记忆链，让后续章节基于最新记忆生成。
     // 显式传 extractMemory: false 可关闭（每章会多一次模型调用）。
     const wantExtract = input.extractMemory !== false && Boolean(deps.extractMemories);
@@ -199,6 +201,14 @@ export function createBatchContinueHandler(deps: HandlerDeps) {
         } catch (error: unknown) {
           const msg = error instanceof Error ? error.message : String(error);
           console.warn(`[batch-continue] memory extraction failed for chapter ${chapterId}: ${msg}`);
+          const tooLong = error instanceof MemorySourceTooLongError;
+          generationWarnings.push({
+            stepKey: "extract_memory",
+            code: tooLong ? "MEMORY_SOURCE_TOO_LONG" : "MEMORY_EXTRACTION_FAILED",
+            message: tooLong
+              ? `第${completed}轮正文已保存，但超过${MAX_MEMORY_SOURCE_CHARS}字，未抽取记忆；请拆章后重新抽取。`
+              : `第${completed}轮正文已保存，但记忆抽取失败；请检查模型设置及来源正文后重新抽取。`
+          });
         }
       }
 
@@ -217,7 +227,8 @@ export function createBatchContinueHandler(deps: HandlerDeps) {
         requestedChapters: chapterCount,
         completedChapters: completed,
         addedChars: totalAddedChars,
-        memoryExtractedChapters
+        memoryExtractedChapters,
+        ...(generationWarnings.length ? { generationWarnings } : {})
       }
     });
   };
