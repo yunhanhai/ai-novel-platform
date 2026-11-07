@@ -1200,3 +1200,12 @@ git diff --check
 - [x] Verify1139 tests+1skip,typecheck5/5,build,e2e7pass+1skip,10rollback DB cases and independent60 checks; preserve HTML404/dependency repair evidence.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
 - [ ] Remaining:real semantic quality,post-report edit freshness detection,other diagnostic/rewrite paths and provider exactly-once requests need separate evidence.
+
+## Task 69: 2026-11-07 Rewrite Selection Snapshots and Save Ordering
+
+- [x] Reproduce browser replacement moving to a later duplicate selection,stale full-source application and job creation before unsaved selection persistence.
+- [x] Bind request/result to chapter,full local source,original offsets and exact job;guard completion and manual apply,invalidate on chapter change/cancel/failure.
+- [x] Flush before rewrite,stop on save failure or changed source;preserve new dirty content when old save returns,serialize normal writes and skip superseded queued drafts.
+- [x] Verify1139 tests+1skip,typecheck5/5,build,e2e16pass+1skip including9new controlled browser scenarios with actual DB save evidence;independent final hook checks and7request tests clear.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no provider/private prose/schema/deployment changes.
+- [ ] Remaining:visibility keepalive,multi-tab/server version locks,worker rewrite attempt/usage and real semantic quality require separate evidence.

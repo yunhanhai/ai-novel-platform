@@ -2097,3 +2097,13 @@ git diff --check   通过
 - 验证1139单测+1skip（33/67/50/349/640）、typecheck5/5、build、完整e2e7pass+1skip（fake，1.4m），10项真实DB回滚；独立5文件60项无剩余阻断。浏览器覆盖fake明确失败与合成合法报告展示，不能当真实模型语义验收。
 - 保留定位器重复文本、Next HTML404、Prisma runtime局部缺失失败证据；外存dev缓存并frozen force恢复包实体后完整通过，无修改锁版本/生成代码或时限。报告`reports/2026-11-07-deslop-report.md`记录限制与原始证据。
 - 外部模型0，真实正文/13记忆/模型配置未修改，无迁移部署；参考分不判断作者身份，后续改文需重新分析。codex/deslop-report完成后快进master同步双远程并外存commit/tree回执，原实验保留。
+
+---
+
+## 2026-11-07 — 改写润色来源绑定与保存顺序
+
+- 先核对worker只返回候选，不自动保存。浏览器RED复现重复片段被后选区替换、选区外改文仍套用候选、新选文未保存先创建任务；页面绑定原章/完整正文/原选区/job，完成与采纳双核对，切章/失败/取消丢弃，不猜位置。
+- 发起前flush明确成功才提交，等待保存期间改文撤销任务；独立审查两轮RED发现旧保存清新稿dirty与反向HTTP回退，修复同文本清dirty、普通保存Promise队列及过期排队稿跳过，真实DB验证最终最新稿。
+- 最终1139单测+1skip（33/67/50/349/640）、typecheck5/5、build、完整e2e16pass+1skip（fake，1.9m，新增9项来源/保存竞态）。独立最终无阻断，hook受控串行/失败继续/过期跳过及7项请求构造通过。
+- 报告`reports/2026-11-07-rewrite-snapshot.md`保留程序化选择夹具修正、首个第9项GET ECONNRESET与同页fetch重跑证据；明确visibility keepalive/跨标签/服务端版本锁、worker改写终态与真实语义未扩展。
+- 外部模型0，无配置/schema/迁移/部署，既有真实正文/记忆未修改；新账号合成测试数据保留。codex/rewrite-snapshot验证后快进master同步双远程并外存commit/tree回执，原实验保持。

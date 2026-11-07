@@ -142,7 +142,7 @@ interface UseChapterContentResult {
   setContent: (v: string) => void;
   saveStatus: "idle" | "saving" | "saved" | "error";
   isLoadingContent: boolean;
-  flush: () => Promise<void>;
+  flush: () => Promise<boolean>;
   reload: () => Promise<void>;
   externalUpdateNotice: boolean;
   acceptExternalUpdate: () => Promise<void>;
@@ -164,6 +164,7 @@ export function useChapterContent(
   const activeIdRef = useRef<string | null>(null);
   // 供卸载/隐藏钩子读取最新正文，避免闭包拿到过期值
   const contentRef = useRef("");
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const fetchContent = useCallback(async (id: string) => {
     setLoadingContent(true);
@@ -201,24 +202,33 @@ export function useChapterContent(
   }, [chapterId, fetchContent]);
 
   const persist = useCallback(
-    async (text: string, idAtCall: string) => {
-      setSaveStatus("saving");
-      try {
-        const res = await fetch(`/api/chapters/${idAtCall}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: text })
-        });
-        const json = (await res.json()) as ApiEnvelope<unknown>;
-        if (!res.ok || !json.success) throw new Error(json.error ?? `保存失败 (${res.status})`);
-        if (activeIdRef.current === idAtCall) {
-          dirtyRef.current = false;
-          setSaveStatus("saved");
-          onSaved?.();
+    (text: string, idAtCall: string) => {
+      const saving = saveQueueRef.current.then(async () => {
+        // An older request must finish before the next one can reach the server.
+        // A queued draft superseded in this editor no longer needs to be written.
+        if (activeIdRef.current === idAtCall && contentRef.current !== text) return false;
+        if (activeIdRef.current === idAtCall) setSaveStatus("saving");
+        try {
+          const res = await fetch(`/api/chapters/${idAtCall}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: text })
+          });
+          const json = (await res.json()) as ApiEnvelope<unknown>;
+          if (!res.ok || !json.success) throw new Error(json.error ?? `保存失败 (${res.status})`);
+          if (activeIdRef.current === idAtCall && contentRef.current === text) {
+            dirtyRef.current = false;
+            setSaveStatus("saved");
+            onSaved?.();
+          }
+          return true;
+        } catch {
+          if (activeIdRef.current === idAtCall) setSaveStatus("error");
+          return false;
         }
-      } catch {
-        if (activeIdRef.current === idAtCall) setSaveStatus("error");
-      }
+      });
+      saveQueueRef.current = saving.catch(() => undefined);
+      return saving;
     },
     [onSaved]
   );
@@ -242,9 +252,9 @@ export function useChapterContent(
   );
 
   const flush = useCallback(async () => {
-    if (!chapterId || !dirtyRef.current) return;
+    if (!chapterId || !dirtyRef.current) return true;
     if (timerRef.current) clearTimeout(timerRef.current);
-    await persist(content, chapterId);
+    return persist(content, chapterId);
   }, [chapterId, content, persist]);
 
   // 离开保护：防抖窗口内直接关闭标签页会丢字。

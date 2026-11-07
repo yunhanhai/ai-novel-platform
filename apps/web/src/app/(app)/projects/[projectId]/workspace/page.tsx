@@ -17,12 +17,18 @@ import {
 const REWRITE_POLISH_JOB_TYPES = new Set(["REWRITE", "POLISH"]);
 
 interface RewriteResult {
+  chapterId: string;
+  sourceContent: string;
   jobId: string;
   mode: string;
   selectedText: string;
   newText: string;
   start: number;
   end: number;
+}
+
+interface RewriteRequest extends Omit<RewriteResult, "jobId" | "newText"> {
+  jobId: string | null;
 }
 
 export default function WorkspacePage() {
@@ -69,6 +75,10 @@ export default function WorkspacePage() {
   const [selection, setSelection] = useState<EditorSelection | null>(null);
   const [rewriteResult, setRewriteResult] = useState<RewriteResult | null>(null);
   const [rewriteNotice, setRewriteNotice] = useState<string | null>(null);
+  const [preparingRewrite, setPreparingRewrite] = useState(false);
+  const rewriteRequestRef = useRef<RewriteRequest | null>(null);
+  const currentEditorRef = useRef({ chapterId: activeChapterId, content });
+  currentEditorRef.current = { chapterId: activeChapterId, content };
   const selectionRef = useRef<EditorSelection | null>(null);
   selectionRef.current = selection;
 
@@ -82,31 +92,41 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     if (job?.status === "SUCCEEDED" && REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
-      const sel = selectionRef.current;
+      const request = rewriteRequestRef.current;
       const out = job.output;
-      if (sel && out?.newText && out.selectedText) {
+      if (!request || request.jobId !== job.id) return;
+      rewriteRequestRef.current = null;
+      if (request.chapterId !== currentEditorRef.current.chapterId) return;
+      if (request.sourceContent !== currentEditorRef.current.content) {
+        setRewriteNotice("原文已发生变化，无法应用。请重新选择文字后再试。");
+      } else if (out?.newText && out.selectedText === request.selectedText) {
         setRewriteResult({
+          chapterId: request.chapterId,
+          sourceContent: request.sourceContent,
           jobId: job.id,
           mode: out.mode ?? job.jobType,
           selectedText: out.selectedText,
           newText: out.newText,
-          start: sel.start,
-          end: sel.end
+          start: request.start,
+          end: request.end
         });
       } else {
         setRewriteNotice("任务已完成，但选区已失效，请重新选择文字后再试。");
       }
     }
-    if (job?.status === "FAILED" && REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
-      setRewriteNotice(job.errorMessage ?? "改写任务失败");
+    if (job && ["FAILED", "CANCELLED"].includes(job.status) && REWRITE_POLISH_JOB_TYPES.has(job.jobType) && rewriteRequestRef.current?.jobId === job.id) {
+      const request = rewriteRequestRef.current;
+      rewriteRequestRef.current = null;
+      if (request.chapterId === currentEditorRef.current.chapterId) setRewriteNotice(job.errorMessage ?? (job.status === "CANCELLED" ? "任务已取消，未采用候选" : "改写任务失败"));
     }
   }, [job?.status, job?.jobType, job?.id, job?.output, job?.errorMessage]);
 
   const rewriteBusy =
-    isStarting || (job ? ["QUEUED", "RUNNING"].includes(job.status) && REWRITE_POLISH_JOB_TYPES.has(job.jobType) : false);
+    preparingRewrite || isStarting || (job ? ["QUEUED", "RUNNING"].includes(job.status) && REWRITE_POLISH_JOB_TYPES.has(job.jobType) : false);
 
   async function handleSelectChapter(id: string) {
     if (id === activeChapterId) return;
+    rewriteRequestRef.current = null;
     await flush();
     setSelection(null);
     setRewriteResult(null);
@@ -208,19 +228,37 @@ export default function WorkspacePage() {
   const handleRewrite = useCallback(
     async (jobType: "REWRITE" | "POLISH") => {
       const sel = selectionRef.current;
-      if (!activeChapterId || !sel || sel.text.trim().length === 0) return;
+      if (!activeChapterId || !sel || !sel.text.trim() || isLoadingContent || rewriteRequestRef.current) return;
+      if (content.slice(sel.start, sel.end) !== sel.text) return;
+      const request: RewriteRequest = { jobId: null, chapterId: activeChapterId, sourceContent: content, mode: jobType, selectedText: sel.text, start: sel.start, end: sel.end };
+      rewriteRequestRef.current = request;
+      setPreparingRewrite(true);
       setRewriteResult(null);
       setRewriteNotice(null);
-      await startJob(activeChapterId, jobType, { selectedText: sel.text });
+      try {
+        const saved = await flush();
+        if (rewriteRequestRef.current !== request) return;
+        if (!saved) { rewriteRequestRef.current = null; setRewriteNotice("正文保存失败，未提交改写任务；请保存后重试。"); return; }
+        const current = currentEditorRef.current;
+        if (current.chapterId !== request.chapterId || current.content !== request.sourceContent) {
+          rewriteRequestRef.current = null;
+          if (current.chapterId === request.chapterId) setRewriteNotice("原文已发生变化，未提交任务。请重新选择文字后再试。");
+          return;
+        }
+        const started = await startJob(request.chapterId, jobType, { selectedText: request.selectedText });
+        if (rewriteRequestRef.current !== request) return;
+        if (!started) { rewriteRequestRef.current = null; return; }
+        request.jobId = started.id;
+      } finally { setPreparingRewrite(false); }
     },
-    [activeChapterId, startJob]
+    [activeChapterId, content, isLoadingContent, flush, startJob]
   );
 
   const applyRewrite = useCallback(() => {
     const result = rewriteResult;
     if (!result) return;
     const current = content;
-    if (current.slice(result.start, result.end) !== result.selectedText) {
+    if (activeChapterId !== result.chapterId || current !== result.sourceContent || current.slice(result.start, result.end) !== result.selectedText) {
       setRewriteNotice("原文已发生变化，无法应用。请重新选择文字后再试。");
       setRewriteResult(null);
       return;
@@ -230,9 +268,10 @@ export default function WorkspacePage() {
     setRewriteNotice(null);
     setSelection(null);
     bumpStats();
-  }, [rewriteResult, content, setContent, bumpStats]);
+  }, [rewriteResult, activeChapterId, content, setContent, bumpStats]);
 
   const discardRewrite = useCallback(() => {
+    rewriteRequestRef.current = null;
     setRewriteResult(null);
     setRewriteNotice(null);
   }, []);
@@ -315,7 +354,11 @@ export default function WorkspacePage() {
         onSelect={(id) => void handleSelectChapter(id)}
         onCreate={async (input) => {
           const created = await createChapter(input);
-          if (created) setActiveChapterId(created.id);
+          if (created) {
+            rewriteRequestRef.current = null;
+            setSelection(null); setRewriteResult(null); setRewriteNotice(null);
+            setActiveChapterId(created.id);
+          }
         }}
         isLoading={chaptersLoading}
         exportHref={projectId ? `/api/projects/${projectId}/export` : null}
