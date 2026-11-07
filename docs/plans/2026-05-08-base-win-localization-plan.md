@@ -1181,3 +1181,12 @@ git diff --check
 - [x] Verify1112 tests+1skip,typecheck5/5,build,e2e7pass+1skip and10rollback DB scenarios;independent70 tests clear;retain Next generated-file/HTML404 failures and rerun evidence.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;no external model calls/private-prose/config/schema/deployment changes.
 - [ ] Remaining:provider exactly-once requests,persistent receipt-check outages and concurrency for other rewriting paths require separate evidence.
+
+## Task 67: 2026-11-07 Generated Chapter Save Guards
+
+- [x] Reproduce actual DB loss of author edits,cancellation overwritten and duplicate same-job AI versions during full generation.
+- [x] Share scoped chapter-save receipts/attempt locking with continuation;capture expected source content and guard atomic generation finalization/recovery.
+- [x] Preserve observed cancellation and skip deep child dispatch for that in-flight saved draft;retain explicit limits for transaction-external diagnostic delivery.
+- [x] Verify1116 tests+1skip,typecheck5/5,build,e2e7pass+1skip,8rollback-only DB cases and independent73 checks;record first smoke total-timeout and unchanged-limit rerun.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
+- [ ] Remaining:late cancel API writes,reliable deep diagnostic dispatch,other analysis-result freshness and provider exactly-once requests require separate evidence.

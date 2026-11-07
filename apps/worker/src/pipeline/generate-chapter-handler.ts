@@ -1,5 +1,5 @@
 ﻿import { lockMemorySourceChapter, supersedeChapterMemories, findGenerationMemories } from "@ai-novel/db/chapter-memory";
-import { ChapterSourceChanged, ContinuationAttemptChanged, continuationVersionWhere, lockContinuationJob } from "./continuation-save";
+import { ChapterSourceChanged, ChapterWriteAttemptChanged, chapterWriteVersionWhere, lockChapterWriteJob, recoverSavedChapterWrite } from "./chapter-save";
 import { BatchCheckpointConflict, lockBatchJob, readBatchCheckpoint, type BatchCheckpoint } from "./batch-checkpoint";
 import { persistExtractedMemories } from "./extracted-memory-store";
 import type { ExtractOutput } from "./extraction-output";
@@ -39,6 +39,7 @@ type UpdateStatusFn = (params: {
   output?: Record<string, unknown>;
   errorCode?: string;
   errorMessage?: string;
+  expectedAttemptCount?: number;
 }) => Promise<unknown>;
 
 interface HandlerDeps {
@@ -52,21 +53,25 @@ interface ChapterRef {
   id: string;
   projectId: string;
   organizationId: string;
+  content?: string | null;
 }
 
 export function createGenerateChapterHandler(deps: HandlerDeps) {
   const { prisma, updateJobStatus } = deps;
   const builtinModel = deps.model ?? createFakeModel();
   const resolveModel = deps.resolveModel;
-  const fail = (jobId: string, code: ErrorCode, message: string) =>
-    updateJobStatus({ jobId, status: "FAILED", errorCode: code, errorMessage: message });
-
   return async function handle(job: GenerationJob): Promise<void> {
+    const fail = (jobId: string, code: ErrorCode, message: string) =>
+      updateJobStatus({ jobId, status: "FAILED", errorCode: code, errorMessage: message, expectedAttemptCount: job.attemptCount ?? 1 });
     const chapterId = resolveChapterId(job);
     if (!chapterId) {
       await fail(job.id, ERROR_CODES.CHAPTER_NOT_FOUND, "Unable to resolve chapterId from job target or input");
       return;
     }
+
+    const current = await prisma.generationJob.findFirst({ where: { id: job.id, organizationId: job.organizationId, projectId: job.projectId }, select: { status: true, attemptCount: true } });
+    if (!current || current.status !== "RUNNING" || current.attemptCount !== (job.attemptCount ?? 1)) return;
+    if (await recoverSavedChapterWrite(prisma, job, chapterId)) return;
 
     const chapter = await loadChapter(prisma, chapterId, job);
     if (!chapter) {
@@ -104,6 +109,8 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
 
     try {
       const finalOutput = await commitFinalize({
+        generationResult: true,
+        expectedContent: chapter.content ?? "",
         prisma,
         job,
         chapter,
@@ -116,10 +123,12 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
         usage: { ...pipelineResult.usage, modelName, billingSource }
       });
 
-      if (pipelineResult.performanceSummary.qualityMode === "deep") {
+      if (pipelineResult.performanceSummary.qualityMode === "deep" && !finalOutput.cancelled) {
         await enqueueDeepDiagnostic({ prisma, job, chapterId: chapter.id, finalOutput });
       }
     } catch (error: unknown) {
+      try { if (await recoverSavedChapterWrite(prisma, job, chapterId)) return; }
+      catch { /* Preserve original error when receipt verification is unavailable. */ }
       console.error(`[generate-chapter] finalize failed for job ${job.id}: ${errorMessage(error, "finalize transaction failed")}`);
       throw error;
     }
@@ -137,7 +146,7 @@ function resolveChapterId(job: GenerationJob): string | null {
 async function loadChapter(prisma: PrismaClient, chapterId: string, job: GenerationJob): Promise<ChapterRef | null> {
   const chapter = await prisma.chapter.findFirst({
     where: { id: chapterId, organizationId: job.organizationId, projectId: job.projectId, deletedAt: null },
-    select: { id: true, projectId: true, organizationId: true }
+    select: { id: true, projectId: true, organizationId: true, content: true }
   });
   return chapter && chapter.projectId === job.projectId ? chapter : null;
 }
@@ -485,6 +494,7 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 interface CommitParams {
+  generationResult?: boolean;
   expectedContent?: string;
   continuationResult?: { mode: "CONTINUE_CHAPTER"; addedChars: number; targetLength: number };
   batchCheckpoint?: BatchCheckpoint;
@@ -509,6 +519,7 @@ interface UsageRecord {
 }
 
 interface FinalOutput {
+  cancelled?: boolean;
   chapterId: string;
   versionId: string;
   versionNo: number;
@@ -520,7 +531,7 @@ interface FinalOutput {
 }
 
 export async function commitFinalize(params: CommitParams): Promise<FinalOutput> {
-  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, generationWarnings, usage, extracted, batchCheckpoint, expectedContent, continuationResult } = params;
+  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, generationWarnings, usage, extracted, batchCheckpoint, expectedContent, continuationResult, generationResult } = params;
 
   return prisma.$transaction(async (tx: Tx) => {
     await assertChapterStillValid(tx, chapter, job);
@@ -535,12 +546,12 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       batchStatus = locked.status;
     }
     let continuationStatus: string | undefined;
-    if (continuationResult) {
-      const locked = await lockContinuationJob(tx, job);
+    if (continuationResult || generationResult) {
+      const locked = await lockChapterWriteJob(tx, job);
       continuationStatus = locked.status;
-      if (locked.status === "SUCCEEDED") throw new ContinuationAttemptChanged();
-      const saved = await tx.contentVersion.findFirst({ where: continuationVersionWhere(job, chapter.id), orderBy: { versionNo: "desc" } });
-      if (saved) throw new ContinuationAttemptChanged();
+      if (locked.status === "SUCCEEDED") throw new ChapterWriteAttemptChanged();
+      const saved = await tx.contentVersion.findFirst({ where: chapterWriteVersionWhere(job, chapter.id), orderBy: { versionNo: "desc" } });
+      if (saved) throw new ChapterWriteAttemptChanged();
     }
     if (expectedContent !== undefined && (source.content ?? "") !== expectedContent) throw new ChapterSourceChanged();
     const nextVersionNo = await pickNextVersionNo(tx, chapter.id);
@@ -607,7 +618,7 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
         ...(batchStatus !== "CANCELLED" ? { finishedAt: null, errorCode: null, errorMessage: null } : {}),
         output: output as unknown as Prisma.InputJsonValue
       } : continuationStatus === "CANCELLED" ? { output: output as unknown as Prisma.InputJsonValue }
-        : { status: "SUCCEEDED", progress: "100", finishedAt, ...(continuationResult ? { errorCode: null, errorMessage: null } : {}), output: output as unknown as Prisma.InputJsonValue }
+        : { status: "SUCCEEDED", progress: "100", finishedAt, ...(continuationResult || generationResult ? { errorCode: null, errorMessage: null } : {}), output: output as unknown as Prisma.InputJsonValue }
     });
 
     if (usage) {
@@ -626,7 +637,7 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       });
     }
 
-    return output;
+    return { ...output, ...(continuationStatus === "CANCELLED" ? { cancelled: true } : {}) };
   });
 }
 

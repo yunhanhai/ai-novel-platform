@@ -2077,3 +2077,13 @@ git diff --check   通过
 - 验证1112单测+1skip（32/67/50/323/640）、typecheck5/5、build、完整e2e7pass+1skip（fake，1.4m）；10项真实DB全回滚包含后写取消/ack/重复/新attempt/人工改文与batch后轮冲突、写失败原子回滚；独立70定向无阻断。
 - Next dev生成types损坏已外存备份，停止服务后类型/构建重跑；最终浏览器版本diff曾返回HTML404，保留trace日志并完整重跑。报告`reports/2026-11-07-continuation-save.md`区分业务验证与环境失败。
 - 外部模型0，真实章/13记忆/配置不变，无迁移部署；不保证供应商请求exactly-once，凭证核验持续不可用沿用原错误。codex/continuation-save完成后快进master同步双远程，commit/tree回执外存，原实验保留。
+
+---
+
+## 2026-11-07 — 整章生成保存保护
+
+- 真实DB RED复现plan期间人工稿被覆盖、取消被SUCCEEDED覆盖、同job重放2版本。整章生成复用chapter-save范围锁/attempt/同job版本receipt，loadChapter原文快照锁后核对；冲突直接失败无retry，不改新稿/记忆。
+- 正文/version/记忆/job/usage同事务；确认丢失先核对receipt，恢复不调模型不回写后人工编辑。取消在途保存保持CANCELLED，观察到取消不派deep诊断；旧续写模块兼容导出，批量及续写行为回归。
+- 验证1116单测+1skip（32/67/50/327/640）、typecheck5/5、build、完整e2e7pass+1skip（fake，1.8m）；8项实际DB全回滚，独立73定向无阻断。首轮smoke打印通过后触60秒总时限，未调时限，单独重跑完整通过。
+- 报告`reports/2026-11-07-generation-save.md`保留deep事务外后续任务、取消API迟到竞态、凭证不可用/ABA/非模型exactly-once限制。外部模型0，真实章/13记忆/配置不变，无迁移部署。
+- codex/generation-save完成后快进master同步双远程并外存commit/tree回执，原实验保留；下一步按实际证据检查其余状态/结果链路，不扩大付费调用。

@@ -38,6 +38,8 @@ async function runJob(
       findUnique: vi.fn().mockResolvedValue(null),
       findFirst: findProfile
     },
+    generationJob: { findFirst: vi.fn().mockResolvedValue({ status: "RUNNING", attemptCount: 1 }) },
+    contentVersion: { findFirst: vi.fn().mockResolvedValue(null) },
     chapter: {
       findFirst: vi.fn().mockResolvedValue({
         id: "chapter-1",

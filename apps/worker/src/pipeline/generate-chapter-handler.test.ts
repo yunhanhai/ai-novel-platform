@@ -19,7 +19,7 @@ const baseJob: GenerationJob = {
 
 function createTxStub(overrides: Partial<TxStub> = {}): TxStub {
   return {
-    $queryRaw: vi.fn().mockResolvedValue([{id:"chapter-1",projectId:"proj-1",content:null}]),
+    $queryRaw: vi.fn().mockImplementation(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "RUNNING", attemptCount: 1, output: null }] : [{id:"chapter-1",projectId:"proj-1",content:null}]),
     projectMemory: {updateMany:vi.fn().mockResolvedValue({count:0})},
     chapter: {
       findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", projectId: "proj-1" }),
@@ -84,11 +84,13 @@ function createPrismaStub(options: PrismaStubOptions = {}) {
     chapter: {
       findFirst: vi.fn().mockResolvedValue(outerChapter)
     },
+    contentVersion: { findFirst: vi.fn().mockResolvedValue(null) },
     generationStep: {
       create: vi.fn().mockResolvedValue({ id: "step-x" }),
       update: vi.fn().mockResolvedValue({})
     },
     generationJob: {
+      findFirst: vi.fn().mockResolvedValue({ status: "RUNNING", attemptCount: 1 }),
       create: options.enqueueThrows
         ? vi.fn().mockRejectedValue(new Error("enqueue failed"))
         : vi.fn().mockResolvedValue({ id: "diag-job-1" }),
@@ -284,6 +286,8 @@ describe("methodology loading", () => {
       chapter: {
         findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", projectId: "proj-1", organizationId: "org-1" })
       },
+      generationJob: { findFirst: vi.fn().mockResolvedValue({ status: "RUNNING", attemptCount: 1 }) },
+      contentVersion: { findFirst: vi.fn().mockResolvedValue(null) },
       generationStep: {
         create: vi.fn().mockResolvedValue({ id: "step-x" }),
         update: vi.fn().mockResolvedValue({})
@@ -324,6 +328,8 @@ describe("methodology loading", () => {
       chapter: {
         findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", projectId: "proj-1", organizationId: "org-1" })
       },
+      generationJob: { findFirst: vi.fn().mockResolvedValue({ status: "RUNNING", attemptCount: 1 }) },
+      contentVersion: { findFirst: vi.fn().mockResolvedValue(null) },
       generationStep: {
         create: vi.fn().mockResolvedValue({ id: "step-x" }),
         update: vi.fn().mockResolvedValue({})
@@ -358,6 +364,8 @@ describe("model resolution", () => {
     const tx = createTxStub();
     return {
       prisma: {
+        generationJob: { findFirst: vi.fn().mockResolvedValue({ status: "RUNNING", attemptCount: 1 }) },
+        contentVersion: { findFirst: vi.fn().mockResolvedValue(null) },
         chapter: { findFirst: vi.fn().mockResolvedValue({ id: "chapter-1", projectId: "proj-1", organizationId: "org-1" }) },
         generationStep: {
           create: vi.fn().mockResolvedValue({ id: "step-x" }),
@@ -645,7 +653,7 @@ it("finalizes useful prose and its warning after optional extraction fails", asy
 it("persists successful pipeline memories in the same finalize transaction as the chapter",async()=>{
  const {prisma,tx}=createPrismaStub();
  const store={findMany:vi.fn().mockResolvedValue([]),create:vi.fn().mockResolvedValue({}),updateMany:vi.fn().mockResolvedValue({count:0})};
- const dbTx={...tx,projectMemory:store,$queryRaw:vi.fn().mockResolvedValue([{id:"chapter-1",content:"有效新章。"}])};
+ const dbTx={...tx,projectMemory:store,$queryRaw:vi.fn().mockImplementation(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{status:"RUNNING",attemptCount:1,output:null}] : [{id:"chapter-1",content:parts.join("").includes('chapter_no AS') ? "有效新章。" : null}])};
  prisma.$transaction.mockImplementation(async cb=>cb(dbTx));
  const model={generate:vi.fn().mockResolvedValueOnce({text:'{"chapterGoal":"写作","sceneBeats":[],"charactersInScene":[]}',inputTokens:2,outputTokens:2}).mockResolvedValueOnce({text:"有效新章。",inputTokens:2,outputTokens:2}).mockResolvedValueOnce({text:'{"characterChanges":[],"worldFacts":[{"fact":"钥匙来源待查"}],"newHooks":[],"summary":"发现钥匙","chapterSummary":"钥匙来源待查。"}',inputTokens:2,outputTokens:2})};
  await createGenerateChapterHandler({prisma:prisma as never,updateJobStatus:vi.fn(),model})({...baseJob,input:{qualityMode:"fast"}});
@@ -688,4 +696,56 @@ it("keeps the requested database memory excluded from actual worker plan and dra
     expect(call[0]).toContain("应保留的新线索");
     expect(call[0]).not.toContain("不应间接进入的秘密背景");
   }
+});
+
+it("rejects a generated draft when the author edited the chapter during planning", async () => {
+  const { prisma, tx } = createPrismaStub();
+  prisma.chapter.findFirst.mockResolvedValue({ id: "chapter-1", projectId: "proj-1", organizationId: "org-1", content: "原始正文" });
+  const model = { generate: vi.fn().mockImplementation(async () => {
+    tx.$queryRaw.mockImplementation(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "RUNNING", attemptCount: 1, output: null }] : [{ id: "chapter-1", projectId: "proj-1", content: "作者新稿" }]);
+    return { text: "旧请求生成稿", inputTokens: 1, outputTokens: 1 };
+  }) };
+  await expect(createGenerateChapterHandler({ prisma: prisma as never, updateJobStatus: vi.fn(), model })({ ...baseJob, input: { qualityMode: "fast", performanceBudget: { maxModelCalls: 2 } } })).rejects.toThrow("正文已变化");
+  expect(tx.chapter.update).not.toHaveBeenCalled();
+  expect(tx.contentVersion.create).not.toHaveBeenCalled();
+});
+
+it("recovers an existing generated version without models or overwriting later author text", async () => {
+  const { prisma, tx } = createPrismaStub();
+  const saved = { id: "saved-generation", versionNo: 3, content: "先前已保存草稿" };
+  prisma.contentVersion.findFirst.mockResolvedValue(saved);
+  tx.contentVersion.findFirst.mockResolvedValue(saved);
+  const resolveModel = vi.fn().mockRejectedValue(new Error("model unavailable"));
+  await createGenerateChapterHandler({ prisma: prisma as never, updateJobStatus: vi.fn(), resolveModel })(baseJob);
+  expect(resolveModel).not.toHaveBeenCalled();
+  expect(tx.chapter.update).not.toHaveBeenCalled();
+  expect(tx.contentVersion.create).not.toHaveBeenCalled();
+  expect(tx.generationJob.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+    status: "SUCCEEDED", output: expect.objectContaining({ versionId: "saved-generation", mode: "GENERATE_CHAPTER" })
+  }) }));
+});
+it("preserves cancellation and skips deep diagnostics after saving an in-flight generated draft", async () => {
+  const { prisma, tx } = createPrismaStub();
+  const model = { generate: vi.fn().mockImplementation(async () => {
+    tx.$queryRaw.mockImplementation(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "CANCELLED", attemptCount: 1, output: null }] : [{ id: "chapter-1", projectId: "proj-1", content: null }]);
+    return { text: "可用的在途稿", inputTokens: 1, outputTokens: 1 };
+  }) };
+  await createGenerateChapterHandler({ prisma: prisma as never, updateJobStatus: vi.fn(), model })({ ...baseJob, input: { qualityMode: "deep", performanceBudget: { maxModelCalls: 2 } } });
+  expect(tx.contentVersion.create).toHaveBeenCalledOnce();
+  expect(tx.generationJob.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.not.objectContaining({ status: "SUCCEEDED" }) }));
+  expect(prisma.generationJob.create).not.toHaveBeenCalled();
+});
+it("recognizes a committed generated draft when its transaction acknowledgment is lost", async () => {
+  const { prisma, tx } = createPrismaStub();
+  const normalTransaction = prisma.$transaction.getMockImplementation()!;
+  const saved = { id: "saved-generation", versionNo: 1, content: "生成稿" };
+  prisma.$transaction.mockImplementationOnce(async cb => {
+    await normalTransaction(cb);
+    prisma.contentVersion.findFirst.mockResolvedValue(saved);
+    tx.contentVersion.findFirst.mockResolvedValue(saved);
+    tx.$queryRaw.mockImplementation(async (parts: TemplateStringsArray) => parts.join("").includes("FROM generation_jobs") ? [{ status: "SUCCEEDED", attemptCount: 1, output: null }] : [{ id: "chapter-1", projectId: "proj-1", content: saved.content }]);
+    throw new Error("commit acknowledgment lost");
+  });
+  await expect(createGenerateChapterHandler({ prisma: prisma as never, updateJobStatus: vi.fn(), model: stubModel as never })(baseJob)).resolves.toBeUndefined();
+  expect(tx.contentVersion.create).toHaveBeenCalledOnce();
 });
