@@ -12,7 +12,7 @@ function mockDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
       generate: vi.fn()
         .mockResolvedValueOnce({ text: '{"chapterGoal":"open","sceneBeats":[],"charactersInScene":["Chen"]}', inputTokens: 10, outputTokens: 5 })
         .mockResolvedValueOnce({ text: "chapter draft content", inputTokens: 200, outputTokens: 80 })
-        .mockResolvedValueOnce({ text: '{"issues":[{"type":"consistency","detail":"voice drift","severity":"warning"}]}', inputTokens: 100, outputTokens: 30 })
+        .mockResolvedValueOnce({ text: '{"issues":[{"type":"consistency","detail":"voice drift","severity":"warning"}],"passed":false}', inputTokens: 100, outputTokens: 30 })
         .mockResolvedValueOnce({ text: "chapter revised content", inputTokens: 200, outputTokens: 100 })
         .mockResolvedValueOnce({ text: '{"characterChanges":[],"worldFacts":[],"newHooks":[],"summary":"gate opened","chapterSummary":"Chen activates the gate"}', inputTokens: 50, outputTokens: 60 } as { text: string; inputTokens: number; outputTokens: number })
     },
@@ -77,7 +77,7 @@ describe("chapter-pipeline", () => {
         generate: vi.fn()
           .mockResolvedValueOnce({ text: '{"chapterGoal":"x","sceneBeats":[],"charactersInScene":[]}', inputTokens: 10, outputTokens: 5 })
           .mockResolvedValueOnce({ text: "draft only", inputTokens: 10, outputTokens: 2 })
-          .mockResolvedValueOnce({ text: '{"issues":[]}', inputTokens: 10, outputTokens: 2 })
+          .mockResolvedValueOnce({ text: '{"issues":[],"passed":true}', inputTokens: 10, outputTokens: 2 })
           .mockResolvedValueOnce({ text: '{"characterChanges":[],"worldFacts":[],"newHooks":[],"summary":"","chapterSummary":""}', inputTokens: 10, outputTokens: 2 })
       }
     });
@@ -111,7 +111,7 @@ describe("chapter-pipeline", () => {
     const generate = vi.fn()
       .mockResolvedValueOnce({ text: '{"chapterGoal":"x","sceneBeats":[],"charactersInScene":[]}', inputTokens: 10, outputTokens: 5 })
       .mockResolvedValueOnce({ text: "draft", inputTokens: 10, outputTokens: 2 })
-      .mockResolvedValueOnce({ text: '{"issues":[]}', inputTokens: 10, outputTokens: 2 })
+      .mockResolvedValueOnce({ text: '{"issues":[],"passed":true}', inputTokens: 10, outputTokens: 2 })
       .mockResolvedValueOnce({ text: '{"characterChanges":[],"worldFacts":[],"newHooks":[],"summary":"","chapterSummary":""}', inputTokens: 10, outputTokens: 2 });
 
     const deps = mockDeps({
@@ -137,7 +137,7 @@ describe("chapter-pipeline", () => {
     const generate = vi.fn()
       .mockResolvedValueOnce({ text: '{"chapterGoal":"x","sceneBeats":[],"charactersInScene":[]}', inputTokens: 10, outputTokens: 5 })
       .mockResolvedValueOnce({ text: "draft", inputTokens: 10, outputTokens: 2 })
-      .mockResolvedValueOnce({ text: '{"issues":[]}', inputTokens: 10, outputTokens: 2 })
+      .mockResolvedValueOnce({ text: '{"issues":[],"passed":true}', inputTokens: 10, outputTokens: 2 })
       .mockResolvedValueOnce({ text: '{"characterChanges":[],"worldFacts":[],"newHooks":[],"summary":"","chapterSummary":""}', inputTokens: 10, outputTokens: 2 });
 
     const deps = mockDeps({
@@ -165,7 +165,7 @@ describe("chapter-pipeline", () => {
     const generate = vi.fn()
       .mockResolvedValueOnce({ text: '{"chapterGoal":"x","sceneBeats":[],"charactersInScene":[]}', inputTokens: 10, outputTokens: 5 })
       .mockResolvedValueOnce({ text: "草稿正文", inputTokens: 10, outputTokens: 2 })
-      .mockResolvedValueOnce({ text: '{"issues":[{"type":"pacing","detail":"节奏拖沓","severity":"warning"}]}', inputTokens: 10, outputTokens: 2 })
+      .mockResolvedValueOnce({ text: '{"issues":[{"type":"pacing","detail":"节奏拖沓","severity":"warning"}],"passed":false}', inputTokens: 10, outputTokens: 2 })
       .mockResolvedValueOnce({ text: "修改后的正文", inputTokens: 10, outputTokens: 2 })
       .mockResolvedValueOnce({ text: '{"characterChanges":[],"worldFacts":[],"newHooks":[],"summary":"","chapterSummary":""}', inputTokens: 10, outputTokens: 2 });
 
@@ -241,5 +241,80 @@ it("closes the active generation step when the provider fails without replacing 
   const deps=mockDeps({model:{generate:vi.fn().mockRejectedValue(failure)}});
   await expect(runChapterPipeline(deps)).rejects.toBe(failure);
   expect(deps.updateStep).toHaveBeenCalledWith(expect.objectContaining({status:"FAILED",promptSnapshot:expect.stringContaining("小说策划")}));
+  expect(deps.persistVersion).not.toHaveBeenCalled();
+});
+
+function responseSequence(texts: Array<string | Error>) {
+  const generate = vi.fn();
+  for (const text of texts) {
+    if (text instanceof Error) generate.mockRejectedValueOnce(text);
+    else generate.mockResolvedValueOnce({ text, inputTokens: 10, outputTokens: 5 });
+  }
+  return { generate };
+}
+const validPlan = '{"chapterGoal":"write","sceneBeats":[],"charactersInScene":[]}';
+const validExtraction = '{"characterChanges":[],"worldFacts":[],"newHooks":[],"summary":"ok","chapterSummary":"ok"}';
+
+it.each(["{}", "not json", '{"issues":[],"passed":"yes"}'])("preserves the draft and warns when review is malformed: %s", async text => {
+  const deps = mockDeps({ model: responseSequence([validPlan, "有效草稿", text, validExtraction]) });
+  const result = await runChapterPipeline(deps);
+  expect(deps.persistVersion).toHaveBeenCalledWith(expect.objectContaining({ content: "有效草稿" }));
+  expect(result).toMatchObject({ warnings: [expect.objectContaining({ stepKey: "review", code: "INVALID_OUTPUT" })] });
+  expect(deps.model.generate).toHaveBeenCalledTimes(4);
+});
+
+it("revises when review explicitly fails without listing individual issues", async () => {
+  const deps = mockDeps({ model: responseSequence([validPlan, "有效草稿", '{"issues":[],"passed":false}', "有效修订", validExtraction]) });
+  await runChapterPipeline(deps);
+  expect(deps.persistVersion).toHaveBeenCalledWith(expect.objectContaining({ content: "有效修订" }));
+});
+
+it.each(["review", "revise", "extract_memory"])("preserves useful prose when optional %s times out", async failedStep => {
+  const texts = [validPlan, "有效草稿", failedStep === "review" ? new Error("Request timed out.") : '{"issues":[{"type":"consistency","detail":"需核实","severity":"warning"}],"passed":false}', ...(failedStep === "review" ? [] : [failedStep === "revise" ? new Error("Request timed out.") : "有效修订"]), failedStep === "extract_memory" ? new Error("Request timed out.") : validExtraction];
+  const deps = mockDeps({ model: responseSequence(texts) });
+  const result = await runChapterPipeline(deps);
+  expect(deps.persistVersion).toHaveBeenCalledWith(expect.objectContaining({ content: failedStep === "extract_memory" ? "有效修订" : "有效草稿" }));
+  expect(result).toMatchObject({ warnings: [expect.objectContaining({ stepKey: failedStep, code: "MODEL_ERROR" })] });
+  expect(deps.updateStep).toHaveBeenCalledWith(expect.objectContaining({ status: "FAILED" }));
+});
+
+it("rejects whitespace draft before persistence", async () => {
+  const deps = mockDeps({ model: responseSequence([validPlan, " \n\t "]) });
+  await expect(runChapterPipeline(deps)).rejects.toThrow("EMPTY_MODEL_OUTPUT");
+  expect(deps.persistVersion).not.toHaveBeenCalled();
+});
+
+it("keeps the draft when revision returns only whitespace", async () => {
+  const deps = mockDeps({ model: responseSequence([validPlan, "有效草稿", '{"issues":[{"type":"consistency","detail":"需核实","severity":"warning"}],"passed":false}', " \n ", validExtraction]) });
+  const result = await runChapterPipeline(deps);
+  expect(deps.persistVersion).toHaveBeenCalledWith(expect.objectContaining({ content: "有效草稿" }));
+  expect(result).toMatchObject({ warnings: [expect.objectContaining({ stepKey: "revise", code: "INVALID_OUTPUT" })] });
+});
+it.each(["not json", "{}", '{"characterChanges":[],"worldFacts":[],"newHooks":[],"summary":"ok"}'])("warns when optional memory extraction is incomplete: %s",async text=>{
+  const deps=mockDeps({model:responseSequence([validPlan,"有效草稿",'{"issues":[],"passed":true}',text])});
+  const result=await runChapterPipeline(deps);
+  expect(deps.persistVersion).toHaveBeenCalledWith(expect.objectContaining({content:"有效草稿"}));
+  expect(result.warnings).toEqual([expect.objectContaining({stepKey:"extract_memory",code:"INVALID_OUTPUT"})]);
+  expect(deps.updateStep).toHaveBeenCalledWith(expect.objectContaining({status:"FAILED"}));
+});
+it("does not swallow a database failure while recording an optional request failure",async()=>{
+  const storageFailure=new Error("database unavailable");
+  const deps=mockDeps({model:responseSequence([validPlan,"有效草稿",new Error("Request timed out.")])});
+  deps.updateStep=vi.fn().mockResolvedValueOnce({}).mockResolvedValueOnce({}).mockRejectedValueOnce(storageFailure);
+  await expect(runChapterPipeline(deps)).rejects.toBe(storageFailure);
+  expect(deps.persistVersion).not.toHaveBeenCalled();
+});
+
+it("counts failed optional requests toward the model-call budget",async()=>{
+  const deps=mockDeps({model:responseSequence([validPlan,"有效草稿",new Error("Request timed out.")]),performance:{qualityMode:"balanced",budget:normalizePerformanceBudget("balanced",{maxModelCalls:3})}});
+  const result=await runChapterPipeline(deps);
+  expect(deps.model.generate).toHaveBeenCalledTimes(3);
+  expect(result.performanceSummary.modelCalls).toBe(3);
+  expect(result.performanceSummary.skippedSteps).toContainEqual({stepKey:"extract_memory",reason:"budget_model_calls"});
+});
+it("preserves immediate failure semantics for optional-step authentication errors",async()=>{
+  const denied=Object.assign(new Error("Unauthorized"),{status:401});
+  const deps=mockDeps({model:responseSequence([validPlan,"有效草稿",denied])});
+  await expect(runChapterPipeline(deps)).rejects.toBe(denied);
   expect(deps.persistVersion).not.toHaveBeenCalled();
 });

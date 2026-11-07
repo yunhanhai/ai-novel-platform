@@ -1,4 +1,5 @@
-﻿import { parseQualityConstraints, formatQualityConstraints, checkQualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
+﻿import { classifyModelError } from "./model-error-classifier";
+import { parseQualityConstraints, formatQualityConstraints, checkQualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
 import type { ActivationReport } from "../context/keyword-activation";
 import type { StyleGuide, MethodologyGuide } from "../context/build-context-packet";
 import type { ModelGenerateOptions } from "@ai-novel/model-adapters";
@@ -27,7 +28,7 @@ interface FakeModelLike {
 
 interface StepRecord {
   stepKey: string;
-  status: "SUCCEEDED" | "SKIPPED";
+  status: "SUCCEEDED" | "SKIPPED" | "FAILED";
   outputPreview: string;
   inputTokens: number;
   outputTokens: number;
@@ -88,7 +89,14 @@ export interface PipelineDeps {
   performance?: { qualityMode: QualityMode; budget: PerformanceBudget };
 }
 
+export interface GenerationWarning {
+  stepKey: string;
+  code: "MODEL_ERROR" | "INVALID_OUTPUT";
+  message: string;
+}
+
 interface PipelineResult {
+  warnings: GenerationWarning[];
   steps: StepRecord[];
   extracted: ExtractOutput;
   activationReport: ActivationReport;
@@ -108,11 +116,12 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
 
   const context = buildContext(chapterId);
   const steps: StepRecord[] = [];
+  const warnings: GenerationWarning[] = [];
 
   async function execStep(
     key: string,
     promptText: string,
-    opts: { previewLen?: number } = {}
+    opts: { previewLen?: number; optional?: boolean; isValid?: (text: string) => boolean } = {}
   ): Promise<string> {
     const step = await createStep({ stepKey: key });
     const started = Date.now();
@@ -123,17 +132,26 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
         ...(["plan", "review", "extract_memory"].includes(key) ? { responseFormat: "json_object" as const } : {})
       });
     } catch (error) {
+      const elapsed = Date.now() - started;
+      tracker.recordModelStep({ inputTokens: 0, outputTokens: 0, latencyMs: elapsed });
       try {
-        await updateStep({ stepId: step.id, status: "FAILED", outputPreview: "模型请求失败，请查看任务错误提示", inputTokens: 0, outputTokens: 0, latencyMs: Date.now() - started, promptSnapshot: promptText.slice(0, 4000) });
-      } catch { /* The provider error remains the poller's source for retry classification. */ }
-      throw error;
+        await updateStep({ stepId: step.id, status: "FAILED", outputPreview: "模型请求失败，未取得供应商用量", inputTokens: 0, outputTokens: 0, latencyMs: elapsed, promptSnapshot: promptText.slice(0, 4000) });
+      } catch (recordError) {
+        // Optional model failure must not hide a database failure.
+        if (opts.optional) throw recordError;
+      }
+      if (!opts.optional || !classifyModelError(error).retryable) throw error;
+      warnings.push({ stepKey: key, code: "MODEL_ERROR", message: "该增强步骤请求失败，已保留有效正文；质量或记忆尚未完成。" });
+      steps.push({ stepKey: key, status: "FAILED", outputPreview: "模型请求失败", inputTokens: 0, outputTokens: 0, latencyMs: elapsed });
+      return "";
     }
     const elapsed = Date.now() - started;
-    const preview = result.text.slice(0, opts.previewLen ?? 200);
+    const valid = opts.isValid ? opts.isValid(result.text) : true;
+    const preview = valid ? result.text.slice(0, opts.previewLen ?? 200) : "模型输出无效，未用于覆盖正文";
 
     await updateStep({
       stepId: step.id,
-      status: "SUCCEEDED",
+      status: valid ? "SUCCEEDED" : "FAILED",
       outputPreview: preview,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
@@ -149,13 +167,18 @@ export async function runChapterPipeline(deps: PipelineDeps): Promise<PipelineRe
 
     steps.push({
       stepKey: key,
-      status: "SUCCEEDED",
+      status: valid ? "SUCCEEDED" : "FAILED",
       outputPreview: preview,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
       latencyMs: elapsed
     });
 
+    if (!valid) {
+      if (!opts.optional) throw new Error("EMPTY_MODEL_OUTPUT: 模型未返回有效正文，原章节未改写");
+      warnings.push({ stepKey: key, code: "INVALID_OUTPUT", message: "该增强步骤未返回有效结果，已保留上一份有效正文；需要人工复核。" });
+      return "";
+    }
     return result.text;
   }
 
@@ -212,7 +235,7 @@ ${qualityHint}
 
 只输出章节正文，不要任何解释、标题或前后缀。`;
 
-  let draftText = await execStep("draft", draftPrompt, { previewLen: 500 });
+  let draftText = await execStep("draft", draftPrompt, { previewLen: 500, isValid: text => text.trim().length > 0 });
 
   const reviewExtras: string[] = [];
   if (context.styleGuide?.banned && context.styleGuide.banned.length > 0) {
@@ -224,6 +247,7 @@ ${qualityHint}
   const reviewExtraText = reviewExtras.length > 0 ? `\n\n【必查项】\n${reviewExtras.map((e) => `- ${e}`).join("\n")}` : "";
 
   const reviewPrompt = `你是一位严格的审校编辑。请审校本章的连贯性、世界逻辑、节奏、文风与方法论问题。
+审校须区分可观察事实与人物推断；线索相似或时间异常不等于已证实原因。指出正文中缺少证据却被写成确定事实的结论，并建议保留疑点。
 章节正文：
 ${draftText}
 
@@ -244,7 +268,7 @@ ${qualityHint}
   "passed": true
 }`;
 
-  let review: ReviewOutput = { issues: [], passed: true };
+  let review: ReviewOutput = { issues: [], passed: false };
   if (qualityMode === "fast") {
     await skipStep("review", "quality_mode");
   } else {
@@ -252,8 +276,8 @@ ${qualityHint}
     if (!reviewCheck.ok) {
       await skipStep("review", reviewCheck.reason);
     } else {
-      const reviewText = await execStep("review", reviewPrompt);
-      review = safeJson<ReviewOutput>(reviewText, { issues: [], passed: true });
+      const reviewText = await execStep("review", reviewPrompt, { optional: true, isValid: text => parseReview(text) !== null });
+      review = parseReview(reviewText) ?? { issues: [], passed: false };
     }
   }
 
@@ -282,7 +306,8 @@ ${qualityHint}
     if (!reviseCheck.ok) {
       await skipStep("revise", reviseCheck.reason);
     } else {
-      draftText = await execStep("revise", revisePrompt, { previewLen: 500 });
+      const revised = await execStep("revise", revisePrompt, { previewLen: 500, optional: true, isValid: text => text.trim().length > 0 });
+      if (revised) draftText = revised;
     }
   }
 
@@ -341,15 +366,16 @@ ${qualityHint}
   if (!extractCheck.ok) {
     await skipStep("extract_memory", extractCheck.reason);
   } else {
-    const extractText = await execStep("extract_memory", extractPrompt);
-    extracted = safeJson<ExtractOutput>(extractText, {
+    const extractText = await execStep("extract_memory", extractPrompt, { optional: true, isValid: text => parseExtraction(text) !== null });
+    extracted = parseExtraction(extractText) ?? {
       characterChanges: [], worldFacts: [], newHooks: [],
       summary: "", chapterSummary: "pending extraction"
-    });
+    };
   }
 
   return {
     steps,
+    warnings,
     extracted,
     activationReport: context.activationReport,
     performanceSummary: tracker.summary({ contextBudget: context.contextBudget, contextFingerprint: context.contextFingerprint })
@@ -364,4 +390,34 @@ function safeJson<T>(text: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function parseReview(text: string): ReviewOutput | null {
+  const value = safeJson<unknown>(text, null);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.passed !== "boolean" || !Array.isArray(raw.issues)) return null;
+  const types = ["consistency", "world_conflict", "foreshadowing", "timeline", "knowledge_boundary", "ai_slop", "pacing", "style_drift", "methodology_violation"];
+  const issues: ReviewIssue[] = [];
+  for (const item of raw.issues) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const row = item as Record<string, unknown>;
+    if (typeof row.type !== "string" || !types.includes(row.type) || typeof row.detail !== "string" || !row.detail.trim() ||
+      typeof row.severity !== "string" || !["info", "warning", "error"].includes(row.severity) ||
+      (row.suggestion !== undefined && typeof row.suggestion !== "string")) return null;
+    issues.push({ type: row.type as ReviewIssue["type"], detail: row.detail, severity: row.severity as ReviewIssue["severity"], ...(typeof row.suggestion === "string" ? { suggestion: row.suggestion } : {}) });
+  }
+  if (!raw.passed && issues.length === 0) issues.push({ type: "consistency", detail: "审校明确未通过但未列出具体问题，请按原上下文重新核查事实依据并修订。", severity: "warning" });
+  return { passed: raw.passed, issues };
+}
+function parseExtraction(text: string): ExtractOutput | null {
+  const value = safeJson<unknown>(text, null);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.summary !== "string" || typeof raw.chapterSummary !== "string") return null;
+  for (const [key, fields] of [["characterChanges", ["characterName", "change"]], ["worldFacts", ["fact"]], ["newHooks", ["hook"]]] as const) {
+    const rows = raw[key];
+    if (!Array.isArray(rows) || rows.some(row => !row || typeof row !== "object" || Array.isArray(row) || fields.some(field => typeof row[field] !== "string"))) return null;
+  }
+  return raw as unknown as ExtractOutput;
 }

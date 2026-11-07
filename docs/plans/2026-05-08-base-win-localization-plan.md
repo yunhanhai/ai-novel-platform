@@ -1090,3 +1090,12 @@ git diff --check
 - [x] Verify1029 tests+1 skipped, typecheck5/5, production build, browser3 passed+1 skipped in process-scoped fake mode, real SDK loopback7 and rollback-only real DB failure fixture.
 - [x] Update report/progress/manual; keep private files and prose outsideGit; integrate task branch into master and synchronize both remotes with commit/tree receipts outsideGit.
 - [ ] Remaining: stable balanced generation under the chosen channel, causal/content quality reviewed by the author, GLM full-task reliability and independent scoring evidence.
+## Task 57: 2026-11-07 Balanced Generation Resilience
+
+- [x] Independently reproduce malformed review, optional extraction timeout and whitespace-output data-loss paths; RED/GREEN fixes preserve valid prose and explicit warnings.
+- [x] Validate review/extraction structure, keep configuration/database failures immediate, count failed model calls, reject blank drafts and preserve previous draft on invalid revisions.
+- [x] Verify warning persistence through finalize and browser display, actual PostgreSQL rollback fixtures and unchanged mandatory failure behavior.
+- [x] Preserve4096 blank-output failure; compare one8192 draft and one complete project-scoped8192 balanced task without changing organization defaults or production timeout.
+- [x] Observe real plan/draft/review/revise success,800chars,AI version,context fingerprint and token receipts; explicitly record remaining unsupported-background issue and skipped memory extraction.
+- [x] Verify1045 tests+1skip,typecheck5/5,build,e2e3pass+1skip; update report/progress/onboarding, integrate branch and synchronize both masters with external hash receipts.
+- [ ] Remaining: repeated channel reliability, author-approved causal consistency, real memory extraction and independent provider judgement.

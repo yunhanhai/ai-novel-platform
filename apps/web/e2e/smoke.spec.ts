@@ -99,6 +99,7 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(editor).not.toBeEmpty({ timeout: 10_000 });
 
   await expect(page.getByText("正文约束检查通过", { exact: true })).toBeVisible();
+  await expect(page.getByText("正文已保存 · 审阅未完成", { exact: true })).toBeVisible();
   await expect(page.getByText(/上下文约 .* tokens/)).toBeVisible();
   await page.getByRole("tab", { name: "性能", exact: true }).click();
   await expect(page.locator(".performance-panel")).toBeVisible();

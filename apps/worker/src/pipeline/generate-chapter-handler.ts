@@ -11,7 +11,7 @@ import { createFakeModel } from "./fake-model";
 import { deriveGenerationContextTokenBudget } from "../context/generation-context-budget";
 import { createContextFingerprint, latestContextTimestamp } from "../context/context-fingerprint";
 import { estimateTokens } from "@ai-novel/shared/generation/token-estimate";
-import { runChapterPipeline } from "./chapter-pipeline";
+import { runChapterPipeline, type GenerationWarning } from "./chapter-pipeline";
 import type { GenerationJob } from "../poll";
 import type { RuntimeModel } from "../model-runtime";
 
@@ -92,7 +92,7 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
       throw error;
     }
 
-    if (!pipelineResult.content) {
+    if (!pipelineResult.content.trim()) {
       await fail(job.id, ERROR_CODES.HANDLER_ERROR, "pipeline did not produce final content");
       return;
     }
@@ -106,6 +106,7 @@ export function createGenerateChapterHandler(deps: HandlerDeps) {
         wordCount: computeWordCount(pipelineResult.content),
         contextSummary: pipelineResult.contextSummary,
         performanceSummary: pipelineResult.performanceSummary,
+        generationWarnings: pipelineResult.warnings,
         usage: { ...pipelineResult.usage, modelName, billingSource }
       });
 
@@ -143,6 +144,7 @@ interface PipelineRunParams {
 }
 
 interface PipelineRunResult {
+  warnings: GenerationWarning[];
   content: string;
   contextSummary: ContextSummary;
   usage: UsageTotals;
@@ -271,6 +273,7 @@ async function runPipelineForContentWithContext(params: PipelineRunParams): Prom
       excludedCount: context.assets.excluded.length
     },
     usage,
+    warnings: pipeline.warnings,
     performanceSummary: pipeline.performanceSummary
   };
 }
@@ -480,6 +483,7 @@ interface CommitParams {
   wordCount: number;
   contextSummary?: ContextSummary;
   performanceSummary?: PerformanceSummary;
+  generationWarnings?: GenerationWarning[];
   usage?: UsageRecord;
 }
 
@@ -498,11 +502,12 @@ interface FinalOutput {
   wordCount: number;
   contextSummary?: ContextSummary;
   performanceSummary?: PerformanceSummary;
+  generationWarnings?: GenerationWarning[];
   qualitySummary?: QualitySummary;
 }
 
 export async function commitFinalize(params: CommitParams): Promise<FinalOutput> {
-  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, usage } = params;
+  const { prisma, job, chapter, finalContent, wordCount, contextSummary, performanceSummary, generationWarnings, usage } = params;
 
   return prisma.$transaction(async (tx: Tx) => {
     await assertChapterStillValid(tx, chapter, job);
@@ -541,6 +546,7 @@ export async function commitFinalize(params: CommitParams): Promise<FinalOutput>
       versionNo: version.versionNo,
       wordCount,
       ...(contextSummary ? { contextSummary } : {}),
+      ...(generationWarnings?.length ? { generationWarnings } : {}),
       ...(rules ? { qualitySummary: checkQualityConstraints(finalContent, rules) } : {}),
       ...(performanceSummary ? { performanceSummary } : {})
     };

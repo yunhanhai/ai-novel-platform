@@ -1976,3 +1976,13 @@ git diff --check   通过
 - 验证：1029单测+1跳过（21/67/50/260/631）、typecheck5/5、生产build通过；e2e完整3通过+1跳过（进程级fake，不改本地real文件）；7项真实SDK回环；真实DB故障夹具事务回滚、step/job FAILED且无版本。组织预检ready=true。
 - 本轮真实4任务3成功1失败，任务内6次+直接探测2次请求，均零重试；成功usage输入3247/输出11997，不含超时可能的供应商计量。报告`reports/2026-11-07-diagnostic-quality-followup.md`保存证据范围；凭据、正文与私有备份均在仓库外。
 - 临时分支`codex/diagnostic-quality`完成后快进集成master并同步GitHub/Gitee，原实验工作树保持原样；只发布代码与脱敏记录，无生产部署。下一步少量定位渠道波动/均衡超时及作者修改对照，不扩大自动连更。
+---
+
+## 2026-11-07 — 均衡生成容错与真实完整样本
+
+- 独立只读复核并RED复现审校{}崩溃/非JSON假通过、抽取超时丢有效草稿、空白正文覆盖。修复review/extraction结构校验、passed=false无issues一次修订、空白draft拒绝/空白revise保留；可选增强transient失败保留正文并generationWarnings事务落库/界面展示，配置类及DB错误仍上抛，失败调用计预算。
+- 同轮默认4096真实balanced返回空草稿（4096输出token）正确FAILED、0版本。8192同prompt对照返回非空但只用3492token，不能单独归因为额度；未修改组织默认/生产超时。
+- 项目专用8192候选balanced job `0c385375-12e3-470e-8d81-9b48fab77460`四请求plan/draft/review/revise成功，258.483秒、800字、AI版本1、质量字数/片段检查通过；输入4114/输出10329，无降级。extract因4调用上限SKIPPED，不宣称真实记忆验收。
+- 审校实际纠正“死亡时间已知”的无依据结论，修订后保留身份怀疑；但新增“曾有人告知”的背景仍需作者核实。单样本不证明稳定性/质量真值，旧正文/原实验工作树保持原样。
+- 验证1045单测+1跳过（21/67/50/276/631）、typecheck5/5、build、完整e2e3通过+1跳过（进程fake）、3项真实DB回滚夹具、最终只读版本/用量/默认配置核对。报告`reports/2026-11-07-balanced-resilience.md`及仓库外证据记录失败与限制。
+- 分支codex/balanced-resilience完成后快进master、同步双远程并保存hash回执，无部署/迁移/凭据提交。下一步作者真实修订对照或独立渠道稳定性验证，不扩大连更。

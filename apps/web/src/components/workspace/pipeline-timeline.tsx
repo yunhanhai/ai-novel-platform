@@ -59,6 +59,12 @@ export function PipelineTimeline({ job }: Props) {
           <p className="muted">片段命中仅供核对，情节与语义仍需审阅。</p>
         </div>
       )}
+      {job.output?.generationWarnings?.map((warning, index) => (
+        <div key={`${warning.stepKey}-${index}`} className="pipeline-warning" role="status">
+          <strong>正文已保存 · {labelForPipelineStep(warning.stepKey)}未完成</strong>
+          <p className="muted">{warning.message}</p>
+        </div>
+      ))}
       {job.output?.diagnosticWarning && (
         <div className="pipeline-warning" role="status">
           <span className="tag tag-warning">诊断未排队</span>

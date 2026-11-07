@@ -626,3 +626,15 @@ it("preserves generated prose and exposes failed deterministic constraints witho
   expect(tx.contentVersion.create.mock.calls[0]?.[0].data.content).toBe("短正文");
   expect(tx.generationJob.update.mock.calls[0]?.[0].data.output.qualitySummary).toMatchObject({passed:false,charCount:3,lengthPassed:false,missingFacts:["死亡预告"]});
 });
+
+it("finalizes useful prose and its warning after optional extraction fails", async () => {
+  const { prisma, tx } = createPrismaStub();
+  const model = { generate: vi.fn()
+    .mockResolvedValueOnce({ text: '{"chapterGoal":"写作","sceneBeats":[],"charactersInScene":[]}', inputTokens: 10, outputTokens: 5 })
+    .mockResolvedValueOnce({ text: "不应因抽取失败而消失的正文。", inputTokens: 20, outputTokens: 10 })
+    .mockResolvedValueOnce({ text: '{"issues":[],"passed":true}', inputTokens: 10, outputTokens: 5 })
+    .mockRejectedValueOnce(new Error("Request timed out.")) };
+  await createGenerateChapterHandler({ prisma: prisma as never, updateJobStatus: vi.fn(), model })(baseJob);
+  expect(tx.contentVersion.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ content: "不应因抽取失败而消失的正文。" }) }));
+  expect(tx.generationJob.update.mock.calls[0]?.[0].data.output.generationWarnings).toEqual([expect.objectContaining({ stepKey: "extract_memory", code: "MODEL_ERROR" })]);
+});

@@ -358,6 +358,7 @@ export interface JobSummary {
     qualitySummary?: { passed: boolean; charCount: number; minChars?: number; maxChars?: number; lengthPassed: boolean; missingFacts: string[] };
     diagnosticDegraded?: boolean;
     diagnosticWarning?: string;
+    generationWarnings?: Array<{ stepKey: string; code: string; message: string }>;
     mode?: string;
     selectedText?: string;
     newText?: string;
