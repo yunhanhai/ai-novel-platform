@@ -6,7 +6,7 @@ import type { QualityConstraints } from "@ai-novel/shared/generation/quality-con
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildGenerationRequestBody } from "./job-request";
 import { useOrganization } from "../organization-context";
-import { findLocalDraft, saveLocalDraft, removeLocalDraft, markLocalDraftHandled, type DraftReceipt, type DraftScope } from "./local-drafts";
+import { inspectLocalDrafts, saveLocalDraft, removeLocalDraft, markLocalDraftHandled, type DraftReceipt, type DraftScope } from "./local-drafts";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -140,7 +140,7 @@ export function useChapters(projectId: string | null): UseChaptersResult {
 }
 
 interface UseChapterContentResult {
-  localDraft: { updatedAt: number; characters: number } | null;
+  localDraft: { updatedAt: number; characters: number; recoverableCount: number; estimatedBytes: number } | null;
   localDraftError: string | null;
   restoreLocalDraft: () => void;
   discardLocalDraft: () => void;
@@ -190,9 +190,21 @@ export function useChapterContent(
     if (!scope || scope.chapterId !== id) return;
     try {
       writerRef.current ??= crypto.randomUUID();
+      const prior = ownDraftRef.current;
       ownDraftRef.current = saveLocalDraft(localStorage, scope, writerRef.current, text, baseHash);
+      if (prior?.draft.version === 2) removeLocalDraft(localStorage, prior);
       setLocalDraftError(null);
     } catch { setLocalDraftError("本机草稿备份失败，请确认服务器已保存后再离开。"); }
+  }, []);
+  const refreshLocalDraftOffer = useCallback((id: string, remote: string) => {
+    const scope = draftScopeRef.current;
+    if (activeIdRef.current !== id || scope?.chapterId !== id) return;
+    try {
+      const summary = inspectLocalDrafts(localStorage, scope, remote);
+      pendingDraftRef.current = summary.latest;
+      setLocalDraft(summary.latest ? { updatedAt: summary.latest.draft.updatedAt, characters: Array.from(summary.latest.draft.content).length,
+        recoverableCount: summary.recoverableCount, estimatedBytes: summary.estimatedBytes } : null);
+    } catch { setLocalDraftError("无法读取本机草稿，服务器正文仍可编辑。"); }
   }, []);
   const clearConfirmedDraft = useCallback((text: string, id: string, currentDraftFinished = false) => {
     try {
@@ -226,18 +238,12 @@ export function useChapterContent(
         dirtyRef.current = false; setSaveStatus("idle");
       }
       if (mode === "normal" && !dirtyRef.current && draftScopeRef.current?.chapterId === id) {
-        try {
-          const receipt = findLocalDraft(localStorage, draftScopeRef.current, remote);
-          if (receipt && receipt.draft.content !== remote) {
-            pendingDraftRef.current = receipt;
-            setLocalDraft({ updatedAt: receipt.draft.updatedAt, characters: Array.from(receipt.draft.content).length });
-          }
-        } catch { setLocalDraftError("无法读取本机草稿，服务器正文仍可编辑。"); }
+        refreshLocalDraftOffer(id, remote);
       }
       return true;
     } catch { return false; }
     finally { if (activeIdRef.current === id && fetchSequenceRef.current === sequence) setLoadingContent(false); }
-  }, []);
+  }, [refreshLocalDraftOffer]);
 
   useEffect(() => {
     activeIdRef.current = chapterId;
@@ -384,9 +390,12 @@ export function useChapterContent(
   const discardLocalDraft = useCallback(() => {
     const receipt = pendingDraftRef.current;
     if (!receipt || receipt.draft.chapterId !== activeIdRef.current) return;
-    try { markLocalDraftHandled(localStorage, receipt); pendingDraftRef.current = null; setLocalDraft(null); }
+    try {
+      markLocalDraftHandled(localStorage, receipt);
+      refreshLocalDraftOffer(receipt.draft.chapterId, persistedByChapterRef.current.get(receipt.draft.chapterId) ?? "");
+    }
     catch { setLocalDraftError("本机草稿记录未能丢弃，请稍后重试。"); }
-  }, []);
+  }, [refreshLocalDraftOffer]);
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);

@@ -1263,3 +1263,12 @@ git diff --check
 - [x] Verify1178 tests+1skip,typecheck5/5,build,e2e53pass+1skip including9new local recovery cases;storage6 and independent13 targeted checks clear.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
 - [ ] Remaining:storage lifecycle/capacity UI,long-prose performance,full offline/cross-device recovery and real semantic quality need separate evidence.
+
+## Task 76: 2026-11-08 Local Draft Revision Lifecycle
+
+- [x] Reproduce retained processed prose/markers and mutable writer-key limits;write new immutable v2 revision records without schema migration.
+- [x] Write new before clearing own prior revision,release confirmed/explicitly discarded v2 records,retain safe legacy v1 handling and all unconfirmed drafts.
+- [x] Show scoped recoverable count/estimated UTF16 size and next revision after discard,validate physical key/payload and preserve quota/cleanup failure receipts.
+- [x] Verify1185 tests+1skip,typecheck5/5,build,e2e58pass+1skip including5new lifecycle cases;storage13 and independent20 targeted checks clear.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
+- [ ] Remaining:legacy/full-site storage management,long-prose input benchmarks,offline durability and real semantic quality need separate evidence.

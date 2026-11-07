@@ -9,7 +9,7 @@ export interface EditorSelection {
 }
 
 interface EditorPaneProps {
-  localDraft?: { updatedAt: number; characters: number } | null;
+  localDraft?: { updatedAt: number; characters: number; recoverableCount: number; estimatedBytes: number } | null;
   localDraftError?: string | null;
   onRestoreLocalDraft?: () => void;
   onDiscardLocalDraft?: () => void;
@@ -97,6 +97,7 @@ export function EditorPane({
       {localDraft && (
         <section className="external-update-notice" aria-label="本地草稿恢复">
           <p>此浏览器保留了未保存的本地稿（{localDraft.characters} 字），可恢复到编辑器后核对。服务器正文尚未替换。</p>
+          <p className="muted">当前章节可恢复 {localDraft.recoverableCount} 份，本机记录约 {(localDraft.estimatedBytes / 1024).toFixed(1)} KiB。每次只处理当前这一份。</p>
           <button type="button" className="btn-ghost btn-small" onClick={onRestoreLocalDraft}>恢复本地稿</button>
           <button type="button" className="btn-ghost btn-small" onClick={onDiscardLocalDraft}>丢弃此本地稿</button>
         </section>

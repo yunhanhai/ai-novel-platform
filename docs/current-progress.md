@@ -2167,3 +2167,13 @@ git diff --check   通过
 - 最终1178单测+1skip（42/67/50/364/655）、typecheck5/5、build、完整e2e53pass+1skip（fake，4.9m，新增9项），存储6项及独立原hook/13定向无阻断；覆盖双页不误删、跨账号章节、即时刷新/远端改文/明确清理。
 - 报告`reports/2026-11-08-local-draft-recovery.md`明确本机明文副本、共享设备界面隔离非加密、站点数据清除/配额/崩溃边界、无TTL自动删除和无长稿性能基准，不冒充服务器已保存或跨设备同步。
 - 外部模型0，真实正文/记忆/配置未修改，无迁移部署；codex/local-draft-recovery验证后快进master同步双远程并外存commit/tree回执，原实验保留。
+
+---
+
+## 2026-11-08 — 本机草稿清理与容量可见
+
+- 存储RED证实已处理v1正文及marker残留、同writer可变key限制安全清理；新v2每修订独立key，写新成功更新ref后才清旧，确认/明确丢弃释放本版，不累积新格式marker；v1安全兼容不删可变key。
+- 恢复提示显示当前章可恢复份数与UTF16估算占用，逐份丢弃展示下一份，不按TTL删未存稿；严格key/payload范围核对，配额失败保留旧副本，清旧失败新receipt仍能确认清理。
+- 最终1185单测+1skip（42/67/50/364/662）、typecheck5/5、build、完整e2e58pass+1skip（fake，4.9m，新增5项），存储13项/独立原hook20定向无阻断。
+- 报告`reports/2026-11-08-draft-storage-lifecycle.md`明确估算非剩余配额、临时双份空间、无TTL/无全站v1清理/无长稿性能基准及明文本机边界；测试只用合成稿。
+- 外部模型0，真实正文/记忆/配置不变，无迁移部署；codex/draft-storage-lifecycle验证后快进master同步双远程并外存commit/tree回执，原实验保持。
