@@ -569,6 +569,23 @@ describe("commitFinalize", () => {
 });
 
 describe("generation context evidence", () => {
+  it("carries the stored project premise into planning and drafting", async () => {
+    const { prisma } = createPrismaStub();
+    const premise = "夜班失物招领员必须与保安发生利益冲突，寄件人来自明天。";
+    prisma.chapter.findFirst.mockResolvedValue({
+      id: "chapter-1", projectId: "proj-1", organizationId: "org-1", chapterNo: 1,
+      title: "钥匙", outlineSummary: "核对寄件人", project: { title: "雨夜", styleBrief: null, premise }
+    });
+    const model = { generate: vi.fn().mockResolvedValue({ text: "正文", inputTokens: 10, outputTokens: 10 }) };
+    await createGenerateChapterHandler({ prisma: prisma as never, updateJobStatus: vi.fn(), model })(
+      { ...baseJob, input: { qualityMode: "fast", performanceBudget: { maxModelCalls: 2 } } }
+    );
+    expect(prisma.chapter.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ project: { select: expect.objectContaining({ premise: true }) } })
+    }));
+    expect(model.generate).toHaveBeenCalledTimes(2);
+    for (const [prompt] of model.generate.mock.calls) expect(prompt).toContain(premise);
+  });
   it("caps optional context by the input performance budget and saves a content fingerprint", async () => {
     const { prisma, tx } = createPrismaStub();
     prisma.chapter.findFirst.mockResolvedValue({

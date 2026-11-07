@@ -39,7 +39,7 @@ describe("buildChapterContextPreview", () => {
       chapterNo: 3,
       title: "Gate",
       outlineSummary: "Hero opens Gate",
-      project: { title: "Starfall", styleBrief: "lean prose" },
+      project: { title: "Starfall", styleBrief: "lean prose", premise: "Hero must pay a debt to open the gate" },
       targetOutlines: [{ summary: "Hero opens Gate with old key" }]
     });
     prisma.character.findMany.mockResolvedValue([
@@ -112,5 +112,7 @@ describe("buildChapterContextPreview", () => {
     expect(preview?.included.some((asset) => asset.id === "world-1")).toBe(true);
     expect(preview?.available).toEqual(expect.any(Array));
     expect(preview?.promptPreview).toContain("Starfall");
+    expect(preview?.promptPreview).toContain("Hero must pay a debt to open the gate");
+    expect(prisma.chapter.findFirst).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ project: { select: expect.objectContaining({ premise: true }) } }) }));
   });
 });

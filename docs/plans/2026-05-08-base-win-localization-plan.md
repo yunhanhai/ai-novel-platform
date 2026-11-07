@@ -1068,3 +1068,15 @@ git diff --check
 - [x] Verify 1001 tests + 1 skipped, typecheck 5/5, production build, e2e 3 passed + 1 skipped; independent review and diff checks complete.
 - [x] Update onboarding/progress/report and integrate back to master, synchronize both remotes with final receipts.
 - [ ] Real provider network/quota/output acceptance remains pending local supplier configuration.
+
+## Task 55: 2026-11-07 NAPI Real Model Acceptance and Premise Repair
+
+- [x] Configure the user-supplied local provider with AES-GCM storage; back up four ignored environment files and synchronize real mode/master key in both checkouts without committing secrets.
+- [x] Verify the remote model catalog and short visible responses for GLM/Step; distinguish empty HTTP200 reasoning-only output from useful completion.
+- [x] Execute targeted real resolver/adapter/handler/poller/database jobs, with one attempt, zero SDK retries, per-request120s cancellation and bounded calls; no all-organization poller.
+- [x] Preserve GLM generation/continuation timeout failures; use validated Step as default and retain GLM as a candidate.
+- [x] Reproduce dropped project premise with RED tests, then forward it through generation/context preview/diagnostics; verify the actual DB preview and real post-fix prompt/output.
+- [x] Run Step generation before/after repair and continuation; verify AI versions, unchanged continuation prefix, usage tokens and generation context fingerprint.
+- [x] Verify 1003 tests passed + 1 skipped, typecheck5/5 and production build; retain actual model evidence outsideGit and document quality/latency/cost limits.
+- [x] Close final Step diagnostic as a 120s timeout failure without retry or invented scores; retain the receipt, preserve successful prose, and record partial acceptance in reports/2026-11-07-napi-real-acceptance.md. Integrate the reviewed change and synchronize both master refs with external commit/tree receipts.
+- [ ] Remaining quality work: generated length/death-preview fidelity, GLM full-task reliability, Step diagnostic completion, small balanced run and independent supplier evaluation; no claim of full13-task or browser real acceptance.

@@ -99,7 +99,7 @@ export function createDiagnoseChapterHandler(deps: HandlerDeps) {
         title: true,
         outlineSummary: true,
         content: true,
-        project: { select: { title: true, styleBrief: true } }
+        project: { select: { title: true, styleBrief: true, premise: true } }
       }
     }) as DiagnoseChapter | null;
     if (!chapter || !chapter.content) {
@@ -119,6 +119,7 @@ export function createDiagnoseChapterHandler(deps: HandlerDeps) {
         outlineSummary: chapter.outlineSummary,
         projectTitle: chapter.project?.title ?? job.projectId,
         styleBrief: chapter.project?.styleBrief ?? null,
+        premise: chapter.project?.premise ?? null,
         content: chapter.content
       });
 
@@ -178,7 +179,7 @@ interface DiagnoseChapter {
   title: string;
   outlineSummary: string | null;
   content: string | null;
-  project?: { title: string; styleBrief: string | null } | null;
+  project?: { title: string; styleBrief: string | null; premise?: string | null } | null;
 }
 
 function resolveChapterId(job: GenerationJob): string | null {
@@ -267,12 +268,14 @@ function buildDiagnosticPrompt(params: {
   chapterTitle: string;
   outlineSummary: string | null;
   projectTitle: string;
+  premise: string | null;
   styleBrief: string | null;
   content: string;
 }): string {
   return `你是资深小说编辑与读者体验分析师。${params.focus}
 
 作品：${params.projectTitle}
+作品梗概：${params.premise ?? "（无）"}
 章节：${params.chapterTitle}
 章节大纲：${params.outlineSummary ?? "（无）"}
 风格定位：${params.styleBrief ?? "（无）"}

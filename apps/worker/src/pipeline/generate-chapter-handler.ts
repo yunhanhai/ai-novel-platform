@@ -296,7 +296,7 @@ async function buildWorkerContextPacket(params: {
       title: true,
       outlineSummary: true,
       updatedAt: true,
-      project: { select: { title: true, styleBrief: true, updatedAt: true } }
+      project: { select: { title: true, styleBrief: true, premise: true, updatedAt: true } }
     }
   }) as WorkerChapter | null;
 
@@ -312,6 +312,7 @@ async function buildWorkerContextPacket(params: {
   const packet = buildContextPacket({
     projectId: job.projectId,
     projectTitle: chapter?.project?.title ?? job.projectId,
+    premise: chapter?.project?.premise ?? undefined,
     styleBrief: chapter?.project?.styleBrief ?? undefined,
     currentChapter: {
       id: chapter?.id ?? chapterId,
@@ -430,7 +431,7 @@ interface WorkerChapter {
   title: string;
   outlineSummary: string | null;
   updatedAt?: Date | string;
-  project?: { title: string; styleBrief: string | null; updatedAt?: Date | string };
+  project?: { title: string; styleBrief: string | null; premise?: string | null; updatedAt?: Date | string };
 }
 
 interface WorkerAssetDelegates {

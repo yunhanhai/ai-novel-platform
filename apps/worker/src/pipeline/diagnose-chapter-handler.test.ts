@@ -42,6 +42,17 @@ function createPrismaStub(options: { chapterMissing?: boolean } = {}) {
 }
 
 describe("createDiagnoseChapterHandler", () => {
+  it("diagnoses against the stored project premise as well as the chapter outline", async () => {
+    const prisma = createPrismaStub();
+    const premise = "明天的自己寄来死亡预告，保安为保住工作隐瞒证据。";
+    prisma.chapter.findFirst.mockResolvedValue({ id: "chapter-1", title: "钥匙", outlineSummary: "核验日期", content: "只有日期，没有利益冲突。", project: { title: "雨夜", styleBrief: "克制", premise } });
+    const model = { generate: vi.fn().mockResolvedValue({ text: "{}", inputTokens: 10, outputTokens: 10 }) };
+    await createDiagnoseChapterHandler({ prisma: prisma as never, updateJobStatus: vi.fn(), model })(baseJob);
+    expect(prisma.chapter.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ project: { select: expect.objectContaining({ premise: true }) } })
+    }));
+    expect(model.generate.mock.calls[0]?.[0]).toContain(premise);
+  });
   it("fails with CHAPTER_NOT_FOUND when chapter is missing", async () => {
     const prisma = createPrismaStub({ chapterMissing: true });
     const updateJobStatus = vi.fn().mockResolvedValue({});

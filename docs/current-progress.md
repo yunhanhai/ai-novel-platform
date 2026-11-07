@@ -1951,3 +1951,16 @@ git diff --check   通过
 - 验证：1001 passed + 1 skipped；typecheck 5/5；生产构建通过；e2e 3 passed + 1 skipped（56.3s，fake）；独立复核与diff检查通过。
 - 文档：reports/2026-11-07-model-ping-limits.md，接入手册同步取消/计费边界；证据目录 D:/develop/AI/xiaoshuo/base_win-release-backups/2026-11-07-ping-limits/。
 - 该候选集成master并同步两端，保留原实验工作树与本地配置。真实网络、额度、模型输出质量仍需用户先配置本地供应商凭据后验收；不把回环结果当真实渠道验收。
+
+---
+
+## 2026-11-07 — NAPI真实接入、定向验收与梗概传递修复
+
+- 用户提供渠道后，配置本地真实账号组织的 NAPI OpenAI兼容供应商；`/models`确认`glm-5.3-flash`及`step-5-preview`，短请求均有有效正文。供应商密钥AES-256-GCM存本地DB，两工作区共四份忽略环境文件同步主密钥及`USE_FAKE_MODEL=false`，变更前仓库外备份。未提交任何凭据或评测正文。
+- GLM完整生成规划及220字续写均超过本轮120秒截止时间，定向任务失败且不重试；保留GLM候选档案，默认改为已通过完整生成的Step。独立测试项目`2dae48e1-09cf-4786-abf0-5f2c49e1e6ff`，不处理其他项目/组织队列。
+- Step原生成857字、142.355秒、AI版本及用量落库。检查真实请求发现项目premise未查询/传入模型，造成保安利益冲突等要求缺失；修复共享context、worker生成、网页预览和章节诊断的梗概传递，三处回归先RED后GREEN。
+- 修复后Step生成644字、183.726秒，真实规划/正文出现保安阻止登记、夺本、旷工威胁和明日签名日期；仍低于700–900字目标、死亡含义未明确，质量只部分达标。Step再续写251字、53.247秒，原文逐字保留，版本升至2。
+- 验证：1003 tests passed + 1 skipped（21/60/48/249/625），typecheck5/5，生产build通过，真实DB上下文预览含完整梗概，组织预检ready=true。验收通过真实resolver/adapter/handler/poller/数据库执行，未复跑浏览器或balanced/deep/全13任务。
+- 计量限制：每步最多4096输出tokens不等于累计硬上限；失败取消仍可能产生供应商费用、无usage不代表免费；价格未知保持null；续写usage.latencyMs目前为0，实际耗时看独立回执。诊断最终回执见`reports/2026-11-07-napi-real-acceptance.md`。
+- 临时分支`codex/napi-real-acceptance`用于本轮配置验收和梗概修复，完成后快进集成master并按既有授权同步GitHub/Gitee；原实验工作树未改。配置仅本机有效，远程代码同步不等于应用部署。下一步优先质量约束/少量balanced验收，GLM稳定性待复验。
+- 最终Step诊断任务`4eb7eb5f-efd9-4f84-a910-2314017d51f2`同样120秒取消，无解析JSON或分数；本轮6任务中3成功3失败，成功用量输入3211/输出13481 tokens。停止追加模型调用，诊断仍待验收；失败未改写正文或创建版本。

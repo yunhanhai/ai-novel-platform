@@ -59,6 +59,7 @@ export interface MethodologyGuide {
 export interface PacketInput {
   projectId: string;
   projectTitle: string;
+  premise?: string;
   styleBrief?: string;
   currentChapter: ChapterInfo;
   characters: CharacterInfo[];
@@ -101,6 +102,7 @@ export function buildContextPacket(input: PacketInput): PacketResult {
   const forcedIds = new Set(options.forcedAssetIds);
 
   sections.push(`【作品】${input.projectTitle}`);
+  if (input.premise) sections.push(`【作品梗概】${input.premise}`);
   if (input.styleBrief) {
     sections.push(`【风格】${input.styleBrief}`);
   }

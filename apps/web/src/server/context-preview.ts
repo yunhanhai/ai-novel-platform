@@ -41,7 +41,7 @@ export async function buildChapterContextPreview({
       chapterNo: true,
       title: true,
       outlineSummary: true,
-      project: { select: { title: true, styleBrief: true } },
+      project: { select: { title: true, styleBrief: true, premise: true } },
       targetOutlines: {
         select: { summary: true },
         orderBy: { orderIndex: "asc" },
@@ -89,6 +89,7 @@ export async function buildChapterContextPreview({
   const packet = buildContextPacket({
     projectId: chapter.projectId,
     projectTitle: chapter.project.title,
+    premise: chapter.project.premise ?? undefined,
     styleBrief: chapter.project.styleBrief ?? undefined,
     currentChapter: {
       id: chapter.id,
