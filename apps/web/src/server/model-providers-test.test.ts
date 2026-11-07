@@ -190,3 +190,73 @@ it("folds a profile lookup failure into a safe connection result", async () => {
   expect(result.ok).toBe(false);
   expect(result.error).not.toContain("private-database");
 });
+describe("bounded connection requests", () => {
+  afterEach(() => { vi.useRealTimers(); vi.mocked(createAdapter).mockReset(); });
+  const deps = () => ({ organizationId: "org-1", providerId: "p1", prisma: mockPrisma({ provider: { id: "p1", organizationId: "org-1", status: "ACTIVE", authMode: "PLATFORM_KEY" }, modelName: "model" }), env: { NODE_ENV: "test" as const, USE_FAKE_MODEL: "false", OPENAI_API_KEY: "local-placeholder" } });
+  it("sets no SDK retries and a 15s transport deadline on each ping", async () => {
+    const generate = vi.fn().mockResolvedValue({ text: "好", inputTokens: 1, outputTokens: 1 });
+    vi.mocked(createAdapter).mockResolvedValue({ generate } as never);
+    expect((await pingProvider(deps())).ok).toBe(true);
+    expect(generate).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ maxOutputTokens: 1, timeoutMs: 15000, maxRetries: 0, signal: expect.any(AbortSignal) }));
+    expect(generate.mock.calls[0]?.[1].signal.aborted).toBe(false);
+  });
+  it("aborts the underlying request when the displayed timeout expires", async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    const generate = vi.fn((_prompt: string, options?: { signal?: AbortSignal }) => {
+      signal = options?.signal;
+      return new Promise<never>((_resolve, reject) => signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+    });
+    vi.mocked(createAdapter).mockResolvedValue({ generate } as never);
+    const result = pingProvider(deps());
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(await result).toMatchObject({ ok: false, error: "测试请求 15s 超时" });
+    expect(signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("clears the deadline after a successful ping", async () => {
+    vi.useFakeTimers();
+    const generate = vi.fn().mockResolvedValue({ text: "好", inputTokens: 1, outputTokens: 1 });
+    vi.mocked(createAdapter).mockResolvedValue({ generate } as never);
+    expect((await pingProvider(deps())).ok).toBe(true);
+    await vi.advanceTimersByTimeAsync(15001);
+    expect(generate.mock.calls[0]?.[1].signal?.aborted).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+it("reports the same timeout hint if the SDK transport deadline wins the race", async () => {
+  const error = new Error("Request timed out.");
+  const generate = vi.fn().mockRejectedValue(error);
+  vi.mocked(createAdapter).mockResolvedValue({ generate } as never);
+  const result = await pingProvider({ organizationId: "org-1", providerId: "p1", prisma: mockPrisma({ provider: { id: "p1", organizationId: "org-1", status: "ACTIVE", authMode: "PLATFORM_KEY" }, modelName: "model" }), env: { NODE_ENV: "test", USE_FAKE_MODEL: "false", OPENAI_API_KEY: "local-placeholder" } });
+  expect(result).toMatchObject({ ok: false, error: "测试请求 15s 超时" });
+});
+it("cancels the actual SDK socket on the 15s ping deadline", async () => {
+  const { createServer } = await import("node:http");
+  const { createOpenAIAdapter } = await import("@ai-novel/model-adapters/openai-adapter");
+  let requestCount = 0;
+  let observeClosed!: () => void;
+  const closed = new Promise<void>(resolve => { observeClosed = resolve; });
+  const server = createServer((request, response) => {
+    requestCount++;
+    request.resume();
+    response.on("close", observeClosed);
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("local listener unavailable");
+    const sdkAdapter = createOpenAIAdapter({ apiKey: "loopback-placeholder", baseUrl: `http://127.0.0.1:${address.port}/v1`, modelName: "local-model", providerType: "OPENAI_COMPATIBLE" });
+    vi.mocked(createAdapter).mockResolvedValue(sdkAdapter);
+    const result = await pingProvider({ organizationId: "org-1", providerId: "p1", prisma: mockPrisma({ provider: { id: "p1", organizationId: "org-1", status: "ACTIVE", authMode: "PLATFORM_KEY" }, modelName: "local-model" }), env: { NODE_ENV: "test", USE_FAKE_MODEL: "false", OPENAI_API_KEY: "loopback-placeholder" } });
+    expect(result).toMatchObject({ ok: false, error: "测试请求 15s 超时" });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try { await Promise.race([closed, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("socket remained open")), 3000); })]); }
+    finally { if (timer) clearTimeout(timer); }
+    expect(requestCount).toBe(1);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    vi.mocked(createAdapter).mockReset();
+  }
+}, 22000);

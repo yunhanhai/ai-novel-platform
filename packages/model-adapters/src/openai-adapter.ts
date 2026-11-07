@@ -21,6 +21,10 @@ export function createOpenAIAdapter(config: OpenAIAdapterConfig): ModelAdapter {
       ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(options?.topP !== undefined ? { top_p: options.topP } : {}),
       ...(options?.maxOutputTokens !== undefined ? { max_tokens: options.maxOutputTokens } : {})
+    }, {
+      ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+      ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
+      ...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {})
     });
 
     const text = response.choices[0]?.message?.content ?? "";

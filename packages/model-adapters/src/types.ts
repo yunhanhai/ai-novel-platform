@@ -8,6 +8,9 @@ export interface ModelGenerateOptions {
   temperature?: number;
   topP?: number;
   maxOutputTokens?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  maxRetries?: number;
 }
 
 export interface ModelAdapter {

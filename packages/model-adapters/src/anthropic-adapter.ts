@@ -19,6 +19,10 @@ export function createAnthropicAdapter(config: AnthropicAdapterConfig): ModelAda
       messages: [{ role: "user", content: prompt }],
       ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(options?.topP !== undefined ? { top_p: options.topP } : {})
+    }, {
+      ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+      ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
+      ...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {})
     });
 
     const text = response.content

@@ -1941,3 +1941,13 @@ git diff --check   通过
 - 预检包含组织默认档案继承、实际本地解密、web/worker 配置一致性；Web 使用隔离进程的 Next 环境加载与变量展开；不输出密钥/密文/连接串，不联网、不写库。
 - 验证：988 passed + 1 skipped，typecheck 5/5，生产构建通过，e2e 3 passed + 1 skipped（1.1m，fake）；3 次 loopback SDK 请求契约通过（外部0），真实 DB夹具回滚。接入手册同步两文件配置及先建档案再测试顺序。
 - 报告：reports/2026-11-07-model-readiness.md；证据目录 D:/develop/AI/xiaoshuo/base_win-release-backups/2026-11-07-model-readiness/。下一步需用户配置供应商、模型及本地 API key 后做小规模真实验收。
+
+---
+
+## 2026-11-07 — 连接测试真实取消与单次请求边界
+
+- 配置复查仍为 fake 模式且缺平台凭据，未执行外部模型调用。修复 ping 的 Promise.race 只返回未取消问题，新增可选 SDK 请求 signal/timeoutMs/maxRetries，两种适配器透传；ping 限定15秒并取消底层HTTP、关闭SDK重试，原生成默认策略不变。
+- 回归先RED后GREEN；两种真实SDK的本机HTTP取消/503不重试/超时6项通过；实际ping链路真实等待15秒后观测socket关闭、请求数1。未知异常仍固定提示，超时竞态统一中文文案。
+- 验证：1001 passed + 1 skipped；typecheck 5/5；生产构建通过；e2e 3 passed + 1 skipped（56.3s，fake）；独立复核与diff检查通过。
+- 文档：reports/2026-11-07-model-ping-limits.md，接入手册同步取消/计费边界；证据目录 D:/develop/AI/xiaoshuo/base_win-release-backups/2026-11-07-ping-limits/。
+- 该候选集成master并同步两端，保留原实验工作树与本地配置。真实网络、额度、模型输出质量仍需用户先配置本地供应商凭据后验收；不把回环结果当真实渠道验收。

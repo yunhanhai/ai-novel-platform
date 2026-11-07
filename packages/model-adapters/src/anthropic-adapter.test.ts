@@ -133,3 +133,13 @@ describe("anthropic-adapter", () => {
     expect(adapter.providerType).toBe("ANTHROPIC");
   });
 });
+
+test("passes cancellation and explicit request limits to Anthropic SDK options", async () => {
+  mockTextResponse("好");
+  const controller = new AbortController();
+  await newAdapter().generate("probe", { maxOutputTokens: 1, signal: controller.signal, timeoutMs: 15000, maxRetries: 0 } as never);
+  expect(mockMessagesCreate).toHaveBeenLastCalledWith(
+    expect.objectContaining({ max_tokens: 1 }),
+    { signal: controller.signal, timeout: 15000, maxRetries: 0 }
+  );
+});

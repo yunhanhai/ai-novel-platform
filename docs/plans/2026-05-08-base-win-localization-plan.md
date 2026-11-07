@@ -1059,3 +1059,12 @@ git diff --check
 - [x] Verify 988 tests + 1 skipped, typecheck 5/5, production build, e2e 3 passed + 1 skipped, 9 rollback-only DB checks and 3 loopback SDK requests; no external model calls.
 - [x] Update onboarding sequence, progress and reports/2026-11-07-model-readiness.md; integrate and synchronize reviewed changes after build/scan verification.
 - [ ] Real provider connection, output quality and scoring remain pending user-supplied local model configuration.
+
+## Task 54: 2026-11-07 Bounded Model Connection Probes
+
+- [x] Confirm unchanged fake/missing-credential blocker; proceed only with evidence-backed onboarding preparation.
+- [x] Pass optional signal/timeoutMs/maxRetries through both SDK adapters; ping aborts at 15s with SDK retries disabled, default generation behavior unchanged.
+- [x] Verify RED/GREEN, two real SDK loopback cancellation/503/timeout tests and actual 15-second ping socket closure with one request.
+- [x] Verify 1001 tests + 1 skipped, typecheck 5/5, production build, e2e 3 passed + 1 skipped; independent review and diff checks complete.
+- [x] Update onboarding/progress/report and integrate back to master, synchronize both remotes with final receipts.
+- [ ] Real provider network/quota/output acceptance remains pending local supplier configuration.

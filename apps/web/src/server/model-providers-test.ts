@@ -63,7 +63,7 @@ export async function pingProvider(deps: PingDeps): Promise<PingResult> {
 
     const start = Date.now();
     const result = await withTimeout(
-      adapter.generate(PING_PROMPT, { maxOutputTokens: 1 }),
+      signal => adapter.generate(PING_PROMPT, { maxOutputTokens: 1, signal, timeoutMs: PING_TIMEOUT_MS, maxRetries: 0 }),
       PING_TIMEOUT_MS
     );
     const latencyMs = Date.now() - start;
@@ -95,13 +95,17 @@ async function pickModelNameForProvider(
   return profile?.modelName?.trim() || null;
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+async function withTimeout<T>(operation: (signal: AbortSignal) => Promise<T>, ms: number): Promise<T> {
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("PING_TIMEOUT")), ms);
+    timer = setTimeout(() => {
+      reject(new Error("PING_TIMEOUT"));
+      controller.abort();
+    }, ms);
   });
   try {
-    return await Promise.race([promise, timeout]);
+    return await Promise.race([operation(controller.signal), timeout]);
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -109,7 +113,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 function classifyError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (message === "PING_TIMEOUT") return `测试请求 ${PING_TIMEOUT_MS / 1000}s 超时`;
+  if (message === "PING_TIMEOUT" || /request timed out|ETIMEDOUT/i.test(message)) return `测试请求 ${PING_TIMEOUT_MS / 1000}s 超时`;
   if (/API_KEY_NOT_RESOLVED|API_KEY_DECRYPTION_FAILED/.test(message)) return "API 密钥未配置或解密失败";
   if (/UNSUPPORTED_PROVIDER/.test(message)) return "暂不支持此模型供应商类型";
   if (/401|403|unauthorized|invalid.*api.*key/i.test(message)) return "认证失败，请检查 API 密钥";

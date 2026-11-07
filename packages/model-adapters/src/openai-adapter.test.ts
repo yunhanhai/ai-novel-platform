@@ -138,3 +138,14 @@ describe("openai-adapter", () => {
     expect(adapter.providerType).toBe("OPENAI_COMPATIBLE");
   });
 });
+
+test("passes cancellation and explicit request limits to SDK options without changing payload", async () => {
+  mockResponse();
+  const controller = new AbortController();
+  await newAdapter().generate("probe", { maxOutputTokens: 1, signal: controller.signal, timeoutMs: 15000, maxRetries: 0 } as never);
+  expect(mockChatCreate).toHaveBeenLastCalledWith(
+    expect.objectContaining({ max_tokens: 1 }),
+    { signal: controller.signal, timeout: 15000, maxRetries: 0 }
+  );
+  expect(mockChatCreate.mock.calls.at(-1)?.[0]).not.toHaveProperty("signal");
+});
