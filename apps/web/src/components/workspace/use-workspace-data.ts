@@ -5,6 +5,8 @@ import type { QualityMode } from "@ai-novel/shared/generation/performance";
 import type { QualityConstraints } from "@ai-novel/shared/generation/quality-constraints";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildGenerationRequestBody } from "./job-request";
+import { useOrganization } from "../organization-context";
+import { findLocalDraft, saveLocalDraft, removeLocalDraft, markLocalDraftHandled, type DraftReceipt, type DraftScope } from "./local-drafts";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -138,6 +140,10 @@ export function useChapters(projectId: string | null): UseChaptersResult {
 }
 
 interface UseChapterContentResult {
+  localDraft: { updatedAt: number; characters: number } | null;
+  localDraftError: string | null;
+  restoreLocalDraft: () => void;
+  discardLocalDraft: () => void;
   content: string;
   setContent: (v: string) => void;
   saveStatus: "idle" | "saving" | "saved" | "error";
@@ -155,10 +161,17 @@ export function useChapterContent(
 ): UseChapterContentResult {
   const debounceMs = options.debounceMs ?? 1500;
   const onSaved = options.onSaved;
+  const { organizationId, userId } = useOrganization();
   const [content, setContentState] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isLoadingContent, setLoadingContent] = useState(false);
   const [externalUpdateNotice, setExternalUpdateNotice] = useState(false);
+  const [localDraft, setLocalDraft] = useState<UseChapterContentResult["localDraft"]>(null);
+  const [localDraftError, setLocalDraftError] = useState<string | null>(null);
+  const writerRef = useRef<string | null>(null);
+  const ownDraftRef = useRef<DraftReceipt | null>(null);
+  const pendingDraftRef = useRef<DraftReceipt | null>(null);
+  const restoredDraftRef = useRef<DraftReceipt | null>(null);
   const dirtyRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const activeIdRef = useRef<string | null>(null);
@@ -170,6 +183,25 @@ export function useChapterContent(
   const conflictRef = useRef(false);
   const fetchSequenceRef = useRef(0);
   const persistedByChapterRef = useRef(new Map<string, string>());
+  const draftScopeRef = useRef<DraftScope | null>(null);
+  draftScopeRef.current = organizationId && userId && chapterId ? { organizationId, userId, chapterId } : null;
+  const backupLocalDraft = useCallback((text: string, id: string, baseHash: string) => {
+    const scope = draftScopeRef.current;
+    if (!scope || scope.chapterId !== id) return;
+    try {
+      writerRef.current ??= crypto.randomUUID();
+      ownDraftRef.current = saveLocalDraft(localStorage, scope, writerRef.current, text, baseHash);
+      setLocalDraftError(null);
+    } catch { setLocalDraftError("本机草稿备份失败，请确认服务器已保存后再离开。"); }
+  }, []);
+  const clearConfirmedDraft = useCallback((text: string, id: string, currentDraftFinished = false) => {
+    try {
+      const own = ownDraftRef.current;
+      if (own?.draft.chapterId === id && own.draft.content === text) { removeLocalDraft(localStorage, own); ownDraftRef.current = null; }
+      const restored = restoredDraftRef.current;
+      if (restored?.draft.chapterId === id && (restored.draft.content === text || currentDraftFinished)) { markLocalDraftHandled(localStorage, restored); restoredDraftRef.current = null; }
+    } catch { setLocalDraftError("正文已保存，本机草稿记录暂未清理。"); }
+  }, []);
 
   const fetchContent = useCallback(async (id: string, mode: "normal" | "accept" | "keep" = "normal"): Promise<boolean> => {
     const sequence = ++fetchSequenceRef.current;
@@ -193,6 +225,15 @@ export function useChapterContent(
         setContentState(remote); contentRef.current = remote;
         dirtyRef.current = false; setSaveStatus("idle");
       }
+      if (mode === "normal" && !dirtyRef.current && draftScopeRef.current?.chapterId === id) {
+        try {
+          const receipt = findLocalDraft(localStorage, draftScopeRef.current, remote);
+          if (receipt && receipt.draft.content !== remote) {
+            pendingDraftRef.current = receipt;
+            setLocalDraft({ updatedAt: receipt.draft.updatedAt, characters: Array.from(receipt.draft.content).length });
+          }
+        } catch { setLocalDraftError("无法读取本机草稿，服务器正文仍可编辑。"); }
+      }
       return true;
     } catch { return false; }
     finally { if (activeIdRef.current === id && fetchSequenceRef.current === sequence) setLoadingContent(false); }
@@ -201,11 +242,13 @@ export function useChapterContent(
   useEffect(() => {
     activeIdRef.current = chapterId;
     dirtyRef.current = false; conflictRef.current = false; confirmedRef.current = null;
+    ownDraftRef.current = null; pendingDraftRef.current = null; restoredDraftRef.current = null;
+    setLocalDraft(null); setLocalDraftError(null);
     setExternalUpdateNotice(false); setContentState(""); contentRef.current = ""; setSaveStatus("idle");
     if (!chapterId) { fetchSequenceRef.current++; setLoadingContent(false); return; }
     void fetchContent(chapterId);
     return () => { fetchSequenceRef.current++; if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [chapterId, fetchContent]);
+  }, [chapterId, organizationId, userId, fetchContent]);
   const persist = useCallback((text: string, idAtCall: string, keepalive = false) => {
     const send = async () => {
       if (activeIdRef.current !== idAtCall || contentRef.current !== text || conflictRef.current) return false;
@@ -228,6 +271,7 @@ export function useChapterContent(
         // A later read may already have found a conflicting remote draft.
         // This older acknowledgment cannot establish a fresh base or clear dirty.
         if (conflictRef.current) return false;
+        clearConfirmedDraft(text, idAtCall, contentRef.current === text);
         confirmedRef.current = { id: idAtCall, contentHash: json.data.contentHash };
         persistedByChapterRef.current.set(idAtCall, text);
         fetchSequenceRef.current++;
@@ -242,13 +286,15 @@ export function useChapterContent(
     const saving = keepalive ? send() : prior.then(send);
     saveQueueRef.current = (keepalive ? Promise.allSettled([prior, saving]) : saving).catch(() => undefined);
     return saving;
-  }, [onSaved]);
+  }, [onSaved, clearConfirmedDraft]);
   const setContent = useCallback(
     (value: string) => {
       setContentState(value);
       contentRef.current = value;
       if (!chapterId) return;
       dirtyRef.current = true;
+      const baseline = confirmedRef.current;
+      if (baseline?.id === chapterId) backupLocalDraft(value, chapterId, baseline.contentHash);
       setSaveStatus("idle");
       if (timerRef.current) clearTimeout(timerRef.current);
       const idAtCall = chapterId;
@@ -258,7 +304,7 @@ export function useChapterContent(
         }
       }, debounceMs);
     },
-    [chapterId, debounceMs, persist]
+    [chapterId, debounceMs, persist, backupLocalDraft]
   );
 
   const flush = useCallback(async () => {
@@ -308,8 +354,9 @@ export function useChapterContent(
     if (!chapterId) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     await saveQueueRef.current;
-    if (activeIdRef.current === chapterId) await fetchContent(chapterId, "accept");
-  }, [chapterId, fetchContent]);
+    const abandoned = contentRef.current;
+    if (activeIdRef.current === chapterId && await fetchContent(chapterId, "accept")) clearConfirmedDraft(abandoned, chapterId, true);
+  }, [chapterId, fetchContent, clearConfirmedDraft]);
 
   const dismissExternalUpdate = useCallback(async () => {
     if (!chapterId) return;
@@ -317,8 +364,29 @@ export function useChapterContent(
     await saveQueueRef.current;
     if (activeIdRef.current !== chapterId) return;
     const text = contentRef.current;
-    if (await fetchContent(chapterId, "keep")) await persist(text, chapterId);
-  }, [chapterId, fetchContent, persist]);
+    if (await fetchContent(chapterId, "keep")) {
+      backupLocalDraft(text, chapterId, confirmedRef.current!.contentHash);
+      await persist(text, chapterId);
+    }
+  }, [chapterId, fetchContent, persist, backupLocalDraft]);
+  const restoreLocalDraft = useCallback(() => {
+    const receipt = pendingDraftRef.current;
+    if (!receipt || receipt.draft.chapterId !== activeIdRef.current) return;
+    if (dirtyRef.current) { setLocalDraftError("当前已有未保存的修改，请先保存或处理当前稿，再恢复旧本地稿。"); return; }
+    pendingDraftRef.current = null; restoredDraftRef.current = receipt;
+    setLocalDraft(null);
+    const draft = receipt.draft;
+    confirmedRef.current = { id: draft.chapterId, contentHash: draft.baseHash };
+    contentRef.current = draft.content; setContentState(draft.content); dirtyRef.current = true;
+    conflictRef.current = true; setExternalUpdateNotice(true); setSaveStatus("error");
+    backupLocalDraft(draft.content, draft.chapterId, draft.baseHash);
+  }, [backupLocalDraft]);
+  const discardLocalDraft = useCallback(() => {
+    const receipt = pendingDraftRef.current;
+    if (!receipt || receipt.draft.chapterId !== activeIdRef.current) return;
+    try { markLocalDraftHandled(localStorage, receipt); pendingDraftRef.current = null; setLocalDraft(null); }
+    catch { setLocalDraftError("本机草稿记录未能丢弃，请稍后重试。"); }
+  }, []);
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -326,6 +394,7 @@ export function useChapterContent(
   }, []);
 
   return {
+    localDraft, localDraftError, restoreLocalDraft, discardLocalDraft,
     content,
     setContent,
     saveStatus,

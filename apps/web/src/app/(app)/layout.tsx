@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const organizationId = await safeGetOrganizationId();
 
   return (
-    <OrganizationProvider organizationId={organizationId}>
+    <OrganizationProvider organizationId={organizationId} userId={session.userId}>
       <div className="app-shell">
         <header className="top-bar">
           <Link href="/projects" className="brand">

@@ -9,6 +9,10 @@ export interface EditorSelection {
 }
 
 interface EditorPaneProps {
+  localDraft?: { updatedAt: number; characters: number } | null;
+  localDraftError?: string | null;
+  onRestoreLocalDraft?: () => void;
+  onDiscardLocalDraft?: () => void;
   content: string;
   title: string;
   onChange: (value: string) => void;
@@ -41,7 +45,8 @@ export function EditorPane({
   onAcceptExternalUpdate,
   onDismissExternalUpdate,
   chapterStatus = null,
-  onStatusChange
+  onStatusChange,
+  localDraft, localDraftError, onRestoreLocalDraft, onDiscardLocalDraft
 }: EditorPaneProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -89,6 +94,14 @@ export function EditorPane({
           </span>
         </div>
       </div>
+      {localDraft && (
+        <section className="external-update-notice" aria-label="本地草稿恢复">
+          <p>此浏览器保留了未保存的本地稿（{localDraft.characters} 字），可恢复到编辑器后核对。服务器正文尚未替换。</p>
+          <button type="button" className="btn-ghost btn-small" onClick={onRestoreLocalDraft}>恢复本地稿</button>
+          <button type="button" className="btn-ghost btn-small" onClick={onDiscardLocalDraft}>丢弃此本地稿</button>
+        </section>
+      )}
+      {localDraftError && <p className="form-error" role="alert" aria-label="本机草稿提示">{localDraftError}</p>}
       {externalUpdateNotice && (
         <div className="external-update-notice" role="alert">
           <span>

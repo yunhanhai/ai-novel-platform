@@ -1254,3 +1254,12 @@ git diff --check
 - [x] Verify1172 tests+1skip,typecheck5/5,build,e2e44pass+1skip including9new real browser cases,5rollback DB groups andreal multi-connection competition;independent24checks clear.
 - [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
 - [ ] Remaining:hard-close/offline draft durability,ABA/metadata atomicity,automatic merge and real semantic quality need separate evidence.
+
+## Task 75: 2026-11-08 Local Unsaved Draft Recovery
+
+- [x] Reproduce lost unsaved prose after failed save and reload;add synchronous browser-local scoped draft receipts.
+- [x] Scope by session organization/user/chapter/writer,validate revisions,offer explicit restore/discard without automatic server replacement.
+- [x] Clear own confirmed revision only,mark immutable foreign revisions handled,preserve newer edits and visibly report storage failure while server saves continue.
+- [x] Verify1178 tests+1skip,typecheck5/5,build,e2e53pass+1skip including9new local recovery cases;storage6 and independent13 targeted checks clear.
+- [x] Update report/progress/manual,integrate branch and synchronize both masters with external receipts;external model0,no private prose/provider/schema/deployment changes.
+- [ ] Remaining:storage lifecycle/capacity UI,long-prose performance,full offline/cross-device recovery and real semantic quality need separate evidence.

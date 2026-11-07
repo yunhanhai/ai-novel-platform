@@ -1,0 +1,13 @@
+import { describe, expect, it } from "vitest";
+import { saveLocalDraft, findLocalDraft, removeLocalDraft, type DraftScope } from "./local-drafts";
+const scope:DraftScope={organizationId:'org',userId:'user',chapterId:'chapter'};
+function storage(){const data=new Map<string,string>();return{get length(){return data.size},key:(i:number)=>Array.from(data.keys())[i]??null,getItem:(key:string)=>data.get(key)??null,setItem:(key:string,value:string)=>{data.set(key,value)},removeItem:(key:string)=>{data.delete(key)}}}
+describe('local draft receipts',()=>{
+ it('writes exact prose synchronously and isolates users chapters and writers',()=>{const s=storage();saveLocalDraft(s,scope,'writer-a','原稿😀','a'.repeat(64),1);saveLocalDraft(s,{...scope,userId:'other'},'writer-a','另用户','a'.repeat(64),2);saveLocalDraft(s,scope,'writer-b','新稿','b'.repeat(64),3);expect(findLocalDraft(s,scope)?.draft.content).toBe('新稿');expect(findLocalDraft(s,{...scope,chapterId:'other'})).toBeNull();expect(findLocalDraft(s,{...scope,userId:'other'})?.draft.content).toBe('另用户')});
+ it('never removes a receipt changed by another edit',()=>{const s=storage();saveLocalDraft(s,scope,'writer','第一稿','a'.repeat(64),1);const receipt=findLocalDraft(s,scope)!;saveLocalDraft(s,scope,'writer','后改稿','a'.repeat(64),2);expect(removeLocalDraft(s,receipt)).toBe(false);expect(findLocalDraft(s,scope)?.draft.content).toBe('后改稿')});
+ it('ignores corrupt or wrong-scope values without clearing them',()=>{const s=storage();saveLocalDraft(s,scope,'writer','正文','a'.repeat(64),1);const key=s.key(0)!;s.setItem(key,'{broken');expect(findLocalDraft(s,scope)).toBeNull();expect(s.getItem(key)).toBe('{broken')});
+ it('propagates quota errors so UI can report missing local protection',()=>{const s=storage();s.setItem=()=>{throw new Error('quota')};expect(()=>saveLocalDraft(s,scope,'writer','正文','a'.repeat(64))).toThrow('quota')});
+});
+
+it('marks only an immutable foreign revision handled and preserves later edits',async()=>{const{markLocalDraftHandled}=await import('./local-drafts');const s=storage();saveLocalDraft(s,scope,'other-writer','旧草稿','a'.repeat(64),1);const old=findLocalDraft(s,scope)!;markLocalDraftHandled(s,old);expect(findLocalDraft(s,scope)).toBeNull();saveLocalDraft(s,scope,'other-writer','后改稿','a'.repeat(64),2);expect(findLocalDraft(s,scope)?.draft.content).toBe('后改稿');expect(s.getItem(old.key)).not.toBeNull()});
+it('skips a server-matching receipt while still finding a different unsaved draft',()=>{const s=storage();saveLocalDraft(s,scope,'one','未存稿','a'.repeat(64),1);saveLocalDraft(s,scope,'two','服务器正文','b'.repeat(64),2);expect(findLocalDraft(s,scope,'服务器正文')?.draft.content).toBe('未存稿')});

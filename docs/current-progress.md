@@ -2157,3 +2157,13 @@ git diff --check   通过
 - 最终1172单测+1skip（42/67/50/364/649）、typecheck5/5、build、完整e2e44pass+1skip（fake，3.5m，新增9项），DB5组全回滚及真实双连接异稿1胜/同稿幂等；独立多轮实际hook/浏览器RED修复后最终24定向无阻断。
 - 报告`reports/2026-11-08-editor-save-conflicts.md`记录Next HTML404/pg与Prisma包缺失frozen force修复、alert定位器/等待保存改文提示修正；不改锁版本/时限。明确keepalive尽力不保证硬关闭必存、公共PATCH需base、ABA/混合metadata与自动合并未扩展。
 - 外部模型0，真实正文/记忆/配置不变，无schema/迁移/部署；codex/editor-save-conflicts验证后快进master同步双远程并外存commit/tree回执，原实验保留。
+
+---
+
+## 2026-11-08 — 本机未保存稿恢复
+
+- 浏览器RED确认保存失败刷新后无恢复。按session组织/用户/章节/页面writer同步localStorage正文副本；成功GET后提示最新不同稿，恢复只入编辑器dirty/冲突不自动PATCH，明确丢弃处理单revision。
+- 每修订随机revision，外页面仅immutable handled标记不删可变key；本writer保存确认同raw才清。独立审查两项丢稿/重复提示RED后修复：当前dirty拒绝旧恢复，恢复后修订成功也处理原来源。存储拒绝可见不阻断远端保存。
+- 最终1178单测+1skip（42/67/50/364/655）、typecheck5/5、build、完整e2e53pass+1skip（fake，4.9m，新增9项），存储6项及独立原hook/13定向无阻断；覆盖双页不误删、跨账号章节、即时刷新/远端改文/明确清理。
+- 报告`reports/2026-11-08-local-draft-recovery.md`明确本机明文副本、共享设备界面隔离非加密、站点数据清除/配额/崩溃边界、无TTL自动删除和无长稿性能基准，不冒充服务器已保存或跨设备同步。
+- 外部模型0，真实正文/记忆/配置未修改，无迁移部署；codex/local-draft-recovery验证后快进master同步双远程并外存commit/tree回执，原实验保留。

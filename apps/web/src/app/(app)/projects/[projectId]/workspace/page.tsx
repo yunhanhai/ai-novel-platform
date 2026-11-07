@@ -61,6 +61,7 @@ export default function WorkspacePage() {
 
   const {
     content,
+    localDraft, localDraftError, restoreLocalDraft, discardLocalDraft,
     setContent,
     saveStatus,
     isLoadingContent,
@@ -380,6 +381,10 @@ export default function WorkspacePage() {
         selectionToolbar={selectionToolbar}
         rewriteCard={rewriteCard}
         externalUpdateNotice={externalUpdateNotice}
+        localDraft={localDraft}
+        localDraftError={localDraftError}
+        onRestoreLocalDraft={restoreLocalDraft}
+        onDiscardLocalDraft={discardLocalDraft}
         onAcceptExternalUpdate={() => void acceptExternalUpdate()}
         onDismissExternalUpdate={dismissExternalUpdate}
         chapterStatus={activeChapter?.status ?? null}

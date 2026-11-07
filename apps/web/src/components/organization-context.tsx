@@ -4,19 +4,22 @@ import { createContext, useContext } from "react";
 
 interface OrganizationContextValue {
   organizationId: string | null;
+  userId: string | null;
 }
 
-const OrganizationContext = createContext<OrganizationContextValue>({ organizationId: null });
+const OrganizationContext = createContext<OrganizationContextValue>({ organizationId: null, userId: null });
 
 export function OrganizationProvider({
   organizationId,
+  userId = null,
   children
 }: {
   organizationId: string | null;
+  userId?: string | null;
   children: React.ReactNode;
 }) {
   return (
-    <OrganizationContext.Provider value={{ organizationId }}>{children}</OrganizationContext.Provider>
+    <OrganizationContext.Provider value={{ organizationId, userId }}>{children}</OrganizationContext.Provider>
   );
 }
 
