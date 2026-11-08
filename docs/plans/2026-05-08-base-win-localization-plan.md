@@ -1317,3 +1317,12 @@ git diff --check
 - [x] IndependentDB27checks including distinct-connection races and atomic rollback,46helper/API tests,9actual-component checks plus1static wiring check clear.
 - [x] Verify1282tests+1skip,e2e91pass+1skip,typecheck5/5,build and credential exclusion;update report,integrate master and synchronize both remotes with external receipts.
 - [ ] Remaining:durable feedback delivery,save-confirmed adoption,per-actor analytics and semantic evaluation require separate scope.
+
+### 2026-11-08 — Full-source diagnostic report validity
+
+- [x] Reproduce old scores surviving prose/chapter changes and silent source truncation/invalid score normalization.
+- [x] Validate complete source<=20000Unicode chars and strict integer scores/enum/arrays;guard four diagnostic types,source/terminal/attempt and atomic final report/step with receipt recovery.
+- [x] Bind rendered reports to current chapter/full hash/type/success;mask stale digests and prevent preparation edits/readonly completion reload races.
+- [x] ActualDB21rollback+2connection-order checks;independent95tests/10actual-component checks+1static wiring;9targeted browser cases clear.
+- [x] Verify1316tests+1skip,e2e100pass+1skip,typecheck5/5,build and credential exclusion;update final documentation,integrate master and synchronize both remotes with external receipts.
+- [ ] Remaining:real semantic/reader calibration,prompt metadata versioning and source hash ABA need separate scope.

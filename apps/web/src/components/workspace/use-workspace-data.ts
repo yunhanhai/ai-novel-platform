@@ -453,6 +453,8 @@ export interface JobSummary {
     };
     performanceSummary?: PerformanceSummaryView;
     diagnosticSummary?: DiagnosticSummaryView;
+    diagnosticType?: string;
+    sourceChars?: number;
     deslopReport?: {
       overallScore: number; summary: string; sourceChars: number; sourceSha256: string;
       issues: Array<{ category: string; severity: "info" | "warning" | "error"; matched: string; suggestion: string; position: { start: number; end: number } }>;

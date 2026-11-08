@@ -301,9 +301,9 @@ test("注册 → 创建项目 → 生成章节 完整闭环", async ({ page }) =
   await expect(diagnoseBtn).toBeEnabled({ timeout: 15_000 });
   await diagnoseBtn.click();
   await expect(jobTypeCell).toHaveText("质量诊断", { timeout: 10_000 });
-  await expect(jobStatusTag).toHaveText("已完成", { timeout: 30_000 });
-  // 诊断结果块渲染（性能摘要 + 诊断评分）
-  await expect(page.locator(".diagnostic-summary")).toBeVisible({ timeout: 10_000 });
+  await expect(jobStatusTag).toHaveText("失败", { timeout: 30_000 });
+  await expect(page.locator(".job-status-card .form-error")).toContainText("模型未返回完整有效的诊断 JSON");
+  await expect(page.locator('[aria-label="质量诊断结果"]')).toHaveCount(0);
 
   // 12. 全书搜索：应命中已生成的正文并高亮关键词
   await page.getByLabel("搜索全书内容").fill("林墨");

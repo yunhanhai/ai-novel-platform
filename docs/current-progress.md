@@ -2227,3 +2227,13 @@ git diff --check   通过
 - 服务原RED11失败后46定向通过；独立实际DB27项含双连接不同/相同建议、先持锁提交、写后故障回滚，全事务夹具回滚，多连接合成数据保留；真实章/来源记忆未变。独立UI实际9项+静态接线1项及46定向无阻断。
 - 完整单测1282pass+1skip（42/74/50/392/724），完整e2e91pass+1skip（fake，6.6m，新增3项及既有凭据断言），build、typecheck5/5及凭据排除通过，同步回执外存。外部模型0，真实作品/记忆/配置/schema不变，无迁移部署。
 - 报告`reports/2026-11-08-review-feedback-atomic.md`明确首次共享动作、反馈尽力/无持久队列与旧quote-only400契约；codex/review-feedback-atomic验证后快进master同步双远程并外存commit/tree回执，旧实验保留。
+
+---
+
+## 2026-11-08 — 四类章节诊断可信度与来源保护
+
+- 原handler截前8000字、非法JSON补零/越界钳制后仍SUCCEEDED；浏览器RED改文/切相同正文另一章仍显示评分。四诊断完整正文<=20000Unicode字，严格四整数分/风险/数组字段，超限前失败、无效报告明确INVALID_MODEL_OUTPUT。
+- worker范围/类型/RUNNING/attempt预检，章→对应类型job锁核全文/终态/轮次，step与报告或拒绝原子；usage含无效/丢弃，最终step凭证防ack丢失，清理仅RUNNING。UI核章/hash/type/success/合法分，旧hash/旧job/output/卸载淘汰；保存准备期间改文撤销，只读诊断不reload正文，历史性能保留。
+- worker原RED39失败后46定向/108邻近，枚举数组RED2项已拒绝；实际DB21全回滚+2双连接持锁竞争通过，真实正文/时间不变，多连接合成项目保留。独立95定向+实际组件10项/静态接线1项无阻断。
+- 浏览器9定向通过；typecheck空值判断修正后5包通过。全单测旧usage夹具错误类型/无效payload修正后1316pass+1skip（42/74/50/426/724）；完整e2e100pass+1skip（fake，7.8m，新增9项），build/最终typecheck5包及凭据检查通过，失败证据均保留不放宽校验。
+- 报告`reports/2026-11-08-diagnostic-source-guards.md`明确参考分非读者实测、上下文请求快照/ABA/usage尽力边界；外部模型0，真实作品/记忆/配置/schema不变，无迁移部署。codex/diagnostic-source-guards验证后快进master同步双远程外存commit/tree回执，旧实验保留。

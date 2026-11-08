@@ -9,6 +9,7 @@ import { AssetSidebar } from "../../../../../components/workspace/asset-sidebar"
 import { EditorPane, type EditorSelection } from "../../../../../components/workspace/editor-pane";
 import { WorkspaceSideTabs } from "../../../../../components/workspace/workspace-side-tabs";
 import type { ReviewSource } from "../../../../../components/workspace/review-panel";
+import { DIAGNOSTIC_JOB_TYPES } from "../../../../../components/workspace/diagnostic-report";
 import {
   useChapters,
   useChapterContent,
@@ -81,6 +82,9 @@ export default function WorkspacePage() {
   const [preparingReview, setPreparingReview] = useState(false);
   const [reviewNotice, setReviewNotice] = useState<string | null>(null);
   const reviewPreparingRef = useRef(false);
+  const [preparingDiagnostic, setPreparingDiagnostic] = useState(false);
+  const [diagnosticNotice, setDiagnosticNotice] = useState<string | null>(null);
+  const diagnosticPreparingRef = useRef(false);
   const rewriteRequestRef = useRef<RewriteRequest | null>(null);
   const currentEditorRef = useRef({ chapterId: activeChapterId, content });
   currentEditorRef.current = { chapterId: activeChapterId, content };
@@ -88,7 +92,7 @@ export default function WorkspacePage() {
   selectionRef.current = selection;
 
   useEffect(() => {
-    if (job?.status === "SUCCEEDED" && job.jobType !== "REVIEW" && !REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
+    if (job?.status === "SUCCEEDED" && job.jobType !== "REVIEW" && !DIAGNOSTIC_JOB_TYPES.has(job.jobType) && !REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
       void reloadChapters();
       void reloadContent();
       bumpStats();
@@ -139,6 +143,7 @@ export default function WorkspacePage() {
     setRewriteResult(null);
     setRewriteNotice(null);
     setReviewNotice(null);
+    setDiagnosticNotice(null);
     setActiveChapterId(id);
   }
 
@@ -149,9 +154,15 @@ export default function WorkspacePage() {
   }
 
   async function handleDiagnose(qualityMode: QualityMode) {
-    if (!activeChapterId) return;
-    if (!await flush()) return;
-    await startJob(activeChapterId, "DIAGNOSE_CHAPTER", { qualityMode });
+    if (!activeChapterId || isLoadingContent || isStarting || diagnosticPreparingRef.current) return;
+    const source = currentEditorRef.current;
+    diagnosticPreparingRef.current = true; setPreparingDiagnostic(true); setDiagnosticNotice(null);
+    try {
+      const saved = await flush();
+      if (source.chapterId !== currentEditorRef.current.chapterId) return;
+      if (!saved || source.content !== currentEditorRef.current.content) { setDiagnosticNotice("正文未保存或已变化，请核对后重新诊断。"); return; }
+      await startJob(source.chapterId, "DIAGNOSE_CHAPTER", { qualityMode });
+    } finally { diagnosticPreparingRef.current = false; setPreparingDiagnostic(false); }
   }
 
   async function handleDeslop() {
@@ -411,6 +422,8 @@ export default function WorkspacePage() {
         onPrepareVersionRestore={async () => !isLoadingContent && await flush()}
         onGenerate={handleGenerate}
         onDiagnose={handleDiagnose}
+        preparingDiagnostic={preparingDiagnostic}
+        diagnosticNotice={diagnosticNotice}
         onContinue={handleContinue}
         onBatchContinue={handleBatchContinue}
         onStopJob={() => void stopJob()}

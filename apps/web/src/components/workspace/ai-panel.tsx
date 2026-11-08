@@ -24,6 +24,9 @@ interface AiPanelProps {
   error: string | null;
   canGenerate: boolean;
   chapterId: string | null;
+  currentContent: string;
+  preparingDiagnostic: boolean;
+  diagnosticNotice?: string | null;
   onStopJob: () => void;
   stopping: boolean;
   stopError?: string | null;
@@ -31,7 +34,7 @@ interface AiPanelProps {
 
 const QUALITY_MODES: QualityMode[] = ["fast", "balanced", "deep"];
 
-export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId, onStopJob, stopping, stopError }: AiPanelProps) {
+export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, onDeslop, onExtractMemory, isStarting, job, error, canGenerate, chapterId, currentContent, preparingDiagnostic, diagnosticNotice, onStopJob, stopping, stopError }: AiPanelProps) {
   const isRunning = job ? ["QUEUED", "RUNNING"].includes(job.status) : false;
   const [contextSelection, setContextSelection] = useState<{ chapterId: string | null; options: ContextOptions | undefined } | null>(null);
   const contextOptions = contextSelection?.chapterId === chapterId ? contextSelection.options : undefined;
@@ -45,7 +48,7 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, o
   const [constraintError, setConstraintError] = useState<string | null>(null);
   const [batchCount, setBatchCount] = useState(3);
   const [batchExtractMemory, setBatchExtractMemory] = useState(true);
-  const busy = isStarting || isRunning || !canGenerate;
+  const busy = isStarting || preparingDiagnostic || isRunning || !canGenerate;
 
   const generateLabel = isStarting && job?.jobType === "GENERATE_CHAPTER"
     ? "提交中..."
@@ -186,6 +189,7 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, o
 
       {!canGenerate && <p className="muted">请先选择一个章节</p>}
       {error && <p className="form-error">{error}</p>}
+      {diagnosticNotice && <p className="form-error" role="alert" aria-label="诊断准备提示">{diagnosticNotice}</p>}
 
       <ContextComposer
         chapterId={chapterId}
@@ -241,7 +245,7 @@ export function AiPanel({ onGenerate, onDiagnose, onContinue, onBatchContinue, o
         </div>
       )}
 
-      {job && <PipelineTimeline job={job} />}
+      {job && <PipelineTimeline job={job} chapterId={chapterId} currentContent={currentContent} />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { JobSummary } from "./use-workspace-data";
+import { DiagnosticReport } from "./diagnostic-report";
 import {
-  labelForAbandonRisk,
   labelForGenerationJobStatus,
   labelForPipelineStep,
   labelForQualityMode,
@@ -9,12 +9,13 @@ import {
 
 interface Props {
   job: JobSummary;
+  chapterId: string | null;
+  currentContent: string;
 }
 
-export function PipelineTimeline({ job }: Props) {
+export function PipelineTimeline({ job, chapterId, currentContent }: Props) {
   const steps = job.steps ?? [];
   const perf = job.output?.performanceSummary;
-  const diag = job.output?.diagnosticSummary;
   const deslop = job.output?.deslopReport;
 
   return (
@@ -92,40 +93,7 @@ export function PipelineTimeline({ job }: Props) {
         </section>
       )}
 
-      {diag && (
-        <div className="diagnostic-summary" aria-label="质量诊断结果">
-          <div className="diagnostic-summary-head">
-            <strong>质量诊断</strong>
-            {job.output?.diagnosticDegraded && <span className="tag tag-warning">已降级</span>}
-            <span className={`tag tag-risk tag-risk-${diag.abandonRisk}`}>
-              弃书风险 {labelForAbandonRisk(diag.abandonRisk)}
-            </span>
-          </div>
-          <div className="diagnostic-scores muted">
-            <span>读者评分 {diag.readerScore}</span>
-            <span>钩子 {diag.hookStrength}</span>
-            <span>节奏 {diag.pacingScore}</span>
-            <span>风格漂移 {diag.styleDrift}（越低越好）</span>
-          </div>
-          {diag.suggestions && diag.suggestions.length > 0 && (
-            <ul className="diagnostic-suggestions">
-              {diag.suggestions.map((s, i) => (
-                <li key={i}>{s}</li>
-              ))}
-            </ul>
-          )}
-          {diag.continuityIssues && diag.continuityIssues.length > 0 && (
-            <ul className="diagnostic-issues">
-              {diag.continuityIssues.map((issue, i) => (
-                <li key={i} className={`diagnostic-issue diagnostic-issue-${issue.severity}`}>
-                  <span className="diagnostic-issue-detail">{issue.detail}</span>
-                  {issue.suggestion && <span className="muted"> → {issue.suggestion}</span>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      <DiagnosticReport job={job} chapterId={chapterId} currentContent={currentContent} />
 
       {steps.length === 0 ? (
         <p className="muted pipeline-empty">还没有记录流水线步骤。</p>

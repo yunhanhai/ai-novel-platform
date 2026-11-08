@@ -48,6 +48,8 @@ interface Props {
   onPrepareVersionRestore: () => Promise<boolean>;
   onGenerate: (qualityMode: QualityMode, contextOptions?: ContextOptions, qualityConstraints?: QualityConstraints) => void;
   onDiagnose: (qualityMode: QualityMode) => void;
+  preparingDiagnostic: boolean;
+  diagnosticNotice?: string | null;
   onContinue: () => void;
   onBatchContinue: (chapterCount: number, extractMemory: boolean) => void;
   onStopJob: () => void;
@@ -74,6 +76,8 @@ export function WorkspaceSideTabs({
   onPrepareVersionRestore,
   onGenerate,
   onDiagnose,
+  preparingDiagnostic,
+  diagnosticNotice,
   onContinue,
   onBatchContinue,
   onStopJob,
@@ -115,6 +119,9 @@ export function WorkspaceSideTabs({
           <AiPanel
             onGenerate={onGenerate}
             onDiagnose={onDiagnose}
+            preparingDiagnostic={preparingDiagnostic}
+            diagnosticNotice={diagnosticNotice}
+            currentContent={currentChapterText}
             onContinue={onContinue}
             onBatchContinue={onBatchContinue}
             onStopJob={onStopJob}

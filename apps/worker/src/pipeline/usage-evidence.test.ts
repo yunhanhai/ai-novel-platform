@@ -6,6 +6,7 @@ import { createRewritePolishHandler } from "./rewrite-polish-handler";
 import type { GenerationJob } from "../poll";
 
 const baseJob: GenerationJob = { id: "job", organizationId: "org", projectId: "project", userId: "user", jobType: "DESLOP", status: "RUNNING", input: {}, targetEntityType: "CHAPTER", targetEntityId: "chapter" };
+const validDiagnostic = '{"readerScore":82,"abandonRisk":"low","hookStrength":75,"pacingScore":81,"styleDrift":12,"continuityIssues":[],"suggestions":[]}';
 
 function setup() {
   const tx = {
@@ -23,7 +24,7 @@ function setup() {
   };
   const model = { modelName: "model-real", billingSource: "USER_KEY" as const, generate: vi.fn().mockResolvedValue({ text: '{"issues":[],"overallScore":90,"summary":"摘要","characterChanges":[],"worldFacts":[],"newHooks":[],"chapterSummary":"摘要"}', inputTokens: 81, outputTokens: 27 }) };
   const updateJobStatus = vi.fn().mockResolvedValue({});
-  return { prisma, model, updateJobStatus };
+  return { prisma, model, updateJobStatus, tx };
 }
 
 describe("standalone model usage evidence", () => {
@@ -35,6 +36,7 @@ describe("standalone model usage evidence", () => {
     ["POLISH", createRewritePolishHandler]
   ] as const)("records one metered call for %s without changing the job result", async (jobType, createHandler) => {
     const { prisma, model, updateJobStatus } = setup();
+    if (jobType === "DIAGNOSE_CHAPTER") model.generate.mockResolvedValue({ text: validDiagnostic, inputTokens: 81, outputTokens: 27 });
     const handler = createHandler({ prisma: prisma as never, resolveModel: async () => model, updateJobStatus });
     await handler({ ...baseJob, jobType, input: { selectedText: "正文" } });
     expect(prisma.usageEvent.create).toHaveBeenCalledExactlyOnceWith({ data: expect.objectContaining({
@@ -46,13 +48,14 @@ describe("standalone model usage evidence", () => {
   });
 
   it("keeps a completed diagnostic usable when usage recording is unavailable", async () => {
-    const { prisma, model, updateJobStatus } = setup();
+    const { prisma, model, updateJobStatus, tx } = setup();
+    model.generate.mockResolvedValue({ text: validDiagnostic, inputTokens: 81, outputTokens: 27 });
     prisma.usageEvent.create.mockRejectedValue(new Error("meter unavailable"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
-      await createDiagnoseChapterHandler({ prisma: prisma as never, resolveModel: async () => model, updateJobStatus })(baseJob);
+      await createDiagnoseChapterHandler({ prisma: prisma as never, resolveModel: async () => model, updateJobStatus })({ ...baseJob, jobType: "DIAGNOSE_CHAPTER" });
       expect(prisma.usageEvent.create).toHaveBeenCalledOnce();
-      expect(updateJobStatus).toHaveBeenCalledWith(expect.objectContaining({ status: "SUCCEEDED" }));
+      expect(tx.generationJob.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "SUCCEEDED", output: expect.objectContaining({ diagnosticSummary: expect.objectContaining({ readerScore: 82 }) }) }) }));
       expect(warn).toHaveBeenCalledOnce();
     } finally { warn.mockRestore(); }
   });
