@@ -443,6 +443,9 @@ export interface JobSummary {
   status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
   progress: string | number;
   errorMessage: string | null;
+  projectId?: string;
+  targetEntityType?: string | null;
+  targetEntityId?: string | null;
   output?: {
     contextSummary?: {
       budgetPreset: string;
@@ -467,6 +470,9 @@ export interface JobSummary {
     selectedText?: string;
     newText?: string;
     chapterId?: string;
+    projectId?: string;
+    createdCount?: number;
+    requestedCount?: number;
     sourceSha256?: string;
     review?: {
       summary: string;

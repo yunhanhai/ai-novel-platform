@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./chapter-memory": "./src/chapter-memory.ts",
+    "./outline-source": "./src/outline-source.ts",
     "./tenant": "./src/tenant.ts"
   },
   "scripts": {

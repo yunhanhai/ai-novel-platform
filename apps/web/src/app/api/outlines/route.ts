@@ -36,14 +36,21 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as CreateBody;
-  if (!body.projectId || !body.level || !body.title) {
+  const parsed: unknown = await request.json().catch(() => null);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return NextResponse.json({ success: false, error: "请求需要 JSON 对象" }, { status: 400 });
+  }
+  const body = parsed as CreateBody;
+  if (typeof body.projectId !== "string" || !body.projectId.trim() || typeof body.title !== "string" || !body.title.trim() || body.title.trim().length > 200 ||
+    (body.summary !== undefined && typeof body.summary !== "string") ||
+    (body.parentId !== undefined && (typeof body.parentId !== "string" || !body.parentId.trim())) ||
+    (body.orderIndex !== undefined && (!Number.isSafeInteger(body.orderIndex) || body.orderIndex < 0))) {
     return NextResponse.json(
-      { success: false, error: "projectId、level、title 为必填项" },
+      { success: false, error: "请提供有效项目、200字内非空标题和非负整数顺序；摘要与父级需为字符串" },
       { status: 400 }
     );
   }
-  if (!VALID_LEVELS.includes(body.level)) {
+  if (!body.level || !VALID_LEVELS.includes(body.level)) {
     return NextResponse.json(
       { success: false, error: `level 必须为 ${VALID_LEVELS.join(", ")} 之一` },
       { status: 400 }
@@ -56,11 +63,11 @@ export async function POST(request: Request) {
       organizationId,
       projectId: body.projectId,
       level: body.level,
-      title: body.title,
+      title: body.title.trim(),
       orderIndex: body.orderIndex ?? 0,
       createdById,
       ...(body.parentId ? { parentId: body.parentId } : {}),
-      ...(body.summary ? { summary: body.summary } : {}),
+      ...(body.summary !== undefined ? { summary: body.summary } : {}),
       prisma
     });
     return NextResponse.json({ success: true, data: outline }, { status: 201 });
@@ -74,6 +81,7 @@ function errorResponse(error: unknown): NextResponse {
     return NextResponse.json({ success: false, error: "未登录或会话已过期" }, { status: 401 });
   }
   const message = error instanceof Error ? error.message : "服务异常";
-  console.error("[api] outlines failed", error);
-  return NextResponse.json({ success: false, error: sanitizeServerMessage(message) }, { status: 500 });
+  const isNotFound = /P2025|不存在/.test(message);
+  if (!isNotFound) console.error("[api] outlines failed", error);
+  return NextResponse.json({ success: false, error: isNotFound ? message : sanitizeServerMessage(message) }, { status: isNotFound ? 404 : 500 });
 }

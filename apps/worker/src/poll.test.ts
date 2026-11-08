@@ -234,3 +234,16 @@ it.each(["DESLOP", "REWRITE", "POLISH"])("limits delayed %s error finalization t
   expect(updateJobStatus).toHaveBeenCalledWith(expect.objectContaining({ status: "FAILED", expectedStatus: "RUNNING", expectedAttemptCount: 3 }));
   expect(requeueForRetry).not.toHaveBeenCalled();
 });
+
+it("fails changed outline source without retry and keeps terminal and attempt guards", async () => {
+  const { OutlineSourceChanged } = await import("./pipeline/outline-generation-source");
+  const updateJobStatus = mockUpdateFn(), requeueForRetry = mockRequeueFn();
+  const poller = createPoller({ claimNext: async () => ({ ...baseJob, jobType: "GENERATE_OUTLINE" }), updateJobStatus, requeueForRetry, pollIntervalMs: 1, handlers: new Map([["GENERATE_OUTLINE", vi.fn().mockRejectedValue(new OutlineSourceChanged())]]) });
+  expect(await poller.tick()).toBe("error"); expect(requeueForRetry).not.toHaveBeenCalled();
+  expect(updateJobStatus).toHaveBeenCalledWith(expect.objectContaining({ errorCode: "OUTLINE_SOURCE_CHANGED", expectedStatus: "RUNNING", expectedAttemptCount: 1 }));
+});
+it("late outline provider failure cannot overwrite a terminal task", async () => {
+  const updateJobStatus = mockUpdateFn();
+  const poller = createPoller({ claimNext: async () => ({ ...baseJob, jobType: "GENERATE_OUTLINE" }), updateJobStatus, requeueForRetry: mockRequeueFn(), pollIntervalMs: 1, handlers: new Map([["GENERATE_OUTLINE", vi.fn().mockRejectedValue(Object.assign(new Error("Unauthorized"), { status: 401 }))]]) });
+  await poller.tick(); expect(updateJobStatus).toHaveBeenCalledWith(expect.objectContaining({ expectedStatus: "RUNNING", expectedAttemptCount: 1, errorCode: "MODEL_CONFIG_ERROR" }));
+});

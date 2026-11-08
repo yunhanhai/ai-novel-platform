@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@ai-novel/db";
+import { lockOutlineProject } from "@ai-novel/db/outline-source";
 
 interface CreateOutlineParams {
   organizationId: string;
@@ -19,12 +20,19 @@ interface UpdateOutlineInput {
 }
 
 export async function createOutline({ organizationId, projectId, parentId, level, title, orderIndex, summary, createdById, prisma }: CreateOutlineParams) {
-  return prisma.outline.create({
-    data: {
-      organizationId, projectId, parentId, level, title, orderIndex,
-      status: "PLANNED", createdById,
-      ...(summary ? { summary } : {})
+  return prisma.$transaction(async tx => {
+    await lockOutlineProject({ tx, organizationId, projectId });
+    if (parentId) {
+      const parent = await tx.outline.findFirst({ where: { id: parentId, organizationId, projectId }, select: { id: true } });
+      if (!parent) throw new Error("父级大纲不存在或不属于当前项目");
     }
+    return tx.outline.create({
+      data: {
+        organizationId, projectId, parentId, level, title, orderIndex,
+        status: "PLANNED", createdById,
+        ...(summary !== undefined ? { summary } : {})
+      }
+    });
   });
 }
 
@@ -36,8 +44,23 @@ export async function findOutlinesByProject(organizationId: string, projectId: s
 }
 
 export async function updateOutline(organizationId: string, outlineId: string, data: UpdateOutlineInput, prisma: PrismaClient) {
-  return prisma.outline.update({
-    where: { id: outlineId, organizationId },
-    data
+  const source = await prisma.outline.findFirst({ where: { id: outlineId, organizationId }, select: { projectId: true } });
+  if (!source) throw new Error("大纲条目不存在");
+  return prisma.$transaction(async tx => {
+    await lockOutlineProject({ tx, organizationId, projectId: source.projectId });
+    const current = await tx.outline.findFirst({ where: { id: outlineId, organizationId, projectId: source.projectId }, select: { id: true } });
+    if (!current) throw new Error("大纲条目不存在");
+    return tx.outline.update({ where: { id: outlineId, organizationId, projectId: source.projectId }, data });
+  });
+}
+
+export async function deleteOutline(organizationId: string, outlineId: string, prisma: PrismaClient) {
+  const source = await prisma.outline.findFirst({ where: { id: outlineId, organizationId }, select: { projectId: true } });
+  if (!source) throw new Error("大纲条目不存在");
+  return prisma.$transaction(async tx => {
+    await lockOutlineProject({ tx, organizationId, projectId: source.projectId });
+    const current = await tx.outline.findFirst({ where: { id: outlineId, organizationId, projectId: source.projectId }, select: { id: true } });
+    if (!current) throw new Error("大纲条目不存在");
+    return tx.outline.delete({ where: { id: outlineId, organizationId, projectId: source.projectId } });
   });
 }

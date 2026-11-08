@@ -2237,3 +2237,14 @@ git diff --check   通过
 - worker原RED39失败后46定向/108邻近，枚举数组RED2项已拒绝；实际DB21全回滚+2双连接持锁竞争通过，真实正文/时间不变，多连接合成项目保留。独立95定向+实际组件10项/静态接线1项无阻断。
 - 浏览器9定向通过；typecheck空值判断修正后5包通过。全单测旧usage夹具错误类型/无效payload修正后1316pass+1skip（42/74/50/426/724）；完整e2e100pass+1skip（fake，7.8m，新增9项），build/最终typecheck5包及凭据检查通过，失败证据均保留不放宽校验。
 - 报告`reports/2026-11-08-diagnostic-source-guards.md`明确参考分非读者实测、上下文请求快照/ABA/usage尽力边界；外部模型0，真实作品/记忆/配置/schema不变，无迁移部署。codex/diagnostic-source-guards验证后快进master同步双远程外存commit/tree回执，旧实验保留。
+
+---
+
+## 2026-11-08 — 批量细纲来源与原子追加
+
+- 原handler细纲/step/job分离提交，无取消/attempt/来源保护且部分输出可追加。严格JSON恰好请求章数，标题/摘要非空有界；完整prompt<=40000Unicode，项目+全大纲快照，最终项目→job锁核来源/终态/轮次，节点+step+结果原子，最终step凭证防ack重复。
+- 既有项目手工create/update/delete共用项目锁，parent核同组织项目，update/delete锁后重查；摘要可清空。页面加载失败可见可刷新、代际/卸载隔离、保存表单锁定、生成前flush后核编辑来源，不在大纲成功后reload正文。
+- workerRED32失败后42定向、pollRED2后合计58/邻近139通过；实际DB21全回滚+3双连接竞争，手工DB8全回滚/43定向通过。双worker同来源仅1组追加，手改来源或取消先锁均保护；持久合成记录保留，真实章未变。
+- 独立58worker/43web及实际组件发现AIadopt迟到刷新与旧无项目失败串入两P2，修复后10组件GREEN无阻断。浏览器5专项通过，新真实HTTP父级/组织/输入进入全回归；测试unknown类型断言修正后5包typecheck通过。
+- 完整单测1387pass+1skip（42/74/50/462/759），完整e2e106pass+1skip（fake，7.8m，新增6项），build/最终typecheck5包及凭据排除通过。首轮回归3旧流程失败，NextHTML404/10.3秒请求/正文未载入现场保留；缓存移存及重试遇OOM，内存恢复后原断言原时限完整重验。
+- 报告`reports/2026-11-08-outline-generation-guards.md`明确角色世界前20请求快照/手动多页未加CAS/语义和exactly-once边界；外部模型0，真实作品/记忆/配置/schema不变，无迁移部署。codex/outline-generation-guards验证后快进master同步双远程外存commit/tree回执，旧实验保留。

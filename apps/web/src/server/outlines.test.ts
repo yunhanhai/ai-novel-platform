@@ -1,66 +1,74 @@
-import { describe, expect, it } from "vitest";
-import { createOutline, findOutlinesByProject, updateOutline } from "./outlines";
+import { describe, expect, it, vi } from "vitest";
+import { createOutline, findOutlinesByProject, updateOutline, deleteOutline } from "./outlines";
 
-function mockPrisma(overrides: Record<string, unknown> = {}) {
-  return {
-    outline: { create: vi.fn(), findMany: vi.fn(), update: vi.fn() },
-    ...overrides
-  } as unknown as Parameters<typeof createOutline>[0]["prisma"];
+const outline = { id: "o1", organizationId: "org1", projectId: "p1", parentId: null, level: "BOOK", title: "全书大纲", summary: null, orderIndex: 1, status: "PLANNED", createdById: "u1" };
+function fixture() {
+  const events: string[] = [];
+  const tx = {
+    $queryRaw: vi.fn(async (..._args: unknown[]) => { events.push("lock-project"); return [{id: "p1"}]; }),
+    outline: {
+      create: vi.fn(async (args: any) => { events.push("create"); return { ...outline, ...args.data }; }),
+      findFirst: vi.fn(async () => { events.push("recheck"); return outline; }),
+      update: vi.fn(async (args: any) => { events.push("update"); return { ...outline, ...args.data }; }),
+      delete: vi.fn(async () => { events.push("delete"); return outline; })
+    }
+  };
+  const client = {
+    outline: { findFirst: vi.fn().mockResolvedValue({projectId:"p1"}), findMany: vi.fn().mockResolvedValue([outline]), create: vi.fn().mockResolvedValue(outline), update: vi.fn().mockResolvedValue(outline), delete: vi.fn().mockResolvedValue(outline) },
+    $transaction: vi.fn(async (cb: (value: typeof tx) => unknown) => cb(tx))
+  };
+  return { client, tx, events, prisma: client as never };
 }
+const create = (prisma: never, extra = {}) => createOutline({ organizationId:"org1", projectId:"p1", level:"BOOK", title:"全书大纲", orderIndex:1, createdById:"u1", prisma, ...extra });
 
-const outline = {
-  id: "o1", organizationId: "org1", projectId: "p1", parentId: null,
-  level: "BOOK", title: "全书大纲", summary: null, orderIndex: 1,
-  status: "PLANNED", createdById: "u1"
-};
-
-describe("outlines", () => {
-  describe("createOutline", () => {
-    it("creates a top-level outline entry", async () => {
-      const prisma = mockPrisma({ outline: { create: vi.fn().mockResolvedValue(outline) } });
-
-      const result = await createOutline({
-        organizationId: "org1", projectId: "p1",
-        level: "BOOK", title: "全书大纲", orderIndex: 1,
-        createdById: "u1", prisma
-      });
-
-      expect(result.title).toBe("全书大纲");
-      expect(result.level).toBe("BOOK");
-    });
-
-    it("creates a child outline under a parent", async () => {
-      const child = { ...outline, id: "o2", parentId: "o1", level: "VOLUME", title: "卷大纲" };
-      const prisma = mockPrisma({ outline: { create: vi.fn().mockResolvedValue(child) } });
-
-      const result = await createOutline({
-        organizationId: "org1", projectId: "p1", parentId: "o1",
-        level: "VOLUME", title: "卷大纲", orderIndex: 1,
-        createdById: "u1", prisma
-      });
-
-      expect(result.parentId).toBe("o1");
-    });
+describe("outline project write locks", () => {
+  it("locks the scoped project before creating and preserves explicit empty summary", async () => {
+    const f=fixture(); const result=await create(f.prisma,{summary:""});
+    expect(f.events).toEqual(["lock-project","create"]); expect(result.summary).toBe("");
+    expect((f.tx.$queryRaw.mock.calls[0]?.[0] as TemplateStringsArray).join("")).toMatch(/organization_id.*deleted_at.*FOR UPDATE/s);
+    expect(f.client.outline.create).not.toHaveBeenCalled();
   });
-
-  describe("findOutlinesByProject", () => {
-    it("returns outlines ordered by orderIndex", async () => {
-      const prisma = mockPrisma({ outline: { findMany: vi.fn().mockResolvedValue([outline]) } });
-
-      const result = await findOutlinesByProject("org1", "p1", prisma);
-
-      expect(result).toHaveLength(1);
-    });
+  it("validates parent within the same project after locking", async () => {
+    const f=fixture(); await create(f.prisma,{parentId:"parent"});
+    expect(f.events).toEqual(["lock-project","recheck","create"]);
+    expect(f.tx.outline.findFirst).toHaveBeenCalledWith({where:{id:"parent",organizationId:"org1",projectId:"p1"},select:{id:true}});
   });
-
-  describe("updateOutline", () => {
-    it("updates title and summary", async () => {
-      const updated = { ...outline, title: "新标题", summary: "摘要" };
-      const prisma = mockPrisma({ outline: { update: vi.fn().mockResolvedValue(updated) } });
-
-      const result = await updateOutline("org1", "o1", { title: "新标题", summary: "摘要" }, prisma);
-
-      expect(result.title).toBe("新标题");
-    });
+  it("rejects foreign/deleted project before creating", async () => {
+    const f=fixture(); f.tx.$queryRaw.mockResolvedValue([]);
+    await expect(create(f.prisma)).rejects.toThrow(/项目不存在/); expect(f.tx.outline.create).not.toHaveBeenCalled();
+  });
+  it("rejects a parent outside the project without writing", async () => {
+    const f=fixture(); f.tx.outline.findFirst.mockResolvedValue(null as never);
+    await expect(create(f.prisma,{parentId:"foreign"})).rejects.toThrow(/父级大纲不存在/); expect(f.tx.outline.create).not.toHaveBeenCalled();
+  });
+  it("reads project then locks and rechecks the node before update, including clearing summary", async () => {
+    const f=fixture(); const result=await updateOutline("org1","o1",{title:"新标题",summary:""},f.prisma);
+    expect(f.events).toEqual(["lock-project","recheck","update"]); expect(result.summary).toBe("");
+    expect(f.client.outline.findFirst).toHaveBeenCalledWith({where:{id:"o1",organizationId:"org1"},select:{projectId:true}});
+    expect(f.tx.outline.findFirst).toHaveBeenCalledWith({where:{id:"o1",organizationId:"org1",projectId:"p1"},select:{id:true}});
+    expect(f.client.outline.update).not.toHaveBeenCalled();
+  });
+  it("rejects a node removed while awaiting the project lock", async () => {
+    const f=fixture(); f.tx.outline.findFirst.mockResolvedValue(null as never);
+    await expect(updateOutline("org1","o1",{title:"新"},f.prisma)).rejects.toThrow(/大纲条目不存在/); expect(f.tx.outline.update).not.toHaveBeenCalled();
+  });
+  it("rejects an inaccessible node before acquiring a project lock", async () => {
+    const f=fixture(); f.client.outline.findFirst.mockResolvedValue(null);
+    await expect(updateOutline("org1","o1",{title:"新"},f.prisma)).rejects.toThrow(/大纲条目不存在/); expect(f.client.$transaction).not.toHaveBeenCalled();
+  });
+  it("deletes only after scoped project lock and node recheck", async () => {
+    const f=fixture(); await deleteOutline("org1","o1",f.prisma);
+    expect(f.events).toEqual(["lock-project","recheck","delete"]);
+    expect(f.tx.outline.delete).toHaveBeenCalledWith({where:{id:"o1",organizationId:"org1",projectId:"p1"}});
+  });
+  it("rejects deleted project during update or deletion", async () => {
+    for(const operation of [updateOutline.bind(null,"org1","o1",{title:"new"}),deleteOutline.bind(null,"org1","o1")]) {
+      const f=fixture(); f.tx.$queryRaw.mockResolvedValue([]); await expect(operation(f.prisma)).rejects.toThrow(/项目不存在/);
+      expect(f.tx.outline.update).not.toHaveBeenCalled(); expect(f.tx.outline.delete).not.toHaveBeenCalled();
+    }
+  });
+  it("keeps scoped read list ordered by index", async () => {
+    const f=fixture(); expect(await findOutlinesByProject("org1","p1",f.prisma)).toEqual([outline]);
+    expect(f.client.outline.findMany).toHaveBeenCalledWith({where:{organizationId:"org1",projectId:"p1"},orderBy:{orderIndex:"asc"}});
   });
 });

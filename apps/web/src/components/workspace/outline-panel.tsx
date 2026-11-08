@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AiDraftDialog, type FieldSpec } from "./ai-draft-dialog";
 
 interface ApiEnvelope<T> {
@@ -26,6 +26,7 @@ interface Props {
   projectId: string | null;
   job?: import("./use-workspace-data").JobSummary | null;
   isStarting?: boolean;
+  preparationNotice?: string | null;
   onGenerateOutline?: (chapterCount: number) => void;
   onGenerated?: () => void;
 }
@@ -51,7 +52,7 @@ const DRAFT_FIELDS: ReadonlyArray<FieldSpec<OutlineDraft>> = [
   { key: "summary", label: "摘要", control: "textarea", rows: 3 }
 ];
 
-export function OutlinePanel({ projectId, job = null, isStarting = false, onGenerateOutline, onGenerated }: Props) {
+export function OutlinePanel({ projectId, job = null, isStarting = false, preparationNotice, onGenerateOutline, onGenerated }: Props) {
   const [batchCount, setBatchCount] = useState(5);
   const [items, setItems] = useState<OutlineItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -67,31 +68,44 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
   const [saving, setSaving] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiLevel, setAiLevel] = useState<typeof LEVEL_OPTIONS[number]>("CHAPTER");
+  const alive = useRef(false);
+  const scope = useRef(0);
+  const currentProject = useRef(projectId);
+  currentProject.current = projectId;
+  const listSequence = useRef(0);
+  const mutationBusy = useRef(false);
+  const isCurrent = (id: string | null, epoch: number) => alive.current && currentProject.current === id && scope.current === epoch;
 
   const reload = useCallback(async () => {
     if (!projectId) return;
-    setLoading(true);
+    const epoch = scope.current, sequence = ++listSequence.current;
+    setLoading(true); setError(null);
     try {
       const res = await fetch(`/api/outlines?projectId=${encodeURIComponent(projectId)}`);
       const json = (await res.json()) as ApiEnvelope<OutlineItem[]>;
-      if (json.success) setItems(json.data ?? []);
-    } catch {
-      /* ignore */
+      if (!isCurrent(projectId, epoch) || listSequence.current !== sequence) return;
+      if (!res.ok || !json.success || !Array.isArray(json.data)) throw new Error(json.error ?? "大纲加载失败，请重试");
+      setItems(json.data);
+    } catch (err: unknown) {
+      if (isCurrent(projectId, epoch) && listSequence.current === sequence) setError(err instanceof Error ? err.message : "大纲加载失败，请重试");
     } finally {
-      setLoading(false);
+      if (isCurrent(projectId, epoch) && listSequence.current === sequence) setLoading(false);
     }
   }, [projectId]);
 
   useEffect(() => {
+    alive.current = true;
+    setItems([]); resetForm(); setError(null);
     if (projectId) void reload();
+    return () => { alive.current = false; scope.current++; listSequence.current++; };
   }, [projectId, reload]);
 
   useEffect(() => {
-    if (job?.jobType === "GENERATE_OUTLINE" && job.status === "SUCCEEDED") {
+    if (job?.jobType === "GENERATE_OUTLINE" && job.status === "SUCCEEDED" && job.output?.projectId === projectId) {
       void reload();
       onGenerated?.();
     }
-  }, [job?.jobType, job?.status, job?.id, reload, onGenerated]);
+  }, [job?.jobType, job?.status, job?.id, job?.output, projectId, reload, onGenerated]);
 
   function resetForm() {
     setFormLevel("CHAPTER");
@@ -103,6 +117,7 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
   }
 
   function startEdit(item: OutlineItem) {
+    if (mutationBusy.current) return;
     setFormLevel(item.level);
     setFormTitle(item.title);
     setFormSummary(item.summary ?? "");
@@ -113,7 +128,9 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
-    if (!projectId || !formTitle.trim()) return;
+    if (!projectId || !formTitle.trim() || mutationBusy.current) return;
+    const id = projectId, epoch = scope.current;
+    mutationBusy.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -124,7 +141,7 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title: formTitle.trim(),
-            summary: formSummary.trim() || undefined
+            summary: formSummary.trim()
           })
         });
         const json = (await res.json()) as ApiEnvelope<OutlineItem>;
@@ -140,37 +157,44 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
             title: formTitle.trim(),
             summary: formSummary.trim() || undefined,
             parentId: formParentId || undefined,
-            orderIndex: items.filter((i) => i.level === formLevel).length
+            orderIndex: items.filter((i) => i.level === formLevel).reduce((max, item) => Math.max(max, item.orderIndex), -1) + 1
           })
         });
         const json = (await res.json()) as ApiEnvelope<OutlineItem>;
         if (!res.ok || !json.success) throw new Error(json.error ?? "创建失败");
       }
+      if (!isCurrent(id, epoch)) return;
       resetForm();
       await reload();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      if (isCurrent(id, epoch)) setError(err instanceof Error ? err.message : "保存失败");
     } finally {
-      setSaving(false);
+      mutationBusy.current = false; if (isCurrent(id, epoch)) setSaving(false);
     }
   }
 
   async function handleDelete(id: string) {
+    if (mutationBusy.current) return;
     if (!confirm("确定删除此大纲条目？")) return;
+    const projectAtCall = projectId, epoch = scope.current;
+    mutationBusy.current = true; setSaving(true); setError(null);
     try {
       const res = await fetch(`/api/outlines/${id}`, { method: "DELETE" });
       const json = (await res.json()) as ApiEnvelope<unknown>;
       if (!res.ok || !json.success) throw new Error(json.error ?? "删除失败");
-      await reload();
+      if (isCurrent(projectAtCall, epoch)) await reload();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "删除失败");
+      if (isCurrent(projectAtCall, epoch)) setError(err instanceof Error ? err.message : "删除失败");
+    } finally {
+      mutationBusy.current = false; if (isCurrent(projectAtCall, epoch)) setSaving(false);
     }
   }
 
   if (!projectId) return <p className="muted">请先选择一个项目</p>;
 
   const itemsByLevel = groupBy(items, (i) => i.level);
-  const isOutlineJob = job?.jobType === "GENERATE_OUTLINE";
+  const jobProjectId = job?.output?.projectId ?? (job?.targetEntityType === "PROJECT" ? job.targetEntityId : job?.projectId);
+  const isOutlineJob = job?.jobType === "GENERATE_OUTLINE" && jobProjectId === projectId;
   const outlineRunning = Boolean(isOutlineJob && job && ["QUEUED", "RUNNING"].includes(job.status));
   const outlineBusy = isStarting || outlineRunning;
   const outlineFailed = Boolean(isOutlineJob && job?.status === "FAILED");
@@ -180,10 +204,11 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
       <div className="memories-filters">
         <h3>大纲</h3>
         <div className="memories-filter-buttons">
-          <button type="button" className="btn-ghost" onClick={() => setAiOpen(true)}>
+          <button type="button" className="btn-ghost" disabled={saving} onClick={() => { if (!mutationBusy.current) setAiOpen(true); }}>
             ✨ AI 起草
           </button>
-          <button type="button" className="btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
+          <button type="button" className="btn-ghost" onClick={() => void reload()}>刷新</button>
+          <button type="button" className="btn-primary" disabled={saving} onClick={() => { if (!mutationBusy.current) { resetForm(); setShowForm(true); } }}>
             新建
           </button>
         </div>
@@ -216,6 +241,7 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
             {outlineBusy ? "生成中..." : "生成细纲"}
           </button>
           {outlineFailed && <span className="form-error">{job?.errorMessage ?? "生成失败"}</span>}
+          {preparationNotice && <span className="form-error" role="alert" aria-label="细纲准备提示">{preparationNotice}</span>}
         </div>
       )}
 
@@ -224,7 +250,7 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
           {!editingId && (
             <label>
               <span>层级</span>
-              <select value={formLevel} onChange={(e) => setFormLevel(e.target.value)}>
+              <select disabled={saving} value={formLevel} onChange={(e) => setFormLevel(e.target.value)}>
                 {LEVEL_OPTIONS.map((l) => (
                   <option key={l} value={l}>{LEVEL_LABELS[l]}</option>
                 ))}
@@ -233,12 +259,12 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
           )}
           <label>
             <span>标题 *</span>
-            <input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} required maxLength={200} />
+            <input disabled={saving} value={formTitle} onChange={(e) => setFormTitle(e.target.value)} required maxLength={200} />
           </label>
           {!editingId && (
             <label>
               <span>父级</span>
-              <select value={formParentId} onChange={(e) => setFormParentId(e.target.value)}>
+              <select disabled={saving} value={formParentId} onChange={(e) => setFormParentId(e.target.value)}>
                 <option value="">-- 无 --</option>
                 {items.filter((i) => i.level !== "BEAT").map((i) => (
                   <option key={i.id} value={i.id}>{LEVEL_LABELS[i.level]} · {i.title}</option>
@@ -249,6 +275,7 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
           <label>
             <span>摘要</span>
             <textarea
+              disabled={saving}
               value={formSummary}
               onChange={(e) => setFormSummary(e.target.value)}
               rows={3}
@@ -281,8 +308,8 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
                   </div>
                   {item.summary && <p className="muted resource-card-meta">{item.summary.slice(0, 120)}</p>}
                   <div className="resource-card-actions">
-                    <button type="button" className="btn-ghost" onClick={() => startEdit(item)}>编辑</button>
-                    <button type="button" className="btn-ghost" onClick={() => void handleDelete(item.id)}>删除</button>
+                    <button type="button" className="btn-ghost" disabled={saving} onClick={() => startEdit(item)}>编辑</button>
+                    <button type="button" className="btn-ghost" disabled={saving} onClick={() => void handleDelete(item.id)}>删除</button>
                   </div>
                 </li>
               ))}
@@ -319,20 +346,29 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, onGene
           startOrderIndex: items.filter((i) => i.level === aiLevel).length
         }}
         onAdopt={async (draft) => {
+          const id = projectId, epoch = scope.current;
+          if (!isCurrent(id, epoch)) throw new Error("项目已切换，请重新打开大纲草稿。");
+          if (mutationBusy.current) throw new Error("请等待当前大纲保存完成。");
+          mutationBusy.current = true; setSaving(true);
+          try {
           const res = await fetch("/api/outlines", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              projectId,
+              projectId: id,
               level: draft.level ?? aiLevel,
               title: draft.title,
               summary: draft.summary || undefined,
-              orderIndex: draft.orderIndex ?? items.filter((i) => i.level === aiLevel).length
+              orderIndex: draft.orderIndex ?? items.filter((i) => i.level === aiLevel).reduce((max, item) => Math.max(max, item.orderIndex), -1) + 1
             })
           });
           const json = (await res.json()) as ApiEnvelope<unknown>;
+          if (!isCurrent(id, epoch)) return;
           if (!res.ok || !json.success) throw new Error(json.error ?? "创建失败");
           await reload();
+          } finally {
+            mutationBusy.current = false; if (isCurrent(id, epoch)) setSaving(false);
+          }
         }}
         onClose={() => setAiOpen(false)}
       />

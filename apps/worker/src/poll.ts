@@ -1,5 +1,6 @@
 import { ChapterSourceChanged, ContinuationAttemptChanged } from "./pipeline/continuation-save";
 import { classifyModelError } from "./pipeline/model-error-classifier";
+import { OutlineSourceChanged } from "./pipeline/outline-generation-source";
 
 export interface GenerationJob {
   id: string;
@@ -63,7 +64,7 @@ export function createPoller(deps: PollerDeps): Poller {
     const job = await claimNext();
     if (!job) return "no_job";
 
-    const updateForAttempt: UpdateStatusFn = params => updateJobStatus({ ...params, expectedAttemptCount: job.attemptCount ?? 1, ...(["DESLOP", "REWRITE", "POLISH"].includes(job.jobType) ? { expectedStatus: "RUNNING" as const } : {}) });
+    const updateForAttempt: UpdateStatusFn = params => updateJobStatus({ ...params, expectedAttemptCount: job.attemptCount ?? 1, ...(["DESLOP", "REWRITE", "POLISH", "GENERATE_OUTLINE"].includes(job.jobType) ? { expectedStatus: "RUNNING" as const } : {}) });
     const handler = handlers.get(job.jobType);
     if (!handler) {
       await updateForAttempt({
@@ -81,6 +82,10 @@ export function createPoller(deps: PollerDeps): Poller {
     } catch (error: unknown) {
       if (error instanceof ContinuationAttemptChanged) return "processed";
       const message = error instanceof Error ? error.message : "Unknown error";
+      if (error instanceof OutlineSourceChanged) {
+        await updateForAttempt({ jobId: job.id, status: "FAILED", errorCode: "OUTLINE_SOURCE_CHANGED", errorMessage: error.message });
+        return "error";
+      }
       if (error instanceof ChapterSourceChanged) {
         await updateForAttempt({ jobId: job.id, status: "FAILED", errorCode: "CHAPTER_SOURCE_CHANGED", errorMessage: error.message });
         return "error";

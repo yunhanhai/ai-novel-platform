@@ -59,6 +59,8 @@ interface Props {
   preparingReview: boolean;
   reviewNotice?: string | null;
   onGenerateOutline: (chapterCount: number) => void;
+  preparingOutline: boolean;
+  outlineNotice?: string | null;
   onApplyReviewReplacement: (quote: string, replacement: string, source: ReviewSource) => boolean;
   onDeslop: () => void;
   onExtractMemory: () => void;
@@ -87,6 +89,8 @@ export function WorkspaceSideTabs({
   preparingReview,
   reviewNotice,
   onGenerateOutline,
+  preparingOutline,
+  outlineNotice,
   onApplyReviewReplacement,
   onDeslop,
   onExtractMemory,
@@ -140,7 +144,7 @@ export function WorkspaceSideTabs({
           <VersionsPanel key={chapterId} chapterId={chapterId} currentContent={currentChapterText} prepareRestore={onPrepareVersionRestore} onRestored={onChapterContentRefreshed} />
         )}
         {active === "outline" && (
-          <OutlinePanel projectId={projectId} job={job} isStarting={isStarting} onGenerateOutline={onGenerateOutline} />
+          <OutlinePanel key={projectId} projectId={projectId} job={job} isStarting={isStarting || preparingOutline} preparationNotice={outlineNotice} onGenerateOutline={onGenerateOutline} />
         )}
         {active === "stats" && <StatsPanel projectId={projectId} />}
         {active === "performance" && <PerformancePanel projectId={projectId} />}

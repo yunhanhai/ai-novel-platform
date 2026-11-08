@@ -85,6 +85,9 @@ export default function WorkspacePage() {
   const [preparingDiagnostic, setPreparingDiagnostic] = useState(false);
   const [diagnosticNotice, setDiagnosticNotice] = useState<string | null>(null);
   const diagnosticPreparingRef = useRef(false);
+  const [preparingOutline, setPreparingOutline] = useState(false);
+  const [outlineNotice, setOutlineNotice] = useState<string | null>(null);
+  const outlinePreparingRef = useRef(false);
   const rewriteRequestRef = useRef<RewriteRequest | null>(null);
   const currentEditorRef = useRef({ chapterId: activeChapterId, content });
   currentEditorRef.current = { chapterId: activeChapterId, content };
@@ -92,7 +95,7 @@ export default function WorkspacePage() {
   selectionRef.current = selection;
 
   useEffect(() => {
-    if (job?.status === "SUCCEEDED" && job.jobType !== "REVIEW" && !DIAGNOSTIC_JOB_TYPES.has(job.jobType) && !REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
+    if (job?.status === "SUCCEEDED" && !["REVIEW", "GENERATE_OUTLINE"].includes(job.jobType) && !DIAGNOSTIC_JOB_TYPES.has(job.jobType) && !REWRITE_POLISH_JOB_TYPES.has(job.jobType)) {
       void reloadChapters();
       void reloadContent();
       bumpStats();
@@ -211,9 +214,14 @@ export default function WorkspacePage() {
   }
 
   async function handleGenerateOutline(chapterCount: number) {
-    if (!projectId) return;
-    if (!await flush()) return;
-    await startJob(null, "GENERATE_OUTLINE", { projectId, chapterCount });
+    if (!projectId || isStarting || outlinePreparingRef.current) return;
+    const source = currentEditorRef.current;
+    outlinePreparingRef.current = true; setPreparingOutline(true); setOutlineNotice(null);
+    try {
+      const saved = await flush();
+      if (!saved || source.chapterId !== currentEditorRef.current.chapterId || source.content !== currentEditorRef.current.content) { setOutlineNotice("正文未保存或已变化，请核对后重新生成细纲。"); return; }
+      await startJob(null, "GENERATE_OUTLINE", { projectId, chapterCount });
+    } finally { outlinePreparingRef.current = false; setPreparingOutline(false); }
   }
 
   // 审校建议的「应用替换」：按引证原文定位并替换。
@@ -433,6 +441,8 @@ export default function WorkspacePage() {
         preparingReview={preparingReview}
         reviewNotice={reviewNotice}
         onGenerateOutline={(count) => void handleGenerateOutline(count)}
+        preparingOutline={preparingOutline}
+        outlineNotice={outlineNotice}
         onApplyReviewReplacement={applyReviewReplacement}
         onDeslop={handleDeslop}
         onExtractMemory={handleExtractMemory}

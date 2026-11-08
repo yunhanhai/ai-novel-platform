@@ -1326,3 +1326,12 @@ git diff --check
 - [x] ActualDB21rollback+2connection-order checks;independent95tests/10actual-component checks+1static wiring;9targeted browser cases clear.
 - [x] Verify1316tests+1skip,e2e100pass+1skip,typecheck5/5,build and credential exclusion;update final documentation,integrate master and synchronize both remotes with external receipts.
 - [ ] Remaining:real semantic/reader calibration,prompt metadata versioning and source hash ABA need separate scope.
+
+### 2026-11-08 — Atomic source-guarded chapter outline generation
+
+- [x] Strict exact-count title/summary JSON,complete bounded prompt,and scoped source/status/attempt checks under project then job locks;nodes/step/result commit together with acknowledgment receipt recovery.
+- [x] All existing-project manual outline writers share project lock and parent scope checks;empty summary supported,loading errors/retry and stale-response guards added.
+- [x] ActualDB21worker rollback+3connection races and8manual rollback cases;58worker/43web independent tests and10final controlled component checks clear after2P2 fixes.
+- [x] Browser5targeted cases pass;new realHTTP scope/input case included;1387unit tests+1skip pass.
+- [x] Verify1387tests+1skip,e2e106pass+1skip,build,typecheck5/5 and credential exclusion;update documentation,integrate master and synchronize both remotes with external receipts.
+- [ ] Remaining:manual multi-tab outline CAS,semantic plot quality,prompt asset versioning and durable AI-draft adoption need separate scope.
