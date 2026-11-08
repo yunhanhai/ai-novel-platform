@@ -81,9 +81,9 @@ test("真实大纲HTTP校验输入和父级项目范围，异组织更新不能�
   const foreign = await playwright.request.newContext({ baseURL: "http://localhost:3000" });
   const anonymous = await playwright.request.newContext({ baseURL: "http://localhost:3000" });
   try {
-    expect((await anonymous.patch(url, { data: { summary: "不应写入" } })).status()).toBe(401);
+    expect((await anonymous.patch(url, { data: { summary: "不应写入", baseRevisionHash: "a".repeat(64) } })).status()).toBe(401);
     expect((await foreign.post("/api/auth/register", { data: { email: `outline-foreign-${Date.now()}@example.com`, password: "outline-test-pass", displayName: "异组织大纲" } })).status()).toBe(201);
-    expect((await foreign.patch(url, { data: { summary: "不应写入" } })).status()).toBe(404);
+    expect((await foreign.patch(url, { data: { summary: "不应写入", baseRevisionHash: "a".repeat(64) } })).status()).toBe(404);
     expect((await foreign.post("/api/outlines", { data: { projectId: f.projectId, level: "CHAPTER", title: "不得跨组织" } })).status()).toBe(404);
     const rows = (await (await page.request.get(`/api/outlines?projectId=${f.projectId}`)).json()).data;
     expect(rows).toHaveLength(1); expect(rows[0].summary).toBe("作者保留摘要");

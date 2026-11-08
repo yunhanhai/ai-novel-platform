@@ -2248,3 +2248,13 @@ git diff --check   通过
 - 独立58worker/43web及实际组件发现AIadopt迟到刷新与旧无项目失败串入两P2，修复后10组件GREEN无阻断。浏览器5专项通过，新真实HTTP父级/组织/输入进入全回归；测试unknown类型断言修正后5包typecheck通过。
 - 完整单测1387pass+1skip（42/74/50/462/759），完整e2e106pass+1skip（fake，7.8m，新增6项），build/最终typecheck5包及凭据排除通过。首轮回归3旧流程失败，NextHTML404/10.3秒请求/正文未载入现场保留；缓存移存及重试遇OOM，内存恢复后原断言原时限完整重验。
 - 报告`reports/2026-11-08-outline-generation-guards.md`明确角色世界前20请求快照/手动多页未加CAS/语义和exactly-once边界；外部模型0，真实作品/记忆/配置/schema不变，无迁移部署。codex/outline-generation-guards验证后快进master同步双远程外存commit/tree回执，旧实验保留。
+
+---
+
+## 2026-11-08 — 手动大纲编辑冲突保护
+
+- 原helper实际DB RED忽略过期更新/删除，浏览器双页旧稿覆盖。节点revisionHash确定性覆盖身份/归属/层级/标题/摘要/顺序/状态/绑定章，列表/create/单项GET/PATCH返回；PATCH/DELETE必需base，项目锁内重读CAS过期异稿409零写入，同目标旧base幂等不改时间。
+- 页面捕获编辑基线，冲突保留本地表单/禁普通提交；读最新只展示对比，明确采用远端才换表单，明确保留本地才以所读基线保存；读失败/期间新输入/重新开表单/卸载与迟到读保护，删除带列表基线。
+- helperRED4/APIRED8后4文件70通过，真实DB12项含双连接/写后回滚；独立实际DB9及实际组件8项通过，普通夹具全回滚、多连接合成保留，真实章未变。首次浏览器11通过1措辞失配，真实DELETE409正确；改HTTP409+未执行文案断言，完整回归验证。
+- 完整单测1414pass+1skip（42/74/50/462/786），typecheck5包已通过，完整e2e112pass+1skip（fake，7.4m，新增6项），build/最终typecheck5包及凭据排除通过，同步回执外存。外部模型0，真实作品/记忆/配置/schema不变，无迁移部署。
+- 报告`reports/2026-11-08-outline-edit-conflicts.md`明确状态指纹ABA/部分patch幂等/删除后代快照与无持久删除凭证/表单刷新未恢复等边界；codex/outline-edit-conflicts验证后快进master同步双远程外存commit/tree回执，旧实验保留。

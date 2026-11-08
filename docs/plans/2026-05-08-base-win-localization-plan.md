@@ -1335,3 +1335,12 @@ git diff --check
 - [x] Browser5targeted cases pass;new realHTTP scope/input case included;1387unit tests+1skip pass.
 - [x] Verify1387tests+1skip,e2e106pass+1skip,build,typecheck5/5 and credential exclusion;update documentation,integrate master and synchronize both remotes with external receipts.
 - [ ] Remaining:manual multi-tab outline CAS,semantic plot quality,prompt asset versioning and durable AI-draft adoption need separate scope.
+
+### 2026-11-08 — Manual outline stale-edit and deletion guards
+
+- [x] Reproduce stale helper update/delete and two-page lost edit;return deterministic node revision hashes and require baselines on PATCH/DELETE.
+- [x] Compare under existing project lock,return409without writes for differing stale content,same-target retry preserves time;scope reads to active organization/project.
+- [x] Preserve conflict form,read remote only for comparison,require explicit remote adoption or local overwrite;isolate old form/read/unmount and carry listed delete proof.
+- [x] Server70tests/12actualDB cases,independent9actualDB/8actual-component checks clear;1414unit+1skip pass and first typecheck5/5 clear.
+- [x] Verify1414tests+1skip,e2e112pass+1skip,build,typecheck5/5 and credential exclusion;update documentation,integrate master and synchronize both remotes with external receipts.
+- [ ] Remaining:hash ABA,form refresh recovery,descendant deletion snapshots and broader asset editor conflict protection require separate scope.

@@ -20,6 +20,7 @@ interface OutlineItem {
   status: string;
   createdAt: string;
   updatedAt: string;
+  revisionHash: string;
 }
 
 interface Props {
@@ -59,6 +60,11 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, prepar
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [baseRevisionHash, setBaseRevisionHash] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{ remote: OutlineItem | null; loading: boolean; error: string | null } | null>(null);
+  const editingRef = useRef<string | null>(null);
+  const formEpoch = useRef(0);
+  const conflictReadSequence = useRef(0);
 
   // new/edit form state
   const [formLevel, setFormLevel] = useState<string>("CHAPTER");
@@ -108,6 +114,8 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, prepar
   }, [job?.jobType, job?.status, job?.id, job?.output, projectId, reload, onGenerated]);
 
   function resetForm() {
+    formEpoch.current++; conflictReadSequence.current++; editingRef.current = null;
+    setBaseRevisionHash(null); setConflict(null);
     setFormLevel("CHAPTER");
     setFormTitle("");
     setFormSummary("");
@@ -118,6 +126,8 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, prepar
 
   function startEdit(item: OutlineItem) {
     if (mutationBusy.current) return;
+    formEpoch.current++; conflictReadSequence.current++; editingRef.current = item.id;
+    setBaseRevisionHash(item.revisionHash); setConflict(null); setError(null);
     setFormLevel(item.level);
     setFormTitle(item.title);
     setFormSummary(item.summary ?? "");
@@ -128,7 +138,12 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, prepar
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
+    await saveForm();
+  }
+
+  async function saveForm(confirmedBase?: string) {
     if (!projectId || !formTitle.trim() || mutationBusy.current) return;
+    if (editingId && ((!baseRevisionHash && !confirmedBase) || (conflict && !confirmedBase))) return;
     const id = projectId, epoch = scope.current;
     mutationBusy.current = true;
     setSaving(true);
@@ -141,11 +156,18 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, prepar
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title: formTitle.trim(),
-            summary: formSummary.trim()
+            summary: formSummary.trim(),
+            baseRevisionHash: confirmedBase ?? baseRevisionHash
           })
         });
         const json = (await res.json()) as ApiEnvelope<OutlineItem>;
+        if (!isCurrent(id, epoch)) return;
+        if (res.status === 409) {
+          setConflict({ remote: null, loading: false, error: null });
+          throw new Error(json.error ?? "大纲已变化，请核对后处理冲突。");
+        }
         if (!res.ok || !json.success) throw new Error(json.error ?? "更新失败");
+        if (!json.data || json.data.id !== editingId || json.data.title !== formTitle.trim() || json.data.summary !== formSummary.trim() || !/^[0-9a-f]{64}$/i.test(json.data.revisionHash)) throw new Error("大纲保存未确认，请核对后重试。");
       } else {
         // POST
         const res = await fetch("/api/outlines", {
@@ -173,13 +195,39 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, prepar
     }
   }
 
-  async function handleDelete(id: string) {
+  async function readLatestConflict() {
+    if (!editingId || !conflict || mutationBusy.current) return;
+    const id = editingId, projectAtCall = projectId, epoch = scope.current, formAtCall = formEpoch.current;
+    const sequence = ++conflictReadSequence.current;
+    setConflict({ remote: null, loading: true, error: null });
+    try {
+      const res = await fetch(`/api/outlines/${id}`);
+      const json = await res.json() as ApiEnvelope<OutlineItem>;
+      if (!isCurrent(projectAtCall, epoch) || editingRef.current !== id || formEpoch.current !== formAtCall || conflictReadSequence.current !== sequence) return;
+      if (!res.ok || !json.success || !json.data || json.data.id !== id || json.data.projectId !== projectAtCall || !/^[0-9a-f]{64}$/i.test(json.data.revisionHash)) throw new Error(json.error ?? "读取失败，请重试。");
+      setConflict({ remote: json.data, loading: false, error: null });
+    } catch (err: unknown) {
+      if (isCurrent(projectAtCall, epoch) && editingRef.current === id && formEpoch.current === formAtCall && conflictReadSequence.current === sequence) setConflict({ remote: null, loading: false, error: err instanceof Error ? err.message : "读取失败，请重试。" });
+    }
+  }
+
+  function adoptRemoteConflict() {
+    const remote = conflict?.remote;
+    if (!remote || mutationBusy.current || remote.id !== editingRef.current) return;
+    conflictReadSequence.current++;
+    setFormTitle(remote.title); setFormSummary(remote.summary ?? ""); setBaseRevisionHash(remote.revisionHash);
+    setConflict(null); setError(null);
+    setItems(previous => previous.map(item => item.id === remote.id ? remote : item));
+  }
+
+  async function handleDelete(item: OutlineItem) {
     if (mutationBusy.current) return;
     if (!confirm("确定删除此大纲条目？")) return;
+    const id = item.id;
     const projectAtCall = projectId, epoch = scope.current;
     mutationBusy.current = true; setSaving(true); setError(null);
     try {
-      const res = await fetch(`/api/outlines/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/outlines/${id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ baseRevisionHash: item.revisionHash }) });
       const json = (await res.json()) as ApiEnvelope<unknown>;
       if (!res.ok || !json.success) throw new Error(json.error ?? "删除失败");
       if (isCurrent(projectAtCall, epoch)) await reload();
@@ -283,13 +331,25 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, prepar
             />
           </label>
           <div className="memories-filter-buttons">
-            <button type="submit" className="btn-primary" disabled={saving || !formTitle.trim()}>
+            <button type="submit" className="btn-primary" disabled={saving || Boolean(conflict) || !formTitle.trim()}>
               {saving ? "保存中..." : editingId ? "更新" : "创建"}
             </button>
             <button type="button" className="btn-ghost" onClick={resetForm} disabled={saving}>
               取消
             </button>
           </div>
+          {conflict && (
+            <section className="outline-conflict" role="region" aria-label="大纲冲突处理">
+              <p className="form-error">大纲已变化，本地表单已保留。读取最新内容后再选择处理方式。</p>
+              {conflict.error && <p className="form-error">{conflict.error}</p>}
+              {conflict.remote && <div><strong>远端：{conflict.remote.title}</strong><p>{conflict.remote.summary || "（空摘要）"}</p></div>}
+              <div className="memories-filter-buttons">
+                <button type="button" className="btn-ghost" disabled={saving || conflict.loading} onClick={() => void readLatestConflict()}>{conflict.loading ? "读取中..." : "读取最新大纲"}</button>
+                <button type="button" className="btn-ghost" disabled={saving || !conflict.remote} onClick={adoptRemoteConflict}>采用远端版本</button>
+                <button type="button" className="btn-primary" disabled={saving || !conflict.remote || !formTitle.trim()} onClick={() => { if (conflict.remote) void saveForm(conflict.remote.revisionHash); }}>保留本地并保存</button>
+              </div>
+            </section>
+          )}
         </form>
       )}
 
@@ -309,7 +369,7 @@ export function OutlinePanel({ projectId, job = null, isStarting = false, prepar
                   {item.summary && <p className="muted resource-card-meta">{item.summary.slice(0, 120)}</p>}
                   <div className="resource-card-actions">
                     <button type="button" className="btn-ghost" disabled={saving} onClick={() => startEdit(item)}>编辑</button>
-                    <button type="button" className="btn-ghost" disabled={saving} onClick={() => void handleDelete(item.id)}>删除</button>
+                    <button type="button" className="btn-ghost" disabled={saving} onClick={() => void handleDelete(item)}>删除</button>
                   </div>
                 </li>
               ))}
